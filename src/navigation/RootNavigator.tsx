@@ -4,11 +4,13 @@ import { useAuthStore } from '../store/authStore';
 import TabNavigator from './TabNavigator';
 import SignInScreen from '../screens/SignIn';
 import CreateClubScreen from '../screens/CreateClub';
+import ClubRulesAdminScreen from '../screens/ClubRulesAdmin';
 
 export type RootStackParamList = {
   SignIn: undefined;
   Tabs: undefined;
   CreateClub: undefined;
+  ClubRulesAdmin: { clubId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -37,6 +39,7 @@ export default function RootNavigator() {
         <>
           <Stack.Screen name="Tabs" component={TabNavigator} options={{ headerShown: false }} />
           <Stack.Screen name="CreateClub" component={CreateClubScreen} options={{ title: 'New Club' }} />
+          <Stack.Screen name="ClubRulesAdmin" component={ClubRulesAdminScreen} options={{ title: 'Club Rules' }} />
         </>
       ) : (
         <Stack.Screen name="SignIn" component={SignInScreen} options={{ headerShown: false }} />

@@ -3,15 +3,30 @@ import {
   setDoc,
   getDoc,
   collection,
+  query,
+  where,
+  getDocs,
+  limit,
   serverTimestamp,
   arrayUnion,
   updateDoc,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Club, ClubRules } from '../types';
+import type { Club, ClubMember, ClubRules, Match } from '../types';
 
 const defaultRules: ClubRules = {
+  ballsPerOver: 6,
+  oversPerInnings: undefined,
+  enabledDismissals: [
+    'caught', 'bowled', 'lbw', 'run-out', 'stumped',
+    'hit-wicket', 'obstructing-field', 'timed-out', 'handled-ball', 'hit-ball-twice',
+  ],
   customDismissals: [],
+  enabledExtras: ['wide', 'no-ball', 'bye', 'leg-bye'],
+  roverThrowCap: undefined,
+  lastManStands: false,
+  compulsoryRetirementAt: undefined,
+  maxBowlerOvers: undefined,
   fieldingEvents: [],
 };
 
@@ -61,4 +76,29 @@ export async function getUserClubs(uid: string): Promise<Club[]> {
   return snapshots
     .filter((snap) => snap.exists())
     .map((snap) => snap.data() as Club);
+}
+
+export async function getClub(clubId: string): Promise<Club | null> {
+  const snap = await getDoc(doc(db, 'clubs', clubId));
+  return snap.exists() ? (snap.data() as Club) : null;
+}
+
+export async function getClubMember(clubId: string, uid: string): Promise<ClubMember | null> {
+  const snap = await getDoc(doc(db, 'clubs', clubId, 'players', uid));
+  return snap.exists() ? (snap.data() as ClubMember) : null;
+}
+
+export async function hasLiveMatch(clubId: string): Promise<boolean> {
+  const q = query(
+    collection(db, 'matches'),
+    where('clubId', '==', clubId),
+    where('status', '==', 'live'),
+    limit(1)
+  );
+  const snap = await getDocs(q);
+  return !snap.empty;
+}
+
+export async function saveClubRules(clubId: string, rules: ClubRules): Promise<void> {
+  await updateDoc(doc(db, 'clubs', clubId), { rules });
 }

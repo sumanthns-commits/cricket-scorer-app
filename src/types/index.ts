@@ -61,10 +61,25 @@ export interface ResolvedStats {
   statsSource: 'live' | 'snapshot' | 'preview';
 }
 
+export type StandardDismissalType =
+  | 'caught'
+  | 'bowled'
+  | 'lbw'
+  | 'run-out'
+  | 'stumped'
+  | 'hit-wicket'
+  | 'obstructing-field'
+  | 'timed-out'
+  | 'handled-ball'
+  | 'hit-ball-twice';
+
 export interface CustomDismissal {
   id: string;
   label: string;
-  countsAsWicket: boolean;
+  batterIsOut: boolean;
+  runsScored?: number;
+  isLegalDelivery: boolean;
+  bowlerGetsWicket: boolean;
 }
 
 export interface FieldingEventConfig {
@@ -74,9 +89,16 @@ export interface FieldingEventConfig {
 }
 
 export interface ClubRules {
-  customDismissals: CustomDismissal[];
-  fieldingEvents: FieldingEventConfig[];
+  ballsPerOver: number;
   oversPerInnings?: number;
+  enabledDismissals: StandardDismissalType[];
+  customDismissals: CustomDismissal[];
+  enabledExtras: ExtrasType[];
+  roverThrowCap?: number;
+  lastManStands: boolean;
+  compulsoryRetirementAt?: number;
+  maxBowlerOvers?: number;
+  fieldingEvents: FieldingEventConfig[];
 }
 
 export interface Club {

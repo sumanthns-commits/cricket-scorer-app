@@ -9,7 +9,7 @@ import type { Club } from '../../types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-function ClubCard({ club }: { club: Club }) {
+function ClubCard({ club, onRulesPress }: { club: Club; onRulesPress: () => void }) {
   return (
     <View
       style={{
@@ -29,6 +29,11 @@ function ClubCard({ club }: { club: Club }) {
           {club.description}
         </Text>
       ) : null}
+      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 }}>
+        <TouchableOpacity onPress={onRulesPress}>
+          <Text style={{ color: '#4ade80', fontSize: 13, fontWeight: '600' }}>⚙ Rules</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -77,7 +82,12 @@ export default function HomeScreen() {
         <FlatList
           data={clubs}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <ClubCard club={item} />}
+          renderItem={({ item }) => (
+            <ClubCard
+              club={item}
+              onRulesPress={() => navigation.navigate('ClubRulesAdmin', { clubId: item.id })}
+            />
+          )}
         />
       ) : (
         <View style={{ alignItems: 'center', marginTop: 60 }}>
