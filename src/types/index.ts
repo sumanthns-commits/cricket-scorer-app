@@ -1,5 +1,18 @@
 import type { Timestamp } from 'firebase/firestore';
 
+export interface AppUser {
+  uid: string;
+  displayName: string;
+  email: string;
+  photoURL?: string;
+  createdAt: Timestamp;
+}
+
+export interface UserMembership {
+  uid: string;
+  clubIds: string[];
+}
+
 export type PlayerType = 'ghost' | 'registered' | 'linked';
 
 export type ClaimStatus =
@@ -69,8 +82,10 @@ export interface ClubRules {
 export interface Club {
   id: string;
   name: string;
+  description: string;
   rules: ClubRules;
   createdAt: Timestamp;
+  createdBy: string;
 }
 
 export interface ClubMember {

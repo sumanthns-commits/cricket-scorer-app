@@ -2,6 +2,7 @@
   "expo": {
     "name": "cricket-scorer-app",
     "slug": "cricket-scorer-app",
+    "scheme": "cricket-scorer-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -23,6 +24,9 @@
     },
     "extra": {
       "apiKey": null
-    }
+    },
+    "plugins": [
+      "expo-web-browser"
+    ]
   }
 }
