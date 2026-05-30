@@ -153,12 +153,33 @@ export interface OverDocument {
   isComplete: boolean;
 }
 
+export type MatchFormat = 'T20' | 'ODI' | 'custom';
+
+export interface MatchToss {
+  winnerId: string;
+  winnerName: string;
+  choice: 'bat' | 'field';
+}
+
+export interface TeamSelectionResult {
+  team_a: string[];
+  team_b: string[];
+  rationale: string;
+  keyDecisions: string[];
+}
+
 export interface Match {
   id: string;
   clubId: string;
   homeTeam: string;
   awayTeam: string;
+  venue?: string;
   date: Timestamp;
+  format?: MatchFormat;
   status: 'scheduled' | 'live' | 'completed';
   rules: ClubRules;
+  squad?: string[];
+  teamA?: string[];
+  teamB?: string[];
+  toss?: MatchToss;
 }
