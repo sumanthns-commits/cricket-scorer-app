@@ -1,0 +1,127 @@
+import type { Timestamp } from 'firebase/firestore';
+
+export type PlayerType = 'ghost' | 'registered' | 'linked';
+
+export type ClaimStatus =
+  | 'cooldown'
+  | 'waiting'
+  | 'contested'
+  | 'merged'
+  | 'reverted'
+  | 'rejected';
+
+export interface CareerStats {
+  totalRuns: number;
+  totalWickets: number;
+  totalBallsFaced: number;
+  totalDismissals: number;
+  totalBallsBowled: number;
+  totalRunsConceded: number;
+  totalCatches: number;
+  totalRunOuts: number;
+  highScore: number;
+  matchesPlayed: number;
+}
+
+export interface ClaimSnapshot {
+  ghostStats: CareerStats;
+  ghostSkillRating: number;
+  snapshotAt: Timestamp;
+}
+
+export interface Claim {
+  id: string;
+  ghostId: string;
+  claimantId: string;
+  status: ClaimStatus;
+  snapshot: ClaimSnapshot;
+  createdAt: Timestamp;
+  mergeScheduledAt?: Timestamp;
+  contestedAt?: Timestamp;
+  mergedAt?: Timestamp;
+  revertedAt?: Timestamp;
+}
+
+export interface ResolvedStats {
+  playerId: string;
+  stats: CareerStats;
+  statsSource: 'live' | 'snapshot' | 'preview';
+}
+
+export interface CustomDismissal {
+  id: string;
+  label: string;
+  countsAsWicket: boolean;
+}
+
+export interface FieldingEventConfig {
+  id: string;
+  label: string;
+  enabled: boolean;
+}
+
+export interface ClubRules {
+  customDismissals: CustomDismissal[];
+  fieldingEvents: FieldingEventConfig[];
+  oversPerInnings?: number;
+}
+
+export interface Club {
+  id: string;
+  name: string;
+  rules: ClubRules;
+  createdAt: Timestamp;
+}
+
+export interface ClubMember {
+  id: string;
+  clubId: string;
+  playerId: string;
+  role: 'admin' | 'member';
+  joinedAt: Timestamp;
+}
+
+export interface Player {
+  id: string;
+  displayName: string;
+  email?: string;
+  type: PlayerType;
+  activeClaim?: string | null;
+  careerStats: CareerStats;
+}
+
+export type ExtrasType = 'wide' | 'no-ball' | 'bye' | 'leg-bye';
+
+export interface DismissalEntry {
+  type: string;
+  fielderId?: string;
+  bowlerId?: string;
+}
+
+export interface BallEntry {
+  runs: number;
+  batsmanId: string;
+  extras?: { type: ExtrasType; runs: number };
+  dismissal?: DismissalEntry;
+  timestamp?: Timestamp;
+}
+
+export interface OverDocument {
+  id: string;
+  matchId: string;
+  inningsId: string;
+  overNumber: number;
+  bowlerId: string;
+  balls: BallEntry[];
+  isComplete: boolean;
+}
+
+export interface Match {
+  id: string;
+  clubId: string;
+  homeTeam: string;
+  awayTeam: string;
+  date: Timestamp;
+  status: 'scheduled' | 'live' | 'completed';
+  rules: ClubRules;
+}
