@@ -9,7 +9,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { callFirebaseFunction } from './authHeaders';
-import type { ClubRules, Match, MatchFormat, MatchToss, Player, PlayerType, CareerStats } from '../types';
+import type { BallEntry, ClubRules, Match, MatchFormat, MatchToss, OverDocument, Player, PlayerType, CareerStats } from '../types';
 
 const emptyStats: CareerStats = {
   totalRuns: 0,
@@ -106,4 +106,36 @@ export async function setMatchToss(
     toss,
     status: 'live',
   });
+}
+
+export async function getLiveMatch(clubId: string): Promise<Match | null> {
+  const all = await getClubMatches(clubId);
+  return all.find((m) => m.status === 'live') ?? null;
+}
+
+export async function getMatchOvers(
+  clubId: string,
+  matchId: string,
+): Promise<OverDocument[]> {
+  const snap = await getDocs(
+    collection(db, 'clubs', clubId, 'matches', matchId, 'overs'),
+  );
+  return snap.docs.map((d) => d.data() as OverDocument);
+}
+
+export async function saveOver(params: {
+  clubId: string;
+  matchId: string;
+  inningsId: string;
+  overNumber: number;
+  bowlerId: string;
+  balls: BallEntry[];
+  isComplete: boolean;
+}): Promise<void> {
+  const { clubId, matchId, inningsId, overNumber, bowlerId, balls, isComplete } = params;
+  const overKey = `${inningsId}_${overNumber}`;
+  await setDoc(
+    doc(db, 'clubs', clubId, 'matches', matchId, 'overs', overKey),
+    { id: overKey, matchId, inningsId, overNumber, bowlerId, balls, isComplete },
+  );
 }
