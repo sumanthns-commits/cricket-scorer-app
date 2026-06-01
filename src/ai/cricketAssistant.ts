@@ -1,59 +1,68 @@
-import Anthropic from '@anthropic-ai/sdk';
-import Constants from 'expo-constants';
-import { toolDefinitions } from './toolDefinitions';
+import {
+  getAI,
+  getGenerativeModel,
+  GoogleAIBackend,
+  type Content,
+  type FunctionResponsePart,
+} from 'firebase/ai';
+import { app } from '../services/firebase';
+import { functionDeclarations } from './toolDefinitions';
 import { executeToolCall } from './toolExecutor';
 
-function createClient(): Anthropic {
-  const apiKey = (Constants.expoConfig?.extra as { apiKey?: string } | undefined)?.apiKey;
-  if (!apiKey) throw new Error('Anthropic API key not configured');
-  return new Anthropic({
-    apiKey,
-    defaultHeaders: { 'anthropic-beta': 'prompt-caching-2024-07-31' },
-  });
+const MODEL = 'gemini-2.5-flash';
+
+// Gemini Developer API backend — uses the Firebase project's free tier.
+const ai = getAI(app, { backend: new GoogleAIBackend() });
+
+export interface AssistantResult {
+  text: string;
+  history: Content[];
+}
+
+export interface AssistantOptions {
+  history?: Content[];
+  onToolCall?: (toolName: string) => void;
 }
 
 export async function askCricketAssistant(
   message: string,
   clubId: string,
   systemPrompt: string,
-  history: Anthropic.MessageParam[] = []
-): Promise<string> {
-  const client = createClient();
-  const messages: Anthropic.MessageParam[] = [
-    ...history,
-    { role: 'user', content: message },
-  ];
+  options: AssistantOptions = {}
+): Promise<AssistantResult> {
+  const model = getGenerativeModel(ai, {
+    model: MODEL,
+    systemInstruction: systemPrompt,
+    tools: [{ functionDeclarations }],
+  });
+
+  const chat = model.startChat({ history: options.history ?? [] });
+
+  let result = await chat.sendMessage(message);
 
   for (;;) {
-    const response = await client.messages.create({
-      model: 'claude-opus-4-8',
-      max_tokens: 4096,
-      system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
-      tools: toolDefinitions,
-      messages,
-    });
+    const calls = result.response.functionCalls();
+    if (!calls || calls.length === 0) break;
 
-    messages.push({ role: 'assistant', content: response.content });
-
-    if (response.stop_reason === 'end_turn') {
-      return response.content
-        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-        .map((b) => b.text)
-        .join('');
-    }
-
-    const toolResults: Anthropic.ToolResultBlockParam[] = await Promise.all(
-      response.content
-        .filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
-        .map(async (b) => ({
-          type: 'tool_result' as const,
-          tool_use_id: b.id,
-          content: JSON.stringify(
-            await executeToolCall(b.name, b.input as Record<string, unknown>, clubId)
-          ),
-        }))
+    const responses: FunctionResponsePart[] = await Promise.all(
+      calls.map(async (call) => {
+        options.onToolCall?.(call.name);
+        const data = await executeToolCall(
+          call.name,
+          call.args as Record<string, unknown>,
+          clubId
+        );
+        return {
+          functionResponse: {
+            name: call.name,
+            response: (data ?? {}) as object,
+          },
+        };
+      })
     );
 
-    messages.push({ role: 'user', content: toolResults });
+    result = await chat.sendMessage(responses);
   }
+
+  return { text: result.response.text(), history: await chat.getHistory() };
 }

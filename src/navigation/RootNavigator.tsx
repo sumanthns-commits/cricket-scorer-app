@@ -8,6 +8,7 @@ import ClubRulesAdminScreen from '../screens/ClubRulesAdmin';
 import ScheduleMatchScreen from '../screens/ScheduleMatch';
 import TeamBuilderScreen from '../screens/TeamBuilder';
 import TossScreen from '../screens/Toss';
+import PlayerProfileScreen from '../screens/PlayerProfile';
 
 export type RootStackParamList = {
   SignIn: undefined;
@@ -17,6 +18,7 @@ export type RootStackParamList = {
   ScheduleMatch: { clubId: string };
   TeamBuilder: { clubId: string; matchId: string };
   Toss: { clubId: string; matchId: string };
+  PlayerProfile: { clubId: string; playerId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -49,6 +51,7 @@ export default function RootNavigator() {
           <Stack.Screen name="ScheduleMatch" component={ScheduleMatchScreen} options={{ title: 'Schedule Match' }} />
           <Stack.Screen name="TeamBuilder" component={TeamBuilderScreen} options={{ title: 'Build Teams' }} />
           <Stack.Screen name="Toss" component={TossScreen} options={{ title: 'Toss' }} />
+          <Stack.Screen name="PlayerProfile" component={PlayerProfileScreen} options={{ title: 'Player' }} />
         </>
       ) : (
         <Stack.Screen name="SignIn" component={SignInScreen} options={{ headerShown: false }} />

@@ -4,12 +4,14 @@ import MatchesScreen from '../screens/Matches';
 import LiveScoringScreen from '../screens/LiveScoring';
 import SquadScreen from '../screens/Squad';
 import ProfileScreen from '../screens/Profile';
+import AIAssistantScreen from '../screens/AIAssistant';
 
 export type TabParamList = {
   Home: undefined;
   Matches: undefined;
   Live: undefined;
   Squad: undefined;
+  Assistant: undefined;
   Profile: undefined;
 };
 
@@ -34,6 +36,11 @@ export default function TabNavigator() {
         options={{ title: 'Live Scoring' }}
       />
       <Tab.Screen name="Squad" component={SquadScreen} />
+      <Tab.Screen
+        name="Assistant"
+        component={AIAssistantScreen}
+        options={{ title: 'AI Assistant' }}
+      />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );

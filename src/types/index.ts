@@ -125,6 +125,8 @@ export interface Player {
   type: PlayerType;
   activeClaim?: string | null;
   careerStats: CareerStats;
+  photoURL?: string;
+  skillRating?: number;
 }
 
 export type ExtrasType = 'wide' | 'no-ball' | 'bye' | 'leg-bye';

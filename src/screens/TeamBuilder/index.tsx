@@ -164,12 +164,12 @@ export default function TeamBuilderScreen() {
     setAiThinking(true);
     setAiError('');
     try {
-      const response = await askCricketAssistant(
+      const { text } = await askCricketAssistant(
         `Select balanced teams for match ID: ${matchId}`,
         clubId,
         TEAM_SELECTION_SYSTEM_PROMPT
       );
-      const parsed = parseTeamSelection(response);
+      const parsed = parseTeamSelection(text);
       if (!parsed) throw new Error('Could not parse team selection from AI response');
       setTeamA(parsed.team_a);
       setTeamB(parsed.team_b);
