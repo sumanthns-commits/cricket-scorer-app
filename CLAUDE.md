@@ -72,9 +72,9 @@ API key from Constants.expoConfig.extra.apiKey (injected via EAS Secrets)
 Never store tokens to disk. Never commit .env
 
 ## Wagon wheel orientation
-Viewed from bowler's end looking down. Batsman at BOTTOM, bowler at TOP.
+Keeper's view (behind the batsman). Batsman at BOTTOM, bowler at TOP.
 0° = top (straight/toward bowler), clockwise positive.
-RHB: off side = LEFT, leg side = RIGHT.
+RHB: off side = RIGHT, leg side = LEFT.
 LHB: labels flip, geometry stays same.
 12 uniform 30° sectors, 2° gap between each.
 

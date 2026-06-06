@@ -8,9 +8,11 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.cricketscorer.app"
     },
     "android": {
+      "package": "com.cricketscorer.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -26,7 +28,8 @@
       "apiKey": null
     },
     "plugins": [
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-dev-client"
     ]
   }
 }

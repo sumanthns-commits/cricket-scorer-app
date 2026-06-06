@@ -9,7 +9,9 @@ import {
   ActivityIndicator,
   Pressable,
   FlatList,
+  Alert,
 } from 'react-native';
+import type { GestureResponderEvent } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useClubStore } from '../../store/clubStore';
 import {
@@ -17,14 +19,21 @@ import {
   getClubPlayers,
   getMatchOvers,
   saveOver,
+  completeMatch,
+  abandonMatch,
+  deleteMatch,
 } from '../../services/matchService';
+import { getClub } from '../../services/clubService';
 import { recordBall } from '../../services/scoringEngine';
 import type {
   BallEntry,
+  ClubRules,
+  CustomDismissal,
   ExtrasType,
   Match,
   Player,
   StandardDismissalType,
+  WagonShot,
 } from '../../types';
 import type { BallInput, DismissalConfig } from '../../services/scoringEngine';
 
@@ -72,16 +81,38 @@ const WC = WHEEL / 2;
 const OUTER_R = 126;
 const RINGS = [42, 84, 126];
 
+// Canonical fielding positions, clockwise from 0 = straight (toward bowler).
+// Keeper's view (batsman at bottom): RHB off side = right (sectors 1–5),
+// leg side = left (sectors 7–11).
 const RHB_LABELS = [
-  'Straight', 'Mid-on', 'Midwicket', 'Sq. leg', 'Fine leg',
-  'Leg side', 'Behind', 'Third man', 'Back. pt', 'Point',
-  'Mid-off', 'Cover',
+  'Straight', 'Mid-off', 'Cover', 'Point', 'Gully', 'Third man',
+  'Behind', 'Fine leg', 'Bwd sq leg', 'Sq. leg', 'Midwicket', 'Mid-on',
 ];
+// LHB: mirror of RHB across the vertical axis (sector i ↔ 12 − i).
 const LHB_LABELS = [
-  'Straight', 'Cover', 'Mid-off', 'Point', 'Back. pt',
-  'Third man', 'Behind', 'Leg side', 'Fine leg', 'Sq. leg',
-  'Midwicket', 'Mid-on',
+  'Straight', 'Mid-on', 'Midwicket', 'Sq. leg', 'Bwd sq leg', 'Fine leg',
+  'Behind', 'Third man', 'Gully', 'Point', 'Cover', 'Mid-off',
 ];
+
+// depth: 0 = infield, 1 = mid, 2 = boundary. Radius bands = the ring radii.
+const DEPTH_LABELS = ['Infield', 'Mid', 'Boundary'];
+
+type WheelSel = { sector: number; depth: number; x: number; y: number };
+
+// Map a tap (relative to the wheel's top-left) to a sector + depth.
+// sector: round((angle + 90°) / 30) — matches the label geometry where
+//   sector i sits at screen-angle (i·30 − 90)°. depth: which ring band the
+//   radius falls in. Returns null for taps on the centre dot or outside the wheel.
+function tapToSel(x: number, y: number): WheelSel | null {
+  const dx = x - WC;
+  const dy = y - WC;
+  const r = Math.hypot(dx, dy);
+  if (r < 8 || r > OUTER_R + 16) return null;
+  const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+  const sector = ((Math.round((angle + 90) / 30) % 12) + 12) % 12;
+  const depth = r <= RINGS[0] ? 0 : r <= RINGS[1] ? 1 : 2;
+  return { sector, depth, x, y };
+}
 
 function WagonWheelModal({
   visible,
@@ -92,12 +123,19 @@ function WagonWheelModal({
   visible: boolean;
   isLHB: boolean;
   runs: number;
-  onDone: (sector: number | null) => void;
+  onDone: (shot: WagonShot | null) => void;
 }) {
-  const [sel, setSel] = useState<number | null>(null);
+  const [sel, setSel] = useState<WheelSel | null>(null);
   const labels = isLHB ? LHB_LABELS : RHB_LABELS;
 
   useEffect(() => { if (visible) setSel(null); }, [visible]);
+
+  const onWheelPress = (e: GestureResponderEvent) => {
+    const next = tapToSel(e.nativeEvent.locationX, e.nativeEvent.locationY);
+    if (next) setSel(next);
+  };
+
+  const canConfirm = sel !== null;
 
   return (
     <Modal visible={visible} transparent animationType="fade">
@@ -106,21 +144,29 @@ function WagonWheelModal({
           <Text style={{ color: '#ffffff', fontSize: 20, fontWeight: '700', marginBottom: 2 }}>
             {runs === 4 ? 'FOUR!' : runs === 6 ? 'SIX!' : `${runs} run${runs !== 1 ? 's' : ''}`}
           </Text>
-          <Text style={{ color: '#6b7280', fontSize: 13, marginBottom: 16 }}>Tap sector or skip</Text>
+          <Text style={{ color: '#6b7280', fontSize: 13, marginBottom: 4 }}>
+            Tap where the ball went — closer to the edge = deeper
+          </Text>
+          <Text style={{ color: sel ? '#4ade80' : '#374151', fontSize: 12, fontWeight: '600', marginBottom: 12, height: 16 }}>
+            {sel ? `${labels[sel.sector]} · ${DEPTH_LABELS[sel.depth]}` : ' '}
+          </Text>
 
-          <View style={{ width: WHEEL, height: WHEEL }}>
+          {/* One tappable surface — sector from angle, depth from radius */}
+          <Pressable onPress={onWheelPress} style={{ width: WHEEL, height: WHEEL }}>
             {/* Background */}
-            <View style={{ position: 'absolute', width: WHEEL, height: WHEEL, borderRadius: WC, backgroundColor: '#0f1e35' }} />
+            <View pointerEvents="none" style={{ position: 'absolute', width: WHEEL, height: WHEEL, borderRadius: WC, backgroundColor: '#0f1e35' }} />
 
-            {/* Rings */}
-            {RINGS.map((r) => (
+            {/* Rings — highlight the selected depth band */}
+            {RINGS.map((r, di) => (
               <View
                 key={r}
+                pointerEvents="none"
                 style={{
                   position: 'absolute',
                   width: r * 2, height: r * 2,
                   borderRadius: r,
-                  borderWidth: 1, borderColor: '#1e3a5f',
+                  borderWidth: sel?.depth === di ? 2 : 1,
+                  borderColor: sel?.depth === di ? '#4ade80' : '#1e3a5f',
                   left: WC - r, top: WC - r,
                 }}
               />
@@ -130,6 +176,7 @@ function WagonWheelModal({
             {Array.from({ length: 6 }, (_, i) => (
               <View
                 key={i}
+                pointerEvents="none"
                 style={{
                   position: 'absolute',
                   width: OUTER_R * 2, height: 1,
@@ -140,62 +187,60 @@ function WagonWheelModal({
               />
             ))}
 
-            {/* Sector touch buttons */}
+            {/* Non-interactive sector labels (guides) at a fixed radius */}
             {labels.map((label, i) => {
               const rad = ((i * 30 - 90) * Math.PI) / 180;
-              const r = OUTER_R - 18;
-              const x = WC + r * Math.cos(rad) - 24;
+              const r = OUTER_R - 16;
+              const x = WC + r * Math.cos(rad) - 26;
               const y = WC + r * Math.sin(rad) - 11;
-              const active = sel === i;
+              const active = sel?.sector === i;
               return (
-                <Pressable
+                <View
                   key={i}
-                  onPress={() => setSel(i)}
-                  style={{
-                    position: 'absolute',
-                    left: x, top: y,
-                    width: 48, height: 22,
-                    backgroundColor: active ? '#4ade80' : 'transparent',
-                    borderRadius: 4,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
+                  pointerEvents="none"
+                  style={{ position: 'absolute', left: x, top: y, width: 52, height: 22, alignItems: 'center', justifyContent: 'center' }}
                 >
-                  <Text style={{ color: active ? '#0a1628' : '#6b7280', fontSize: 9, textAlign: 'center' }}>
+                  <Text style={{ color: active ? '#4ade80' : '#6b7280', fontSize: 9, textAlign: 'center', fontWeight: active ? '700' : '400' }}>
                     {label}
                   </Text>
-                </Pressable>
+                </View>
               );
             })}
 
+            {/* Marker at the tapped point */}
+            {sel && (
+              <View pointerEvents="none" style={{
+                position: 'absolute', width: 14, height: 14, borderRadius: 7,
+                backgroundColor: '#4ade80', borderWidth: 2, borderColor: '#0a1628',
+                left: sel.x - 7, top: sel.y - 7,
+              }} />
+            )}
+
             {/* Center dot */}
-            <View style={{
+            <View pointerEvents="none" style={{
               position: 'absolute', width: 8, height: 8, borderRadius: 4,
-              backgroundColor: '#4ade80', left: WC - 4, top: WC - 4,
+              backgroundColor: '#64748b', left: WC - 4, top: WC - 4,
             }} />
 
             {/* Batsman label at bottom */}
-            <Text style={{ position: 'absolute', bottom: 6, alignSelf: 'center', color: '#4b5563', fontSize: 10 }}>
+            <Text pointerEvents="none" style={{ position: 'absolute', bottom: 6, alignSelf: 'center', color: '#4b5563', fontSize: 10 }}>
               {isLHB ? 'LHB' : 'RHB'} ▲
             </Text>
-          </View>
+          </Pressable>
 
-          <View style={{ flexDirection: 'row', gap: 12, marginTop: 18, width: '100%' }}>
-            <TouchableOpacity
-              onPress={() => onDone(null)}
-              style={{ flex: 1, padding: 13, borderRadius: 10, borderWidth: 1, borderColor: '#2d3f58', alignItems: 'center' }}
-            >
-              <Text style={{ color: '#9ca3af', fontWeight: '600' }}>Skip</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => onDone(sel)}
-              style={{ flex: 1, padding: 13, borderRadius: 10, backgroundColor: '#4ade80', alignItems: 'center' }}
-            >
-              <Text style={{ color: '#0a1628', fontWeight: '700' }}>
-                {sel !== null ? 'Confirm' : 'Skip'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+          {/* Single action: confirms the shot, or skips if nothing tapped */}
+          <TouchableOpacity
+            onPress={() => onDone(sel ? { sector: sel.sector, depth: sel.depth } : null)}
+            style={{
+              width: '100%', padding: 14, borderRadius: 10, marginTop: 18, alignItems: 'center',
+              backgroundColor: canConfirm ? '#4ade80' : '#1e2d45',
+              borderWidth: canConfirm ? 0 : 1, borderColor: '#2d3f58',
+            }}
+          >
+            <Text style={{ color: canConfirm ? '#0a1628' : '#9ca3af', fontWeight: '700' }}>
+              {canConfirm ? 'Confirm' : 'Skip'}
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
@@ -203,6 +248,8 @@ function WagonWheelModal({
 }
 
 // ─── Fielding panel ─────────────────────────────────────────────────
+
+const FIELDING_AUTO_MS = 6000;
 
 function FieldingPanel({
   visible,
@@ -218,35 +265,57 @@ function FieldingPanel({
   onDone: (eventId: string | null, fielderId: string | null) => void;
 }) {
   const slideY = useRef(new Animated.Value(400)).current;
+  const progress = useRef(new Animated.Value(1)).current;
   const [eventId, setEventId] = useState<string | null>(null);
   const [fielderId, setFielderId] = useState<string | null>(null);
   const isBoundary = runs === 4 || runs === 6;
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Keep the latest selection + callback for the auto-dismiss timer.
+  const selRef = useRef<{ eventId: string | null; fielderId: string | null }>({ eventId: null, fielderId: null });
+  selRef.current = { eventId, fielderId };
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+
+  // Restart the auto-dismiss countdown (and progress bar). Called on open and
+  // on every interaction so the panel only closes after the user is idle.
+  const startCountdown = useCallback(() => {
+    progress.stopAnimation();
+    progress.setValue(1);
+    Animated.timing(progress, { toValue: 0, duration: FIELDING_AUTO_MS, useNativeDriver: false }).start(
+      ({ finished }) => {
+        if (finished) onDoneRef.current(selRef.current.eventId, selRef.current.fielderId);
+      }
+    );
+  }, [progress]);
 
   useEffect(() => {
     if (visible) {
       setEventId(null);
       setFielderId(null);
       Animated.spring(slideY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
-      if (isBoundary) {
-        timerRef.current = setTimeout(() => onDone(null, null), 2500);
-      }
+      startCountdown();
     } else {
       Animated.timing(slideY, { toValue: 400, duration: 200, useNativeDriver: true }).start();
-      if (timerRef.current) clearTimeout(timerRef.current);
+      progress.stopAnimation();
     }
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    return () => progress.stopAnimation();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
+  const pickEvent = (id: string) => { setEventId((c) => (c === id ? null : id)); startCountdown(); };
+  const pickFielder = (id: string) => { setFielderId((c) => (c === id ? null : id)); startCountdown(); };
+  const finish = () => { progress.stopAnimation(); onDone(eventId, fielderId); };
+
   if (!visible) return null;
+
+  const barWidth = progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
 
   return (
     <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0 }}>
       <TouchableOpacity
         style={{ flex: 1, backgroundColor: '#00000066' }}
         activeOpacity={1}
-        onPress={() => onDone(eventId, fielderId)}
+        onPress={finish}
       />
       <Animated.View
         style={{
@@ -259,7 +328,12 @@ function FieldingPanel({
           maxHeight: 420,
         }}
       >
-        <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#2d3f58', alignSelf: 'center', marginBottom: 16 }} />
+        <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#2d3f58', alignSelf: 'center', marginBottom: 14 }} />
+
+        {/* Auto-dismiss progress */}
+        <View style={{ height: 3, backgroundColor: '#1e2d45', borderRadius: 2, overflow: 'hidden', marginBottom: 16 }}>
+          <Animated.View style={{ height: 3, width: barWidth, backgroundColor: '#4ade80' }} />
+        </View>
 
         {isBoundary ? (
           <Text style={{ color: '#fbbf24', fontSize: 22, fontWeight: '800', textAlign: 'center', marginBottom: 8 }}>
@@ -274,7 +348,7 @@ function FieldingPanel({
                   {fieldingEvents.map((ev) => (
                     <TouchableOpacity
                       key={ev.id}
-                      onPress={() => setEventId(ev.id === eventId ? null : ev.id)}
+                      onPress={() => pickEvent(ev.id)}
                       style={{
                         paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
                         backgroundColor: eventId === ev.id ? '#4ade80' : '#1e2d45',
@@ -296,7 +370,7 @@ function FieldingPanel({
                 {players.map((p) => (
                   <TouchableOpacity
                     key={p.id}
-                    onPress={() => setFielderId(p.id === fielderId ? null : p.id)}
+                    onPress={() => pickFielder(p.id)}
                     style={{
                       paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8,
                       backgroundColor: fielderId === p.id ? '#1e3a5f' : '#1e2d45',
@@ -314,13 +388,80 @@ function FieldingPanel({
         )}
 
         <TouchableOpacity
-          onPress={() => onDone(eventId, fielderId)}
+          onPress={finish}
           style={{ backgroundColor: '#4ade80', borderRadius: 10, padding: 14, alignItems: 'center', marginTop: isBoundary ? 8 : 0 }}
         >
           <Text style={{ color: '#0a1628', fontWeight: '700', fontSize: 15 }}>Done</Text>
         </TouchableOpacity>
       </Animated.View>
     </View>
+  );
+}
+
+// ─── Extras runs picker ─────────────────────────────────────────────
+
+const EXTRA_LABELS: Record<ExtrasType, string> = {
+  wide: 'Wide',
+  'no-ball': 'No ball',
+  bye: 'Bye',
+  'leg-bye': 'Leg bye',
+};
+
+function ExtrasRunsModal({
+  type,
+  onConfirm,
+  onCancel,
+}: {
+  type: ExtrasType | null;
+  onConfirm: (runRuns: number) => void;
+  onCancel: () => void;
+}) {
+  if (!type) return null;
+  const hasPenalty = type === 'wide' || type === 'no-ball';
+  const prompt =
+    type === 'wide' ? 'Runs the batsmen ran (+1 wide added)'
+    : type === 'no-ball' ? 'Runs off the bat (+1 no-ball added)'
+    : 'Runs taken';
+  // Byes/leg-byes are only signalled when runs are run, so default the picker to 1.
+  const options = hasPenalty ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4];
+
+  return (
+    <Modal visible transparent animationType="fade">
+      <View style={{ flex: 1, backgroundColor: '#000000cc', justifyContent: 'center', alignItems: 'center' }}>
+        <View style={{ backgroundColor: '#0a1628', borderRadius: 16, padding: 20, width: 320 }}>
+          <Text style={{ color: '#ffffff', fontSize: 20, fontWeight: '700', textAlign: 'center' }}>
+            {EXTRA_LABELS[type]}
+          </Text>
+          <Text style={{ color: '#6b7280', fontSize: 13, textAlign: 'center', marginTop: 4, marginBottom: 18 }}>
+            {prompt}
+          </Text>
+
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+            {options.map((n) => (
+              <TouchableOpacity
+                key={n}
+                onPress={() => onConfirm(n)}
+                style={{
+                  width: 56, height: 52, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: '#1e2d45', borderWidth: 1.5, borderColor: '#2d3f58',
+                }}
+              >
+                <Text style={{ color: '#ffffff', fontSize: 20, fontWeight: '800' }}>
+                  {hasPenalty ? `+${n}` : n}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <TouchableOpacity
+            onPress={onCancel}
+            style={{ marginTop: 18, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#2d3f58', alignItems: 'center' }}
+          >
+            <Text style={{ color: '#9ca3af', fontWeight: '600' }}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -462,17 +603,20 @@ function SelectPlayerModal({
   players,
   excludeIds,
   onSelect,
+  onClose,
 }: {
   visible: boolean;
   title: string;
   players: Player[];
   excludeIds: string[];
   onSelect: (id: string) => void;
+  onClose?: () => void;
 }) {
   const available = players.filter((p) => !excludeIds.includes(p.id));
   return (
     <Modal visible={visible} transparent animationType="slide">
       <View style={{ flex: 1, backgroundColor: '#000000cc', justifyContent: 'flex-end' }}>
+        {onClose && <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />}
         <View style={{ backgroundColor: '#0f1e35', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40, maxHeight: '60%' }}>
           <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#2d3f58', alignSelf: 'center', marginBottom: 16 }} />
           <Text style={{ color: '#ffffff', fontSize: 17, fontWeight: '700', marginBottom: 16 }}>{title}</Text>
@@ -491,6 +635,11 @@ function SelectPlayerModal({
               </TouchableOpacity>
             )}
           />
+          {onClose && (
+            <TouchableOpacity onPress={onClose} style={{ padding: 12, alignItems: 'center', marginTop: 4 }}>
+              <Text style={{ color: '#9ca3af', fontWeight: '600' }}>Cancel</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </Modal>
@@ -544,6 +693,8 @@ function ScoreHeader({
   runs: number; wickets: number; overNumber: number; legalBalls: number; ballsPerOver: number; matchName: string;
 }) {
   const oversDisplay = `${overNumber}.${legalBalls}`;
+  const ballsBowled = overNumber * ballsPerOver + legalBalls;
+  const crr = ballsBowled > 0 ? ((runs * ballsPerOver) / ballsBowled).toFixed(2) : '0.00';
   return (
     <View style={{ backgroundColor: '#0f1e35', padding: 20, paddingTop: 16 }}>
       <Text style={{ color: '#6b7280', fontSize: 13, textAlign: 'center', marginBottom: 4 }}>{matchName}</Text>
@@ -551,7 +702,7 @@ function ScoreHeader({
         {runs}<Text style={{ color: '#6b7280', fontSize: 32, fontWeight: '600' }}>/{wickets}</Text>
       </Text>
       <Text style={{ color: '#9ca3af', fontSize: 16, textAlign: 'center' }}>
-        {oversDisplay} ov{ballsPerOver !== 6 ? ` (${ballsPerOver} ball overs)` : ''}
+        {oversDisplay} ov{ballsPerOver !== 6 ? ` (${ballsPerOver} ball overs)` : ''} · CRR {crr}
       </Text>
     </View>
   );
@@ -565,12 +716,14 @@ function BatterRow({
   onStrike,
   hand,
   onToggleHand,
+  onEdit,
 }: {
   player: Player | undefined;
   stats: BatterStats;
   onStrike: boolean;
   hand: 'RHB' | 'LHB';
   onToggleHand: () => void;
+  onEdit?: () => void;
 }) {
   const sr = stats.balls > 0 ? ((stats.runs / stats.balls) * 100).toFixed(0) : '–';
   return (
@@ -613,6 +766,12 @@ function BatterRow({
         </Text>
       </View>
 
+      {onEdit && (
+        <TouchableOpacity onPress={onEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 8, marginRight: 4 }}>
+          <Text style={{ color: '#60a5fa', fontSize: 15 }}>✎</Text>
+        </TouchableOpacity>
+      )}
+
       <TouchableOpacity
         onPress={onToggleHand}
         style={{
@@ -640,10 +799,12 @@ function BowlerRow({
   player,
   stats,
   ballsPerOver,
+  onEdit,
 }: {
   player: Player | undefined;
   stats: BowlerStats;
   ballsPerOver: number;
+  onEdit?: () => void;
 }) {
   const oversFull = stats.completedOvers + (stats.legalBalls % ballsPerOver) / 10;
   const economy = stats.legalBalls > 0
@@ -660,11 +821,92 @@ function BowlerRow({
     >
       <Text style={{ color: '#6b7280', fontSize: 13, marginRight: 8 }}>🎯</Text>
       <Text style={{ color: '#d1d5db', fontSize: 14, flex: 1 }}>{player?.displayName ?? '–'}</Text>
+      {onEdit && (
+        <TouchableOpacity onPress={onEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 8, marginRight: 6 }}>
+          <Text style={{ color: '#60a5fa', fontSize: 15 }}>✎</Text>
+        </TouchableOpacity>
+      )}
       <Text style={{ color: '#9ca3af', fontSize: 13 }}>
         {oversFull.toFixed(1)}-0-{stats.runsConceded}-{stats.wickets}
       </Text>
       <Text style={{ color: '#4b5563', fontSize: 12, marginLeft: 10 }}>econ {economy}</Text>
     </View>
+  );
+}
+
+// ─── Scorecard ───────────────────────────────────────────────────────
+
+function Scorecard({
+  inn,
+  playerMap,
+  ballsPerOver,
+}: {
+  inn: InningsState;
+  playerMap: Record<string, Player | undefined>;
+  ballsPerOver: number;
+}) {
+  const oversBowled = `${inn.overNumber}.${inn.legalBallsInOver}`;
+  const batters = inn.battingIds.filter((id) => {
+    const s = inn.batterStats[id];
+    return !!s && (s.balls > 0 || s.runs > 0 || s.isOut || id === inn.onStrikeId || id === inn.offStrikeId);
+  });
+  const bowlers = inn.bowlingIds.filter((id) => !!inn.bowlerStats[id]);
+  const num = { width: 38, textAlign: 'right' as const, color: '#d1d5db', fontSize: 13 };
+  const bnum = { width: 44, textAlign: 'right' as const, color: '#d1d5db', fontSize: 13 };
+  const head = { textAlign: 'right' as const, color: '#4b5563', fontSize: 11 };
+
+  return (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+      <Text style={{ color: '#ffffff', fontSize: 20, fontWeight: '800' }}>
+        {inn.totalRuns}/{inn.totalWickets}{' '}
+        <Text style={{ color: '#6b7280', fontSize: 14 }}>({oversBowled} ov)</Text>
+      </Text>
+
+      <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700', marginTop: 18, marginBottom: 6 }}>BATTING</Text>
+      <View style={{ flexDirection: 'row', paddingBottom: 4 }}>
+        <Text style={{ flex: 1, color: '#4b5563', fontSize: 11 }}>Batter</Text>
+        {['R', 'B', '4s', '6s', 'SR'].map((h) => <Text key={h} style={{ ...head, width: 38 }}>{h}</Text>)}
+      </View>
+      {batters.map((id) => {
+        const s = inn.batterStats[id];
+        const atCrease = id === inn.onStrikeId || id === inn.offStrikeId;
+        const status = s.isOut ? 'out' : atCrease ? 'not out' : '';
+        const sr = s.balls > 0 ? ((s.runs / s.balls) * 100).toFixed(0) : '–';
+        return (
+          <View key={id} style={{ flexDirection: 'row', paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#1e2d45' }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: '#ffffff', fontSize: 13 }}>{playerMap[id]?.displayName ?? id}</Text>
+              {status ? <Text style={{ color: s.isOut ? '#6b7280' : '#4ade80', fontSize: 10 }}>{status}</Text> : null}
+            </View>
+            <Text style={num}>{s.runs}</Text>
+            <Text style={num}>{s.balls}</Text>
+            <Text style={num}>{s.fours}</Text>
+            <Text style={num}>{s.sixes}</Text>
+            <Text style={num}>{sr}</Text>
+          </View>
+        );
+      })}
+
+      <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700', marginTop: 22, marginBottom: 6 }}>BOWLING</Text>
+      <View style={{ flexDirection: 'row', paddingBottom: 4 }}>
+        <Text style={{ flex: 1, color: '#4b5563', fontSize: 11 }}>Bowler</Text>
+        {['O', 'R', 'W', 'Econ'].map((h) => <Text key={h} style={{ ...head, width: 44 }}>{h}</Text>)}
+      </View>
+      {bowlers.map((id) => {
+        const b = inn.bowlerStats[id];
+        const overs = `${Math.floor(b.legalBalls / ballsPerOver)}.${b.legalBalls % ballsPerOver}`;
+        const econ = b.legalBalls > 0 ? (b.runsConceded / (b.legalBalls / ballsPerOver)).toFixed(1) : '–';
+        return (
+          <View key={id} style={{ flexDirection: 'row', paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#1e2d45' }}>
+            <Text style={{ flex: 1, color: '#ffffff', fontSize: 13 }}>{playerMap[id]?.displayName ?? id}</Text>
+            <Text style={bnum}>{overs}</Text>
+            <Text style={bnum}>{b.runsConceded}</Text>
+            <Text style={bnum}>{b.wickets}</Text>
+            <Text style={bnum}>{econ}</Text>
+          </View>
+        );
+      })}
+    </ScrollView>
   );
 }
 
@@ -678,31 +920,40 @@ function emptyBowlerStats(): BowlerStats {
   return { legalBalls: 0, completedOvers: 0, runsConceded: 0, wickets: 0 };
 }
 
-function buildDismissalConfig(rules: Match['rules']): DismissalConfig {
-  return { ballsPerOver: rules.ballsPerOver, customDismissals: rules.customDismissals };
-}
-
 // ─── Main screen ─────────────────────────────────────────────────────
 
-type Phase = 'loading' | 'no-match' | 'setup-batsmen' | 'setup-bowler' | 'scoring' | 'new-bowler' | 'new-batter';
+type Phase = 'loading' | 'no-match' | 'scoring' | 'new-bowler' | 'new-batter' | 'innings-over';
 
 export default function LiveScoringScreen() {
   const activeClubId = useClubStore((s) => s.activeClubId);
   const [phase, setPhase] = useState<Phase>('loading');
   const [match, setMatch] = useState<Match | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
+  // Rules read live from the club — match.rules is a snapshot taken at schedule
+  // time, so dismissals / fielding events edited later wouldn't otherwise show.
+  const [clubRules, setClubRules] = useState<ClubRules | null>(null);
   const [innings, setInnings] = useState<InningsState | null>(null);
   const [history, setHistory] = useState<Snapshot[]>([]);
+  // Innings tracking. firstInningsRuns is the total to chase in the 2nd innings.
+  const [inningsNumber, setInningsNumber] = useState<1 | 2>(1);
+  const [firstInningsRuns, setFirstInningsRuns] = useState<number | null>(null);
+  const [firstInnings, setFirstInnings] = useState<InningsState | null>(null);
+  // Top-of-screen tab + which innings the scorecard shows.
+  const [tab, setTab] = useState<'scoring' | 'scorecard'>('scoring');
+  const [cardInnings, setCardInnings] = useState<1 | 2>(1);
 
   // Pending ball flow
   const pendingInputRef = useRef<BallInput | null>(null);
+  const pendingWagonRef = useRef<WagonShot | null>(null);
+  const pendingFieldingRef = useRef<{ eventId?: string; fielderId?: string } | null>(null);
   const [showWagon, setShowWagon] = useState(false);
   const [showFielding, setShowFielding] = useState(false);
   const [pendingRuns, setPendingRuns] = useState(0);
 
   // Modals
   const [showWicket, setShowWicket] = useState(false);
-  const [setupOnStrike, setSetupOnStrike] = useState<string | null>(null);
+  const [pendingExtra, setPendingExtra] = useState<ExtrasType | null>(null);
+  const [changeTarget, setChangeTarget] = useState<'onStrike' | 'offStrike' | 'bowler' | null>(null);
 
   // ── Load data ────────────────────────────────────────────────────
 
@@ -710,36 +961,86 @@ export default function LiveScoringScreen() {
     if (!activeClubId) { setPhase('no-match'); return; }
     setPhase('loading');
     try {
-      const [liveMatch, clubPlayers] = await Promise.all([
+      const [liveMatch, clubPlayers, club] = await Promise.all([
         getLiveMatch(activeClubId),
         getClubPlayers(activeClubId),
+        getClub(activeClubId),
       ]);
       if (!liveMatch) { setPhase('no-match'); return; }
       setMatch(liveMatch);
       setPlayers(clubPlayers);
+      setClubRules(club?.rules ?? liveMatch.rules);
 
       // Try to reconstruct innings from Firestore overs
       const overs = await getMatchOvers(activeClubId, liveMatch.id);
+      const ballsPerOver = liveMatch.rules.ballsPerOver;
+      const lastManStands = club?.rules.lastManStands ?? liveMatch.rules.lastManStands;
+      const oversPerInnings = liveMatch.rules.oversPerInnings;
+      const firstOvers = overs.filter((o) => o.inningsId === 'innings-1');
+      const secondOvers = overs.filter((o) => o.inningsId === 'innings-2');
+
       if (overs.length === 0) {
-        setPhase('setup-batsmen');
-      } else {
-        const reconstructed = reconstructInnings(overs, liveMatch.rules.ballsPerOver, liveMatch);
+        setInningsNumber(1);
+        beginInnings(liveMatch, 1);
+      } else if (secondOvers.length > 0) {
+        // Resuming the 2nd innings (a chase).
+        const firstRuns = sumInningsRuns(firstOvers);
+        setFirstInnings(reconstructInnings(firstOvers, ballsPerOver, liveMatch, 1));
+        setFirstInningsRuns(firstRuns);
+        setInningsNumber(2);
+        const reconstructed = reconstructInnings(secondOvers, ballsPerOver, liveMatch, 2);
         setInnings(reconstructed);
-        setPhase('scoring');
+        const chased = reconstructed.totalRuns >= firstRuns + 1;
+        setPhase(chased || isInningsComplete(reconstructed, lastManStands, oversPerInnings) ? 'innings-over' : 'scoring');
+      } else {
+        // 1st innings (possibly already all out and awaiting the 2nd).
+        setInningsNumber(1);
+        const reconstructed = reconstructInnings(firstOvers, ballsPerOver, liveMatch, 1);
+        setInnings(reconstructed);
+        setPhase(isInningsComplete(reconstructed, lastManStands, oversPerInnings) ? 'innings-over' : 'scoring');
       }
     } catch {
       setPhase('no-match');
     }
   }, [activeClubId]);
 
+  function sumInningsRuns(overs: import('../../types').OverDocument[]): number {
+    let total = 0;
+    for (const o of overs) for (const b of o.balls) total += b.runs + (b.extras?.runs ?? 0);
+    return total;
+  }
+
+  function isInningsComplete(inn: InningsState, lastManStands: boolean, oversPerInnings?: number): boolean {
+    const wicketsToEnd = inn.battingIds.length - (lastManStands ? 0 : 1);
+    const allOut = inn.totalWickets >= wicketsToEnd;
+    const oversDone = oversPerInnings != null && inn.overNumber >= oversPerInnings;
+    return allOut || oversDone;
+  }
+
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // Seal the match once the 2nd innings is over so it stops being 'live'
+  // (otherwise the Live tab keeps loading it and scoring could continue).
+  const sealedRef = useRef(false);
+  useEffect(() => {
+    if (phase !== 'innings-over' || inningsNumber !== 2) return;
+    if (!innings || !match || !activeClubId || sealedRef.current) return;
+    sealedRef.current = true;
+    let result = '';
+    if (firstInningsRuns != null) {
+      if (innings.totalRuns > firstInningsRuns) result = 'Team batting second won';
+      else if (innings.totalRuns === firstInningsRuns) result = 'Match tied';
+      else result = `Team batting first won by ${firstInningsRuns - innings.totalRuns} runs`;
+    }
+    completeMatch(activeClubId, match.id, result).catch(() => {/* UI already updated */});
+  }, [phase, inningsNumber, innings, match, activeClubId, firstInningsRuns]);
 
   // ── Innings reconstruction ──────────────────────────────────────
 
-  function reconstructInnings(overs: import('../../types').OverDocument[], ballsPerOver: number, m: Match): InningsState {
+  function reconstructInnings(overs: import('../../types').OverDocument[], ballsPerOver: number, m: Match, n: number): InningsState {
     const sorted = [...overs].sort((a, b) => a.overNumber - b.overNumber);
-    const battingIds = firstInningsBatters(m);
-    const bowlingIds = firstInningsBowlers(m);
+    const battingIds = battingForInnings(m, n);
+    const bowlingIds = bowlingForInnings(m, n);
 
     const batterStats: Record<string, BatterStats> = {};
     const bowlerStats: Record<string, BowlerStats> = {};
@@ -798,7 +1099,7 @@ export default function LiveScoringScreen() {
     ).length ?? 0);
 
     return {
-      inningsId: 'innings-1',
+      inningsId: `innings-${n}`,
       battingIds,
       bowlingIds,
       totalRuns,
@@ -831,66 +1132,85 @@ export default function LiveScoringScreen() {
     return all.filter((id) => !batters.includes(id));
   }
 
-  // ── Setup handlers ───────────────────────────────────────────────
-
-  function handleSetupOnStrike(id: string) {
-    setSetupOnStrike(id);
+  // Teams swap for the 2nd innings: who bowled first now bats, and vice versa.
+  function battingForInnings(m: Match, n: number): string[] {
+    return n === 1 ? firstInningsBatters(m) : firstInningsBowlers(m);
+  }
+  function bowlingForInnings(m: Match, n: number): string[] {
+    return n === 1 ? firstInningsBowlers(m) : firstInningsBatters(m);
   }
 
-  function handleSetupOffStrike(id: string) {
-    if (!match || !setupOnStrike) return;
-    const batting = firstInningsBatters(match);
-    const bowling = firstInningsBowlers(match);
-    const hs: Record<string, 'RHB' | 'LHB'> = {};
+  // ── Setup handlers ───────────────────────────────────────────────
+
+  // Start an innings with the crease BLANK — the scorer picks the openers and
+  // bowler via the edit buttons before the first ball.
+  function beginInnings(m: Match, n: number) {
+    const batting = battingForInnings(m, n);
+    const bowling = bowlingForInnings(m, n);
     const initBatterStats: Record<string, BatterStats> = {};
     for (const pid of batting) initBatterStats[pid] = emptyBatterStats();
-
     setInnings({
-      inningsId: 'innings-1',
+      inningsId: `innings-${n}`,
       battingIds: batting,
       bowlingIds: bowling,
       totalRuns: 0,
       totalWickets: 0,
       overNumber: 0,
       legalBallsInOver: 0,
-      onStrikeId: setupOnStrike,
-      offStrikeId: id,
+      onStrikeId: '',
+      offStrikeId: '',
       bowlerId: '',
       batterStats: initBatterStats,
       bowlerStats: {},
       currentOverBalls: [],
-      handedness: hs,
-    });
-    setSetupOnStrike(null);
-    setPhase('setup-bowler');
-  }
-
-  function handleSetupBowler(id: string) {
-    setInnings((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        bowlerId: id,
-        bowlerStats: { ...prev.bowlerStats, [id]: prev.bowlerStats[id] ?? emptyBowlerStats() },
-      };
+      handedness: {},
     });
     setPhase('scoring');
+  }
+
+  function startSecondInnings(firstInn: InningsState) {
+    if (!match) return;
+    setFirstInnings(firstInn);
+    setFirstInningsRuns(firstInn.totalRuns);
+    setInningsNumber(2);
+    setHistory([]);
+    beginInnings(match, 2);
   }
 
   // ── Ball flow ────────────────────────────────────────────────────
 
   function startBall(input: BallInput) {
+    // Block scoring until both openers + a bowler are chosen.
+    if (!innings || !innings.onStrikeId || !innings.bowlerId) return;
+    if (!innings.offStrikeId && innings.totalWickets === 0) return;
     pendingInputRef.current = input;
+    pendingWagonRef.current = null;
+    pendingFieldingRef.current = null;
     setPendingRuns(input.runs + (input.extras?.runs ?? 0));
     setShowWagon(true);
   }
 
-  function handleWagonDone(_sector: number | null) {
+  function handleWagonDone(shot: WagonShot | null) {
+    pendingWagonRef.current = shot;
     setShowWagon(false);
-    setShowFielding(true);
+    // Skip the fielding overlay for wickets where no fielder is involved
+    // (bowled, lbw, hit-wicket, etc.) — only caught/stumped/run-out need one.
+    const d = pendingInputRef.current?.dismissal;
+    const isNoFielderWicket =
+      !!d && d.type in STD_LABELS && !FIELDER_NEEDED.includes(d.type as StandardDismissalType);
+    if (isNoFielderWicket) {
+      pendingFieldingRef.current = null;
+      commitBall();
+    } else {
+      setShowFielding(true);
+    }
   }
 
-  function handleFieldingDone(_eventId: string | null, _fielderId: string | null) {
+  function handleFieldingDone(eventId: string | null, fielderId: string | null) {
+    pendingFieldingRef.current = {
+      eventId: eventId ?? undefined,
+      fielderId: fielderId ?? undefined,
+    };
     setShowFielding(false);
     commitBall();
   }
@@ -900,13 +1220,29 @@ export default function LiveScoringScreen() {
     if (!input || !innings || !match) return;
     pendingInputRef.current = null;
 
-    const config = buildDismissalConfig(match.rules);
+    // ballsPerOver is match-specific (over structure); custom dismissals come
+    // live from the club so the engine matches what the wicket sheet offered.
+    const config: DismissalConfig = {
+      ballsPerOver: match.rules.ballsPerOver,
+      customDismissals: clubRules?.customDismissals ?? match.rules.customDismissals,
+    };
     const result = recordBall({ legalBallsInOver: innings.legalBallsInOver }, input, config);
 
     const snapshot: Snapshot = { ...innings };
     setHistory((h) => [...h, snapshot]);
 
-    const newOverBalls = [...innings.currentOverBalls, result.ballEntry];
+    // Attach wagon-wheel + fielding metadata collected during the ball flow.
+    // (ignoreUndefinedProperties is enabled, so absent fields are dropped.)
+    const ballEntry: BallEntry = { ...result.ballEntry };
+    if (pendingWagonRef.current) ballEntry.wagon = pendingWagonRef.current;
+    const fielding = pendingFieldingRef.current;
+    if (fielding && (fielding.eventId || fielding.fielderId)) {
+      ballEntry.fielding = fielding;
+    }
+    pendingWagonRef.current = null;
+    pendingFieldingRef.current = null;
+
+    const newOverBalls = [...innings.currentOverBalls, ballEntry];
 
     // Update batter stats
     const newBatterStats = { ...innings.batterStats };
@@ -932,7 +1268,9 @@ export default function LiveScoringScreen() {
 
     let newOnStrike = innings.onStrikeId;
     let newOffStrike = innings.offStrikeId;
-    if (result.rotateStrike) [newOnStrike, newOffStrike] = [newOffStrike, newOnStrike];
+    // A lone (last man standing) batter always keeps strike — no partner to rotate to.
+    const isLoneBatter = innings.offStrikeId === '';
+    if (result.rotateStrike && !isLoneBatter) [newOnStrike, newOffStrike] = [newOffStrike, newOnStrike];
 
     let newOverNumber = innings.overNumber;
     let newLegalBalls = result.newLegalBallsInOver;
@@ -976,19 +1314,69 @@ export default function LiveScoringScreen() {
       }).catch(() => {/* swallow – UI already updated */});
     }
 
-    if (result.isOverComplete) setPhase('new-bowler');
-    else if (result.batterIsOut) setPhase('new-batter');
+    // Decide what happens next. End-of-innings checks take priority, in order:
+    // chase complete → all out → overs exhausted.
+    const target = inningsNumber === 2 && firstInningsRuns != null ? firstInningsRuns + 1 : null;
+    const oversPerInnings = match.rules.oversPerInnings;
+    const oversDone =
+      result.isOverComplete && oversPerInnings != null && newOverNumber >= oversPerInnings;
+
+    if (target != null && newTotalRuns >= target) {
+      setPhase('innings-over');
+      return;
+    }
+
+    if (result.batterIsOut) {
+      const dismissedId = input.batsmanId; // the on-strike batter
+      const partnerId = innings.offStrikeId; // '' if already last man standing
+      const partnerOut = partnerId ? !!newBatterStats[partnerId]?.isOut : true;
+      const replacements = innings.battingIds.filter(
+        (id) => id !== dismissedId && id !== partnerId && !newBatterStats[id]?.isOut
+      );
+      const allOut = replacements.length === 0 && !(match.rules.lastManStands && partnerId && !partnerOut);
+
+      if (allOut) {
+        setPhase('innings-over');
+        return;
+      }
+      if (replacements.length === 0) {
+        // Last man stands: the surviving partner bats on alone (unless overs are done).
+        setInnings((li) => (li ? { ...li, onStrikeId: partnerId, offStrikeId: '' } : li));
+        setPhase(oversDone ? 'innings-over' : result.isOverComplete ? 'new-bowler' : 'scoring');
+        return;
+      }
+      // Replacement available.
+      setPhase(oversDone ? 'innings-over' : result.isOverComplete ? 'new-bowler' : 'new-batter');
+      return;
+    }
+
+    if (oversDone) setPhase('innings-over');
+    else if (result.isOverComplete) setPhase('new-bowler');
   }
 
   // ── Extras ───────────────────────────────────────────────────────
 
   function handleExtra(type: ExtrasType) {
     if (!innings) return;
-    const extraRuns = type === 'wide' || type === 'no-ball' ? 1 : 0;
+    setPendingExtra(type);
+  }
+
+  function confirmExtra(runRuns: number) {
+    const type = pendingExtra;
+    setPendingExtra(null);
+    if (!type || !innings) return;
+    // wide: 1 penalty + runs ran, all as extras, none off the bat.
+    // no-ball: 1 penalty extra + runs off the bat (credited to the batter).
+    // bye / leg-bye: runs taken, all as extras.
+    const runsOffBat = type === 'no-ball' ? runRuns : 0;
+    const extraRuns =
+      type === 'wide' ? 1 + runRuns
+      : type === 'no-ball' ? 1
+      : runRuns;
     startBall({
       batsmanId: innings.onStrikeId,
       bowlerId: innings.bowlerId,
-      runs: 0,
+      runs: runsOffBat,
       extras: { type, runs: extraRuns },
     });
   }
@@ -1007,6 +1395,46 @@ export default function LiveScoringScreen() {
   }
 
   // ── Undo ────────────────────────────────────────────────────────
+
+  function handleAbandon() {
+    if (!match || !activeClubId) return;
+    Alert.alert(
+      'Abandon match?',
+      'This ends the match with no result and cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Abandon',
+          style: 'destructive',
+          onPress: () => {
+            abandonMatch(activeClubId, match.id)
+              .then(() => load())
+              .catch(() => Alert.alert('Could not abandon the match. Please try again.'));
+          },
+        },
+      ]
+    );
+  }
+
+  function handleDeleteMatch() {
+    if (!match || !activeClubId) return;
+    Alert.alert(
+      'Delete match?',
+      'No ball has been bowled — this removes the match entirely and cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteMatch(activeClubId, match.id)
+              .then(() => load())
+              .catch(() => Alert.alert('Could not delete the match. Please try again.'));
+          },
+        },
+      ]
+    );
+  }
 
   function handleUndo() {
     if (history.length === 0 || !innings || !match || !activeClubId) return;
@@ -1052,6 +1480,41 @@ export default function LiveScoringScreen() {
     setPhase('scoring');
   }
 
+  // Mid-innings change of a batter/bowler (corrections, retirements, swaps).
+  function handleChangePlayer(id: string) {
+    const target = changeTarget;
+    setChangeTarget(null);
+    if (!target) return;
+    setInnings((prev) => {
+      if (!prev) return prev;
+      if (target === 'bowler') {
+        return {
+          ...prev,
+          bowlerId: id,
+          bowlerStats: { ...prev.bowlerStats, [id]: prev.bowlerStats[id] ?? emptyBowlerStats() },
+        };
+      }
+      const key = target === 'onStrike' ? 'onStrikeId' : 'offStrikeId';
+      // Seed the batter's handedness from their profile (drives wagon-wheel orientation).
+      const battingHand = players.find((p) => p.id === id)?.battingHand;
+      return {
+        ...prev,
+        [key]: id,
+        batterStats: { ...prev.batterStats, [id]: prev.batterStats[id] ?? emptyBatterStats() },
+        handedness: { ...prev.handedness, [id]: prev.handedness[id] ?? battingHand ?? 'RHB' },
+      };
+    });
+  }
+
+  const changePlayers = !innings || !changeTarget ? [] :
+    changeTarget === 'bowler'
+      ? players.filter((p) => innings.bowlingIds.includes(p.id) && p.id !== innings.bowlerId)
+      : players.filter((p) =>
+          innings.battingIds.includes(p.id) &&
+          !innings.batterStats[p.id]?.isOut &&
+          p.id !== (changeTarget === 'onStrike' ? innings.offStrikeId : innings.onStrikeId)
+        );
+
   // ── Derived ──────────────────────────────────────────────────────
 
   const playerMap = Object.fromEntries(players.map((p) => [p.id, p]));
@@ -1067,11 +1530,13 @@ export default function LiveScoringScreen() {
   }
 
   const enabledExtras = match?.rules.enabledExtras ?? [];
-  const enabledDismissals = match?.rules.enabledDismissals ?? [];
+  const enabledDismissals = clubRules?.enabledDismissals ?? match?.rules.enabledDismissals ?? [];
+  const liveCustomDismissals: CustomDismissal[] =
+    clubRules?.customDismissals ?? match?.rules.customDismissals ?? [];
   const fieldingPlayers = innings
     ? players.filter((p) => innings.bowlingIds.includes(p.id))
     : [];
-  const enabledFieldingEvents = (match?.rules.fieldingEvents ?? []).filter((e) => e.enabled);
+  const enabledFieldingEvents = (clubRules?.fieldingEvents ?? []).filter((e) => e.enabled);
 
   // ── Render phases ────────────────────────────────────────────────
 
@@ -1094,47 +1559,61 @@ export default function LiveScoringScreen() {
     );
   }
 
-  if (phase === 'setup-batsmen') {
-    const batting = match ? firstInningsBatters(match) : [];
-    const battingPlayers = players.filter((p) => batting.includes(p.id));
-    return (
-      <View style={{ flex: 1, backgroundColor: '#0a1628' }}>
-        <SelectPlayerModal
-          visible={!setupOnStrike}
-          title="Opening batsman — on strike"
-          players={battingPlayers}
-          excludeIds={[]}
-          onSelect={handleSetupOnStrike}
-        />
-        <SelectPlayerModal
-          visible={!!setupOnStrike}
-          title="Opening batsman — off strike"
-          players={battingPlayers}
-          excludeIds={setupOnStrike ? [setupOnStrike] : []}
-          onSelect={handleSetupOffStrike}
-        />
-      </View>
-    );
-  }
-
-  if (phase === 'setup-bowler') {
-    const bowling = match ? firstInningsBowlers(match) : [];
-    const bowlingPlayers = players.filter((p) => bowling.includes(p.id));
-    return (
-      <View style={{ flex: 1, backgroundColor: '#0a1628' }}>
-        <SelectPlayerModal
-          visible
-          title="Opening bowler"
-          players={bowlingPlayers}
-          excludeIds={[]}
-          onSelect={handleSetupBowler}
-        />
-      </View>
-    );
-  }
 
   if (!innings) return null;
 
+  if (phase === 'innings-over') {
+    const overs = `${innings.overNumber}.${innings.legalBallsInOver}`;
+    const isFirstInnings = inningsNumber === 1;
+    // 2nd-innings result.
+    let resultLine = '';
+    if (!isFirstInnings && firstInningsRuns != null) {
+      if (innings.totalRuns > firstInningsRuns) {
+        resultLine = 'Team batting second won 🏆';
+      } else if (innings.totalRuns === firstInningsRuns) {
+        resultLine = 'Match tied';
+      } else {
+        resultLine = `Team batting first won by ${firstInningsRuns - innings.totalRuns} run${firstInningsRuns - innings.totalRuns !== 1 ? 's' : ''} 🏆`;
+      }
+    }
+    return (
+      <View style={{ flex: 1, backgroundColor: '#0a1628', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+        <Text style={{ color: '#4ade80', fontSize: 14, fontWeight: '700', letterSpacing: 1, marginBottom: 12 }}>
+          {isFirstInnings ? '1ST INNINGS COMPLETE' : 'MATCH COMPLETE'}
+        </Text>
+        <Text style={{ color: '#ffffff', fontSize: 44, fontWeight: '800' }}>
+          {innings.totalRuns}
+          <Text style={{ color: '#6b7280', fontSize: 30, fontWeight: '600' }}>/{innings.totalWickets}</Text>
+        </Text>
+        <Text style={{ color: '#9ca3af', fontSize: 15, marginTop: 6 }}>
+          {innings.overNumber} overs · {overs} balls
+        </Text>
+
+        {isFirstInnings ? (
+          <TouchableOpacity
+            onPress={() => startSecondInnings(innings)}
+            style={{ marginTop: 32, backgroundColor: '#4ade80', borderRadius: 10, paddingVertical: 14, paddingHorizontal: 28 }}
+          >
+            <Text style={{ color: '#0a1628', fontSize: 16, fontWeight: '700' }}>
+              Start 2nd innings (target {innings.totalRuns + 1})
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <Text style={{ color: '#fbbf24', fontSize: 16, fontWeight: '700', marginTop: 24, textAlign: 'center' }}>
+            {resultLine}
+          </Text>
+        )}
+
+        <Text style={{ color: '#4b5563', fontSize: 13, marginTop: 24, textAlign: 'center' }}>
+          {match ? `${match.homeTeam} vs ${match.awayTeam}` : ''}
+        </Text>
+      </View>
+    );
+  }
+
+  // Truly last man standing only once a wicket has fallen — at the start both
+  // crease slots are simply unselected (blank), not "batting alone".
+  const isLoneBatter = innings.offStrikeId === '' && innings.totalWickets > 0;
   const onStrikePlayer = playerMap[innings.onStrikeId];
   const offStrikePlayer = playerMap[innings.offStrikeId];
   const bowlerPlayer = playerMap[innings.bowlerId];
@@ -1142,12 +1621,63 @@ export default function LiveScoringScreen() {
   const offStrikeStat = innings.batterStats[innings.offStrikeId] ?? emptyBatterStats();
   const bowlerStat = innings.bowlerStats[innings.bowlerId] ?? emptyBowlerStats();
 
+  // Need both openers + a bowler before scoring (off-strike may be blank only
+  // once a wicket has fallen, i.e. last man standing).
+  const scoringReady =
+    !!innings.onStrikeId && !!innings.bowlerId && (!!innings.offStrikeId || innings.totalWickets > 0);
+
+  // Before the first ball a match can be deleted; afterwards only abandoned.
+  const firstBallBowled =
+    innings.overNumber > 0 || innings.currentOverBalls.length > 0 ||
+    innings.totalRuns > 0 || innings.totalWickets > 0;
+
   const notBowlingPlayers = players.filter((p) => innings.bowlingIds.includes(p.id) && p.id !== innings.bowlerId);
   const notBattingActiveIds = [innings.onStrikeId, innings.offStrikeId, ...Object.keys(innings.batterStats).filter((id) => innings.batterStats[id].isOut)];
   const nextBatters = players.filter((p) => innings.battingIds.includes(p.id) && !notBattingActiveIds.includes(p.id));
 
+  // Which innings the scorecard tab shows (innings 1 lives in firstInnings once the chase starts).
+  const scorecardInn = inningsNumber === 2 ? (cardInnings === 1 ? firstInnings : innings) : innings;
+
   return (
     <View style={{ flex: 1, backgroundColor: '#0a1628' }}>
+      {/* Top tabs */}
+      <View style={{ flexDirection: 'row', backgroundColor: '#0c1a2e' }}>
+        {(['scoring', 'scorecard'] as const).map((t) => (
+          <TouchableOpacity
+            key={t}
+            onPress={() => setTab(t)}
+            style={{ flex: 1, paddingVertical: 12, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: tab === t ? '#4ade80' : 'transparent' }}
+          >
+            <Text style={{ color: tab === t ? '#4ade80' : '#9ca3af', fontWeight: '700', fontSize: 13 }}>
+              {t === 'scoring' ? 'SCORING' : 'SCORECARD'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {tab === 'scorecard' ? (
+        <View style={{ flex: 1 }}>
+          {inningsNumber === 2 && (
+            <View style={{ flexDirection: 'row', padding: 8, gap: 8 }}>
+              {([1, 2] as const).map((n) => (
+                <TouchableOpacity
+                  key={n}
+                  onPress={() => setCardInnings(n)}
+                  style={{ flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: cardInnings === n ? '#1e3a5f' : '#11203a', borderWidth: 1, borderColor: cardInnings === n ? '#4ade80' : '#2d3f58', alignItems: 'center' }}
+                >
+                  <Text style={{ color: cardInnings === n ? '#4ade80' : '#9ca3af', fontWeight: '600' }}>Innings {n}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          {scorecardInn ? (
+            <Scorecard inn={scorecardInn} playerMap={playerMap} ballsPerOver={match?.rules.ballsPerOver ?? 6} />
+          ) : (
+            <Text style={{ color: '#6b7280', textAlign: 'center', marginTop: 40 }}>No data yet</Text>
+          )}
+        </View>
+      ) : (
+      <>
       {/* Score header */}
       <ScoreHeader
         runs={innings.totalRuns}
@@ -1158,45 +1688,93 @@ export default function LiveScoringScreen() {
         matchName={match ? `${match.homeTeam} vs ${match.awayTeam}` : ''}
       />
 
-      {/* Batter rows */}
-      <BatterRow
-        player={onStrikePlayer}
-        stats={onStrikeStat}
-        onStrike
-        hand={onStrikeHand}
-        onToggleHand={() => toggleHand(innings.onStrikeId)}
-      />
-      <BatterRow
-        player={offStrikePlayer}
-        stats={offStrikeStat}
-        onStrike={false}
-        hand={offStrikeHand}
-        onToggleHand={() => toggleHand(innings.offStrikeId)}
-      />
+      {/* Chase target (2nd innings) */}
+      {inningsNumber === 2 && firstInningsRuns != null && (() => {
+        const target = firstInningsRuns + 1;
+        const need = Math.max(0, target - innings.totalRuns);
+        const ballsPerOver = match?.rules.ballsPerOver ?? 6;
+        const oversLimit = match?.rules.oversPerInnings;
+        const ballsBowled = innings.overNumber * ballsPerOver + innings.legalBallsInOver;
+        const ballsLeft = oversLimit != null ? oversLimit * ballsPerOver - ballsBowled : null;
+        const rrr =
+          ballsLeft != null && ballsLeft > 0 ? ((need * ballsPerOver) / ballsLeft).toFixed(2) : null;
+        return (
+          <View style={{ backgroundColor: '#11203a', paddingVertical: 6, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#1e2d45' }}>
+            <Text style={{ color: '#fbbf24', fontSize: 13, fontWeight: '700' }}>
+              Need {need} run{need !== 1 ? 's' : ''}
+              {ballsLeft != null ? ` from ${ballsLeft} ball${ballsLeft !== 1 ? 's' : ''}` : ''}
+            </Text>
+            {rrr != null && (
+              <Text style={{ color: '#9ca3af', fontSize: 11, marginTop: 1 }}>
+                Target {target} · RRR {rrr}
+              </Text>
+            )}
+          </View>
+        );
+      })()}
 
-      {/* Swap strike */}
-      <TouchableOpacity
-        onPress={() =>
-          setInnings((prev) =>
-            prev ? { ...prev, onStrikeId: prev.offStrikeId, offStrikeId: prev.onStrikeId } : prev
-          )
-        }
-        style={{
-          flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-          paddingVertical: 6, backgroundColor: '#0c1a2e',
-          borderBottomWidth: 1, borderBottomColor: '#1e2d45',
-          gap: 6,
-        }}
-      >
-        <Text style={{ color: '#4b5563', fontSize: 12 }}>⇅ Swap strike</Text>
+      {/* Batter rows — tap ✎ (or long-press) to select / change */}
+      <TouchableOpacity activeOpacity={1} onLongPress={() => setChangeTarget('onStrike')}>
+        <BatterRow
+          player={onStrikePlayer}
+          stats={onStrikeStat}
+          onStrike
+          hand={onStrikeHand}
+          onToggleHand={() => toggleHand(innings.onStrikeId)}
+          onEdit={() => setChangeTarget('onStrike')}
+        />
+      </TouchableOpacity>
+      {isLoneBatter ? (
+        <View style={{ paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1e2d45' }}>
+          <Text style={{ color: '#6b7280', fontSize: 12, fontStyle: 'italic' }}>Last man standing — batting alone</Text>
+        </View>
+      ) : (
+        <>
+          <TouchableOpacity activeOpacity={1} onLongPress={() => setChangeTarget('offStrike')}>
+            <BatterRow
+              player={offStrikePlayer}
+              stats={offStrikeStat}
+              onStrike={false}
+              hand={offStrikeHand}
+              onToggleHand={() => toggleHand(innings.offStrikeId)}
+              onEdit={() => setChangeTarget('offStrike')}
+            />
+          </TouchableOpacity>
+
+          {/* Swap strike */}
+          <TouchableOpacity
+            onPress={() =>
+              setInnings((prev) =>
+                prev ? { ...prev, onStrikeId: prev.offStrikeId, offStrikeId: prev.onStrikeId } : prev
+              )
+            }
+            style={{
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+              paddingVertical: 6, backgroundColor: '#0c1a2e',
+              borderBottomWidth: 1, borderBottomColor: '#1e2d45',
+              gap: 6,
+            }}
+          >
+            <Text style={{ color: '#4b5563', fontSize: 12 }}>⇅ Swap strike</Text>
+          </TouchableOpacity>
+        </>
+      )}
+
+      {/* Bowler row — tap ✎ (or long-press) to select / change */}
+      <TouchableOpacity activeOpacity={1} onLongPress={() => setChangeTarget('bowler')}>
+        <BowlerRow
+          player={bowlerPlayer}
+          stats={bowlerStat}
+          ballsPerOver={match?.rules.ballsPerOver ?? 6}
+          onEdit={() => setChangeTarget('bowler')}
+        />
       </TouchableOpacity>
 
-      {/* Bowler row */}
-      <BowlerRow
-        player={bowlerPlayer}
-        stats={bowlerStat}
-        ballsPerOver={match?.rules.ballsPerOver ?? 6}
-      />
+      {!scoringReady && (
+        <Text style={{ color: '#fbbf24', fontSize: 13, textAlign: 'center', paddingVertical: 10 }}>
+          Select both batsmen and the bowler (✎) to start scoring
+        </Text>
+      )}
 
       {/* Ball log */}
       <View style={{ paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1212,7 +1790,7 @@ export default function LiveScoringScreen() {
       <View style={{ height: 1, backgroundColor: '#1e2d45', marginHorizontal: 16, marginBottom: 12 }} />
 
       {/* Run buttons */}
-      <View style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8, marginBottom: 10 }}>
+      <View pointerEvents={scoringReady ? 'auto' : 'none'} style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8, marginBottom: 10, opacity: scoringReady ? 1 : 0.4 }}>
         {[0, 1, 2, 3, 4, 6].map((r) => (
           <TouchableOpacity
             key={r}
@@ -1239,7 +1817,7 @@ export default function LiveScoringScreen() {
 
       {/* Extras row */}
       {enabledExtras.length > 0 && (
-        <View style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8, marginBottom: 10 }}>
+        <View pointerEvents={scoringReady ? 'auto' : 'none'} style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8, marginBottom: 10, opacity: scoringReady ? 1 : 0.4 }}>
           {enabledExtras.map((type) => (
             <TouchableOpacity
               key={type}
@@ -1261,11 +1839,12 @@ export default function LiveScoringScreen() {
       {/* Wicket + Undo */}
       <View style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8 }}>
         <TouchableOpacity
-          onPress={() => setShowWicket(true)}
+          onPress={() => scoringReady && setShowWicket(true)}
+          disabled={!scoringReady}
           style={{
             flex: 3, paddingVertical: 14, borderRadius: 10,
             backgroundColor: '#2d1515', borderWidth: 1.5, borderColor: '#dc2626',
-            alignItems: 'center',
+            alignItems: 'center', opacity: scoringReady ? 1 : 0.4,
           }}
         >
           <Text style={{ color: '#dc2626', fontSize: 16, fontWeight: '800' }}>Wicket ▼</Text>
@@ -1283,6 +1862,18 @@ export default function LiveScoringScreen() {
           <Text style={{ color: '#9ca3af', fontSize: 15, fontWeight: '700' }}>↩ Undo</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Delete (before first ball) or Abandon (after) */}
+      <TouchableOpacity
+        onPress={firstBallBowled ? handleAbandon : handleDeleteMatch}
+        style={{ alignSelf: 'center', paddingVertical: 14, marginTop: 4 }}
+      >
+        <Text style={{ color: '#6b7280', fontSize: 13, fontWeight: '600' }}>
+          {firstBallBowled ? 'Abandon match' : 'Delete match'}
+        </Text>
+      </TouchableOpacity>
+      </>
+      )}
 
       {/* ── Modals ── */}
 
@@ -1304,10 +1895,16 @@ export default function LiveScoringScreen() {
       <WicketSheet
         visible={showWicket}
         enabledDismissals={enabledDismissals}
-        customDismissals={match?.rules.customDismissals ?? []}
+        customDismissals={liveCustomDismissals}
         fieldingPlayers={fieldingPlayers}
         onSelect={handleWicketSelect}
         onClose={() => setShowWicket(false)}
+      />
+
+      <ExtrasRunsModal
+        type={pendingExtra}
+        onConfirm={confirmExtra}
+        onCancel={() => setPendingExtra(null)}
       />
 
       <SelectPlayerModal
@@ -1324,6 +1921,15 @@ export default function LiveScoringScreen() {
         players={nextBatters}
         excludeIds={[]}
         onSelect={handleNewBatter}
+      />
+
+      <SelectPlayerModal
+        visible={changeTarget !== null}
+        title={changeTarget === 'bowler' ? 'Change bowler' : 'Change batsman'}
+        players={changePlayers}
+        excludeIds={[]}
+        onSelect={handleChangePlayer}
+        onClose={() => setChangeTarget(null)}
       />
     </View>
   );

@@ -18,5 +18,6 @@ export default function ProfileScreen() {
     );
   }
 
-  return <PlayerProfileView clubId={activeClubId} playerId={user.uid} />;
+  // Your own profile — always editable (name, handedness, bowling style).
+  return <PlayerProfileView clubId={activeClubId} playerId={user.uid} canEdit />;
 }

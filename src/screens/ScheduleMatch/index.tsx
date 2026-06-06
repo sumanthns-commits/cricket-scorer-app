@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import type { RouteProp } from '@react-navigation/native';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { getClub } from '../../services/clubService';
-import { getClubPlayers, createMatch } from '../../services/matchService';
+import { getClubPlayers, createMatch, getClubMatches } from '../../services/matchService';
 import type { MatchFormat } from '../../types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -78,6 +78,8 @@ export default function ScheduleMatchScreen() {
   const [format, setFormat] = useState<MatchFormat>('T20');
   const [customOvers, setCustomOvers] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [reusePrev, setReusePrev] = useState(true);
+  const [prefilled, setPrefilled] = useState(false);
 
   const { data: club } = useQuery({
     queryKey: ['club', clubId],
@@ -89,6 +91,26 @@ export default function ScheduleMatchScreen() {
     queryFn: () => getClubPlayers(clubId),
   });
 
+  const { data: matches = [] } = useQuery({
+    queryKey: ['matches', clubId],
+    queryFn: () => getClubMatches(clubId),
+  });
+
+  // Most recent match that had a squad — used to pre-fill this one.
+  const prevMatch = useMemo(() => {
+    return matches
+      .filter((m) => (m.squad?.length ?? 0) > 0)
+      .sort((a, b) => b.date.toMillis() - a.date.toMillis())[0] ?? null;
+  }, [matches]);
+
+  // Auto-select last match's squad on first load (until the user opts out).
+  useEffect(() => {
+    if (prevMatch && reusePrev && !prefilled) {
+      setSelectedIds(new Set(prevMatch.squad));
+      setPrefilled(true);
+    }
+  }, [prevMatch, reusePrev, prefilled]);
+
   const { mutate: submit, isPending, error } = useMutation({
     mutationFn: async () => {
       if (!club) throw new Error('Club data not loaded');
@@ -96,6 +118,9 @@ export default function ScheduleMatchScreen() {
       const oversPerInnings =
         format === 'T20' ? 20 : format === 'ODI' ? 50 : parseInt(customOvers, 10) || undefined;
       const rules = { ...club.rules, oversPerInnings };
+      // Carry over the previous teams (filtered to the chosen squad) so the
+      // TeamBuilder is pre-filled; cleared if the user opted to build new.
+      const carryTeams = reusePrev && prevMatch;
       return createMatch({
         clubId,
         homeTeam: homeTeam.trim() || club.name,
@@ -105,6 +130,8 @@ export default function ScheduleMatchScreen() {
         format,
         rules,
         squad: Array.from(selectedIds),
+        teamA: carryTeams ? (prevMatch.teamA ?? []).filter((id) => selectedIds.has(id)) : undefined,
+        teamB: carryTeams ? (prevMatch.teamB ?? []).filter((id) => selectedIds.has(id)) : undefined,
       });
     },
     onSuccess: (matchId) => {
@@ -136,6 +163,16 @@ export default function ScheduleMatchScreen() {
 
   const selectAll = () => setSelectedIds(new Set(players.map((p) => p.id)));
   const clearAll = () => setSelectedIds(new Set());
+
+  const toggleReuse = () => {
+    if (reusePrev) {
+      setReusePrev(false);
+      clearAll(); // build new
+    } else {
+      setReusePrev(true);
+      if (prevMatch) setSelectedIds(new Set(prevMatch.squad));
+    }
+  };
 
   const canSubmit = selectedIds.size >= 2 && !isPending && !!club;
 
@@ -242,6 +279,32 @@ export default function ScheduleMatchScreen() {
             fontSize: 15,
           }}
         />
+      )}
+
+      {prevMatch && (
+        <TouchableOpacity
+          onPress={toggleReuse}
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12,
+            backgroundColor: '#11203a', borderRadius: 8, padding: 12,
+            borderWidth: 1, borderColor: reusePrev ? '#4ade80' : '#2d3f58',
+          }}
+        >
+          <View style={{
+            width: 20, height: 20, borderRadius: 4,
+            backgroundColor: reusePrev ? '#4ade80' : 'transparent',
+            borderWidth: 2, borderColor: reusePrev ? '#4ade80' : '#6b7280',
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            {reusePrev && <Text style={{ color: '#0a1628', fontSize: 12, fontWeight: '900' }}>✓</Text>}
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '600' }}>Reuse previous squad &amp; teams</Text>
+            <Text style={{ color: '#6b7280', fontSize: 12 }}>
+              {reusePrev ? 'Teams carried over — adjust or rebuild in the next step' : 'Building a fresh squad'}
+            </Text>
+          </View>
+        </TouchableOpacity>
       )}
 
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>

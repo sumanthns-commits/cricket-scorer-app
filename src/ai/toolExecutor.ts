@@ -1,9 +1,9 @@
-import { callFirebaseFunction } from '../services/authHeaders';
+import { callCallableFunction } from '../services/functionsClient';
 
 export async function executeToolCall(
   toolName: string,
   input: Record<string, unknown>,
   clubId: string
 ): Promise<unknown> {
-  return callFirebaseFunction(toolName, { ...input, clubId });
+  return callCallableFunction(toolName, { ...input, clubId });
 }

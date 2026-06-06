@@ -7,15 +7,45 @@ import {
 import {
   GoogleAuthProvider,
   signInWithCredential,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
   signOut as firebaseSignOut,
   type User,
 } from 'firebase/auth';
+import { FirebaseError } from 'firebase/app';
 import { db, auth } from './firebase';
 
 export async function signInWithGoogleAccessToken(accessToken: string): Promise<User> {
   const credential = GoogleAuthProvider.credential(null, accessToken);
   const result = await signInWithCredential(auth, credential);
   return result.user;
+}
+
+/**
+ * Dev-only sign-in against the Auth emulator. The emulator accepts any
+ * credentials with no real OAuth, so we sign in if the account exists and
+ * auto-create it (with a display name) on first use. NEVER call in production.
+ */
+export async function signInWithEmulatorCredentials(
+  email: string,
+  password: string
+): Promise<User> {
+  if (process.env.EXPO_PUBLIC_USE_EMULATOR !== 'true') {
+    throw new Error('Emulator sign-in is only available in emulator mode');
+  }
+
+  try {
+    const result = await signInWithEmailAndPassword(auth, email, password);
+    return result.user;
+  } catch (err) {
+    if (err instanceof FirebaseError && err.code === 'auth/user-not-found') {
+      const result = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(result.user, { displayName: email.split('@')[0] });
+      return result.user;
+    }
+    throw err;
+  }
 }
 
 export async function signOut(): Promise<void> {

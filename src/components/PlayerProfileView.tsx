@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { resolvePlayerStats } from '../services/statsResolver';
 import {
   computeDerivedStats,
@@ -9,11 +9,53 @@ import {
   getBattingInsights,
   getPlayer,
   getPlayerForm,
+  updatePlayerAttributes,
 } from '../services/playerProfileService';
 import PlayerAvatar from './PlayerAvatar';
 import FormChart from './FormChart';
 import WagonWheel from './WagonWheel';
-import type { PlayerType } from '../types';
+import type { BattingHand, BowlingStyle, PlayerType } from '../types';
+
+const BATTING_HANDS: { value: BattingHand; label: string }[] = [
+  { value: 'RHB', label: 'Right hand' },
+  { value: 'LHB', label: 'Left hand' },
+];
+const BOWLING_STYLES: { value: BowlingStyle; label: string }[] = [
+  { value: 'fast', label: 'Fast' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'spin', label: 'Spin' },
+];
+
+function ChipRow<T extends string>({
+  options,
+  selected,
+  onSelect,
+}: {
+  options: { value: T; label: string }[];
+  selected: T | undefined;
+  onSelect: (v: T) => void;
+}) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+      {options.map((o) => {
+        const active = selected === o.value;
+        return (
+          <TouchableOpacity
+            key={o.value}
+            onPress={() => onSelect(o.value)}
+            style={{
+              paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+              backgroundColor: active ? '#4ade80' : '#1e2d45',
+              borderWidth: 1, borderColor: active ? '#4ade80' : '#2d3f58',
+            }}
+          >
+            <Text style={{ color: active ? '#0a1628' : '#d1d5db', fontSize: 13, fontWeight: '600' }}>{o.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
 
 const TYPE_BADGE: Record<PlayerType, { label: string; color: string }> = {
   ghost: { label: 'GHOST', color: '#a78bfa' },
@@ -97,14 +139,30 @@ function CooldownBanner({ mergeAtMs }: { mergeAtMs: number | null }) {
 export default function PlayerProfileView({
   clubId,
   playerId,
+  canEdit = false,
 }: {
   clubId: string;
   playerId: string;
+  canEdit?: boolean;
 }) {
+  const queryClient = useQueryClient();
   const { data: player, isLoading: loadingPlayer } = useQuery({
     queryKey: ['player', clubId, playerId],
     queryFn: () => getPlayer(clubId, playerId),
   });
+
+  const saveAttr = (attrs: { displayName?: string; battingHand?: BattingHand; bowlingStyle?: BowlingStyle }) => {
+    updatePlayerAttributes(clubId, playerId, attrs)
+      .then(() => queryClient.invalidateQueries({ queryKey: ['player', clubId, playerId] }))
+      .catch(() => {/* keep last value on failure */});
+  };
+
+  const [nameDraft, setNameDraft] = useState('');
+  useEffect(() => { if (player) setNameDraft(player.displayName); }, [player?.displayName]);
+  const saveName = () => {
+    const next = nameDraft.trim();
+    if (next && next !== player?.displayName) saveAttr({ displayName: next });
+  };
 
   const { data: resolved, isLoading: loadingStats } = useQuery({
     queryKey: ['resolvedStats', clubId, playerId],
@@ -146,7 +204,7 @@ export default function PlayerProfileView({
   }
 
   const derived = computeDerivedStats(resolved.stats);
-  const badge = TYPE_BADGE[player.type];
+  const badge = TYPE_BADGE[player.type] ?? TYPE_BADGE.registered;
   const rating = player.skillRating ?? computeSkillRating(resolved.stats);
   const showProvisional = !!player.activeClaim && claim?.status === 'cooldown';
   const mergeAtMs = claim?.mergeScheduledAt ? claim.mergeScheduledAt.toMillis() : null;
@@ -177,6 +235,40 @@ export default function PlayerProfileView({
       </View>
 
       {showProvisional && <CooldownBanner mergeAtMs={mergeAtMs} />}
+
+      {/* Player info — editable for admins (any player) or for your own profile */}
+      {canEdit ? (
+        <>
+          <Section title="NAME">
+            <TextInput
+              value={nameDraft}
+              onChangeText={setNameDraft}
+              onBlur={saveName}
+              onSubmitEditing={saveName}
+              placeholder="Player name"
+              placeholderTextColor="#4b5563"
+              style={{
+                backgroundColor: '#1e2d45', color: '#ffffff', borderRadius: 8,
+                paddingHorizontal: 12, paddingVertical: 10, fontSize: 15,
+                borderWidth: 1, borderColor: '#2d3f58',
+              }}
+            />
+          </Section>
+          <Section title="BATTING HAND">
+            <ChipRow options={BATTING_HANDS} selected={player.battingHand} onSelect={(v) => saveAttr({ battingHand: v })} />
+          </Section>
+          <Section title="BOWLING STYLE">
+            <ChipRow options={BOWLING_STYLES} selected={player.bowlingStyle} onSelect={(v) => saveAttr({ bowlingStyle: v })} />
+          </Section>
+        </>
+      ) : (
+        <Section title="PLAYER INFO">
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <StatBox label="Batting" value={BATTING_HANDS.find((h) => h.value === player.battingHand)?.label ?? '—'} />
+            <StatBox label="Bowling" value={BOWLING_STYLES.find((s) => s.value === player.bowlingStyle)?.label ?? '—'} />
+          </View>
+        </Section>
+      )}
 
       {/* Batting */}
       <Section title="BATTING">

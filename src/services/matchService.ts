@@ -5,10 +5,10 @@ import {
   collection,
   getDocs,
   updateDoc,
+  deleteDoc,
   Timestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { callFirebaseFunction } from './authHeaders';
 import type { BallEntry, ClubRules, Match, MatchFormat, MatchToss, OverDocument, Player, PlayerType, CareerStats } from '../types';
 
 const emptyStats: CareerStats = {
@@ -58,6 +58,8 @@ export async function createMatch(params: {
   format: MatchFormat;
   rules: ClubRules;
   squad: string[];
+  teamA?: string[];
+  teamB?: string[];
 }): Promise<string> {
   const matchRef = doc(collection(db, 'clubs', params.clubId, 'matches'));
   const matchId = matchRef.id;
@@ -72,8 +74,8 @@ export async function createMatch(params: {
     status: 'scheduled',
     rules: params.rules,
     squad: params.squad,
-    teamA: [],
-    teamB: [],
+    teamA: params.teamA ?? [],
+    teamB: params.teamB ?? [],
   });
   return matchId;
 }
@@ -94,7 +96,11 @@ export async function setMatchTeams(params: {
   teamA: string[];
   teamB: string[];
 }): Promise<void> {
-  await callFirebaseFunction('createMatchTeams', params);
+  const { clubId, matchId, teamA, teamB } = params;
+  await updateDoc(doc(db, 'clubs', clubId, 'matches', matchId), {
+    teamA,
+    teamB,
+  });
 }
 
 export async function setMatchToss(
@@ -106,6 +112,31 @@ export async function setMatchToss(
     toss,
     status: 'live',
   });
+}
+
+export async function completeMatch(
+  clubId: string,
+  matchId: string,
+  result?: string
+): Promise<void> {
+  await updateDoc(doc(db, 'clubs', clubId, 'matches', matchId), {
+    status: 'completed',
+    result: result ?? null,
+    completedAt: Timestamp.now(),
+  });
+}
+
+export async function abandonMatch(clubId: string, matchId: string): Promise<void> {
+  await updateDoc(doc(db, 'clubs', clubId, 'matches', matchId), {
+    status: 'abandoned',
+    result: 'Match abandoned',
+    completedAt: Timestamp.now(),
+  });
+}
+
+// Only valid before the first ball — there are no overs to orphan yet.
+export async function deleteMatch(clubId: string, matchId: string): Promise<void> {
+  await deleteDoc(doc(db, 'clubs', clubId, 'matches', matchId));
 }
 
 export async function getLiveMatch(clubId: string): Promise<Match | null> {

@@ -52,10 +52,16 @@ export async function askCricketAssistant(
           call.args as Record<string, unknown>,
           clubId
         );
+        // Gemini requires functionResponse.response to be a JSON object (Struct).
+        // Tools that return arrays/primitives (e.g. a player list) must be wrapped.
+        const response =
+          data !== null && typeof data === 'object' && !Array.isArray(data)
+            ? (data as object)
+            : { result: data ?? null };
         return {
           functionResponse: {
             name: call.name,
-            response: (data ?? {}) as object,
+            response,
           },
         };
       })

@@ -1,7 +1,15 @@
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
-import { callFirebaseFunction } from './authHeaders';
-import type { CareerStats, Claim, Player } from '../types';
+import { callCallableFunction } from './functionsClient';
+import type { BattingHand, BowlingStyle, CareerStats, Claim, Player } from '../types';
+
+export async function updatePlayerAttributes(
+  clubId: string,
+  playerId: string,
+  attrs: { displayName?: string; battingHand?: BattingHand; bowlingStyle?: BowlingStyle }
+): Promise<void> {
+  await updateDoc(doc(db, 'clubs', clubId, 'players', playerId), attrs);
+}
 
 /**
  * Stats derived purely from career totals.
@@ -99,7 +107,7 @@ export async function getPlayerForm(
   playerId: string,
   lastNMatches = 5
 ): Promise<FormEntry[]> {
-  const raw = await callFirebaseFunction('get_player_form', {
+  const raw = await callCallableFunction('get_player_form', {
     clubId,
     playerId,
     lastNMatches,
@@ -136,7 +144,7 @@ export async function getBattingInsights(
   clubId: string,
   playerId: string
 ): Promise<BattingInsights> {
-  const raw = (await callFirebaseFunction('get_batting_insights', {
+  const raw = (await callCallableFunction('get_batting_insights', {
     clubId,
     playerId,
   })) as RawBattingInsights;

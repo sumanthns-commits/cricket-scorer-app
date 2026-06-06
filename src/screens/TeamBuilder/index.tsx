@@ -39,13 +39,17 @@ function parseTeamSelection(text: string): TeamSelectionResult | null {
 function PlayerRow({
   name,
   badge,
+  shared,
   onMoveA,
   onMoveB,
+  onRemove,
 }: {
   name: string;
   badge: 'A' | 'B' | null;
+  shared?: boolean;
   onMoveA: () => void;
   onMoveB: () => void;
+  onRemove?: () => void;
 }) {
   return (
     <View
@@ -86,7 +90,13 @@ function PlayerRow({
           }}
         />
       )}
-      <Text style={{ flex: 1, color: '#ffffff', fontSize: 14 }}>{name}</Text>
+      <Text style={{ color: '#ffffff', fontSize: 14, flexShrink: 1 }}>{name}</Text>
+      {shared && (
+        <View style={{ backgroundColor: '#3b2f0a', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, marginLeft: 6, borderWidth: 1, borderColor: '#fbbf24' }}>
+          <Text style={{ color: '#fbbf24', fontSize: 9, fontWeight: '700' }}>SHARED</Text>
+        </View>
+      )}
+      <View style={{ flex: 1 }} />
       <TouchableOpacity
         onPress={onMoveA}
         style={{
@@ -110,6 +120,20 @@ function PlayerRow({
       >
         <Text style={{ color: '#f97316', fontSize: 12, fontWeight: '700' }}>B</Text>
       </TouchableOpacity>
+      {onRemove && (
+        <TouchableOpacity
+          onPress={onRemove}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={{
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 6,
+            marginLeft: 6,
+          }}
+        >
+          <Text style={{ color: '#6b7280', fontSize: 16, fontWeight: '700' }}>✕</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -149,15 +173,22 @@ export default function TeamBuilderScreen() {
 
   const squad = match?.squad ?? [];
   const unassigned = squad.filter((id) => !teamA.includes(id) && !teamB.includes(id));
+  // With an odd squad a player may be shared across both teams to even them up.
+  const allowShared = squad.length % 2 === 1;
 
   const moveToA = (id: string) => {
-    setTeamA((prev) => (prev.includes(id) ? prev : [...prev, id]));
-    setTeamB((prev) => prev.filter((p) => p !== id));
+    setTeamA((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
+    if (!allowShared) setTeamB((prev) => prev.filter((p) => p !== id));
   };
 
   const moveToB = (id: string) => {
-    setTeamB((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    setTeamB((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
+    if (!allowShared) setTeamA((prev) => prev.filter((p) => p !== id));
+  };
+
+  const unassign = (id: string) => {
     setTeamA((prev) => prev.filter((p) => p !== id));
+    setTeamB((prev) => prev.filter((p) => p !== id));
   };
 
   const runAI = async () => {
@@ -211,6 +242,11 @@ export default function TeamBuilderScreen() {
           <Text style={{ color: '#6b7280', fontSize: 13, marginTop: 2 }}>
             {squad.length} players · {teamA.length}A / {teamB.length}B / {unassigned.length} unassigned
           </Text>
+          {allowShared && (
+            <Text style={{ color: '#fbbf24', fontSize: 11, marginTop: 2 }}>
+              Odd squad — tap A and B on one player to share them across both teams
+            </Text>
+          )}
         </View>
         <TouchableOpacity
           onPress={runAI}
@@ -309,8 +345,10 @@ export default function TeamBuilderScreen() {
               key={id}
               name={playerMap.get(id) ?? id}
               badge="A"
+              shared={teamB.includes(id)}
               onMoveA={() => moveToA(id)}
               onMoveB={() => moveToB(id)}
+              onRemove={() => unassign(id)}
             />
           ))}
         </View>
@@ -348,8 +386,10 @@ export default function TeamBuilderScreen() {
               key={id}
               name={playerMap.get(id) ?? id}
               badge="B"
+              shared={teamA.includes(id)}
               onMoveA={() => moveToA(id)}
               onMoveB={() => moveToB(id)}
+              onRemove={() => unassign(id)}
             />
           ))}
         </View>

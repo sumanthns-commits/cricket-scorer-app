@@ -6,7 +6,7 @@ import {
   Animated,
   ActivityIndicator,
 } from 'react-native';
-import { useNavigation, useRoute, CommonActions } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -24,6 +24,7 @@ export default function TossScreen() {
   const [winnerId, setWinnerId] = useState<'homeTeam' | 'awayTeam' | null>(null);
   const [choice, setChoice] = useState<'bat' | 'field' | null>(null);
   const [flipped, setFlipped] = useState(false);
+  const [coin, setCoin] = useState<'Heads' | 'Tails' | null>(null);
 
   const flipAnim = useRef(new Animated.Value(0)).current;
 
@@ -34,6 +35,8 @@ export default function TossScreen() {
 
   const flipCoin = () => {
     setFlipped(false);
+    // Fair 50/50 outcome, revealed when the animation lands.
+    const result: 'Heads' | 'Tails' = Math.random() < 0.5 ? 'Heads' : 'Tails';
     flipAnim.setValue(0);
     Animated.sequence([
       Animated.timing(flipAnim, {
@@ -46,7 +49,10 @@ export default function TossScreen() {
         duration: 300,
         useNativeDriver: true,
       }),
-    ]).start(() => setFlipped(true));
+    ]).start(() => {
+      setCoin(result);
+      setFlipped(true);
+    });
   };
 
   const rotateY = flipAnim.interpolate({
@@ -66,7 +72,9 @@ export default function TossScreen() {
       return setMatchToss(clubId, matchId, { winnerId, winnerName, choice });
     },
     onSuccess: () => {
-      navigation.dispatch(CommonActions.navigate({ name: 'Tabs' }));
+      // Land directly on the Live scoring tab — it drives opening batsman/bowler
+      // selection (setup-batsmen → setup-bowler) once it sees the live match.
+      navigation.navigate('Tabs', { screen: 'Live' });
     },
   });
 
@@ -121,10 +129,12 @@ export default function TossScreen() {
             transform: [{ rotateY }, { scale }],
           }}
         >
-          <Text style={{ fontSize: 36 }}>{flipped ? '🏏' : '🪙'}</Text>
+          <Text style={{ fontSize: flipped ? 30 : 36, fontWeight: '800', color: flipped ? '#0a1628' : '#ffffff' }}>
+            {flipped ? (coin === 'Heads' ? 'H' : 'T') : '🪙'}
+          </Text>
         </Animated.View>
         <Text style={{ color: '#fbbf24', marginTop: 10, fontSize: 14, fontWeight: '600' }}>
-          {flipped ? 'Flipped!' : 'Tap to flip coin'}
+          {flipped && coin ? `${coin}!` : 'Tap to flip coin'}
         </Text>
       </TouchableOpacity>
 

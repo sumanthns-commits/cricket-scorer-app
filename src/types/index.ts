@@ -118,6 +118,9 @@ export interface ClubMember {
   joinedAt: Timestamp;
 }
 
+export type BattingHand = 'RHB' | 'LHB';
+export type BowlingStyle = 'fast' | 'medium' | 'spin';
+
 export interface Player {
   id: string;
   displayName: string;
@@ -127,6 +130,8 @@ export interface Player {
   careerStats: CareerStats;
   photoURL?: string;
   skillRating?: number;
+  battingHand?: BattingHand;
+  bowlingStyle?: BowlingStyle;
 }
 
 export type ExtrasType = 'wide' | 'no-ball' | 'bye' | 'leg-bye';
@@ -137,11 +142,23 @@ export interface DismissalEntry {
   bowlerId?: string;
 }
 
+/**
+ * Wagon-wheel shot location.
+ * sector: 0–11, 30° each, clockwise from 0 = straight (toward bowler).
+ * depth:  0 = infield, 1 = mid, 2 = boundary.
+ */
+export interface WagonShot {
+  sector: number;
+  depth: number;
+}
+
 export interface BallEntry {
   runs: number;
   batsmanId: string;
   extras?: { type: ExtrasType; runs: number };
   dismissal?: DismissalEntry;
+  wagon?: WagonShot;
+  fielding?: { eventId?: string; fielderId?: string };
   timestamp?: Timestamp;
 }
 
@@ -178,10 +195,11 @@ export interface Match {
   venue?: string;
   date: Timestamp;
   format?: MatchFormat;
-  status: 'scheduled' | 'live' | 'completed';
+  status: 'scheduled' | 'live' | 'completed' | 'abandoned';
   rules: ClubRules;
   squad?: string[];
   teamA?: string[];
   teamB?: string[];
   toss?: MatchToss;
+  result?: string;
 }

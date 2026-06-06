@@ -1,7 +1,8 @@
 import { View, ActivityIndicator } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import type { NavigatorScreenParams } from '@react-navigation/native';
 import { useAuthStore } from '../store/authStore';
-import TabNavigator from './TabNavigator';
+import TabNavigator, { type TabParamList } from './TabNavigator';
 import SignInScreen from '../screens/SignIn';
 import CreateClubScreen from '../screens/CreateClub';
 import ClubRulesAdminScreen from '../screens/ClubRulesAdmin';
@@ -9,16 +10,18 @@ import ScheduleMatchScreen from '../screens/ScheduleMatch';
 import TeamBuilderScreen from '../screens/TeamBuilder';
 import TossScreen from '../screens/Toss';
 import PlayerProfileScreen from '../screens/PlayerProfile';
+import MatchScorecardScreen from '../screens/MatchScorecard';
 
 export type RootStackParamList = {
   SignIn: undefined;
-  Tabs: undefined;
+  Tabs: NavigatorScreenParams<TabParamList>;
   CreateClub: undefined;
   ClubRulesAdmin: { clubId: string };
   ScheduleMatch: { clubId: string };
   TeamBuilder: { clubId: string; matchId: string };
   Toss: { clubId: string; matchId: string };
   PlayerProfile: { clubId: string; playerId: string };
+  MatchScorecard: { clubId: string; matchId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -52,6 +55,7 @@ export default function RootNavigator() {
           <Stack.Screen name="TeamBuilder" component={TeamBuilderScreen} options={{ title: 'Build Teams' }} />
           <Stack.Screen name="Toss" component={TossScreen} options={{ title: 'Toss' }} />
           <Stack.Screen name="PlayerProfile" component={PlayerProfileScreen} options={{ title: 'Player' }} />
+          <Stack.Screen name="MatchScorecard" component={MatchScorecardScreen} options={{ title: 'Scorecard' }} />
         </>
       ) : (
         <Stack.Screen name="SignIn" component={SignInScreen} options={{ headerShown: false }} />

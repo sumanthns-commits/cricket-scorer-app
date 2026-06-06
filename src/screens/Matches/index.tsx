@@ -1,10 +1,10 @@
-import { View, Text, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, FlatList, ActivityIndicator, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useClubStore } from '../../store/clubStore';
-import { getClubMatches } from '../../services/matchService';
+import { getClubMatches, deleteMatch, getMatchOvers } from '../../services/matchService';
 import type { Match } from '../../types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -13,9 +13,10 @@ const STATUS_COLORS: Record<Match['status'], string> = {
   scheduled: '#fbbf24',
   live: '#4ade80',
   completed: '#6b7280',
+  abandoned: '#ef4444',
 };
 
-function MatchCard({ match, onPress }: { match: Match; onPress: () => void }) {
+function MatchCard({ match, onPress, onDelete }: { match: Match; onPress: () => void; onDelete?: () => void }) {
   const dateObj = match.date.toDate();
   const dateStr = dateObj.toLocaleDateString('en-GB', {
     day: 'numeric',
@@ -83,6 +84,11 @@ function MatchCard({ match, onPress }: { match: Match; onPress: () => void }) {
             </Text>
           </View>
           <Text style={{ color: '#4ade80', fontSize: 13, fontWeight: '600' }}>{actionLabel} →</Text>
+          {onDelete && (
+            <TouchableOpacity onPress={onDelete} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={{ color: '#ef4444', fontSize: 12, fontWeight: '600' }}>Delete</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </TouchableOpacity>
@@ -105,12 +111,47 @@ export default function MatchesScreen() {
     const hasTeams = (match.teamA?.length ?? 0) > 0;
     const hasToss = !!match.toss;
 
-    if (match.status === 'live' || hasToss) return; // handled by Live tab
+    if (match.status === 'completed' || match.status === 'abandoned') {
+      navigation.navigate('MatchScorecard', { clubId, matchId });
+      return;
+    }
+    if (match.status === 'live' || hasToss) {
+      navigation.navigate('Tabs', { screen: 'Live' });
+      return;
+    }
     if (hasTeams) {
       navigation.navigate('Toss', { clubId, matchId });
     } else {
       navigation.navigate('TeamBuilder', { clubId, matchId });
     }
+  };
+
+  // A match can be deleted only before the first ball. Scheduled matches never
+  // have overs; for live ones we check, and route started matches to abandon.
+  const handleDelete = async (match: Match) => {
+    if (match.status === 'live') {
+      const overs = await getMatchOvers(match.clubId, match.id).catch(() => []);
+      if (overs.length > 0) {
+        Alert.alert('Match already started', 'It can only be abandoned (from the Live screen), not deleted.');
+        return;
+      }
+    }
+    Alert.alert(
+      'Delete match?',
+      `Remove ${match.homeTeam} vs ${match.awayTeam}? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteMatch(match.clubId, match.id)
+              .then(() => refetch())
+              .catch(() => Alert.alert('Could not delete the match. Please try again.'));
+          },
+        },
+      ]
+    );
   };
 
   if (!activeClubId) {
@@ -155,7 +196,15 @@ export default function MatchesScreen() {
           data={[...matches].sort((a, b) => b.date.toMillis() - a.date.toMillis())}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <MatchCard match={item} onPress={() => handleMatchPress(item)} />
+            <MatchCard
+              match={item}
+              onPress={() => handleMatchPress(item)}
+              onDelete={
+                item.status === 'scheduled' || item.status === 'live'
+                  ? () => handleDelete(item)
+                  : undefined
+              }
+            />
           )}
           onRefresh={refetch}
           refreshing={isLoading}

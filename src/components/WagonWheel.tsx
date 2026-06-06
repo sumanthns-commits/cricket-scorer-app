@@ -3,10 +3,10 @@ import Svg, { Path, Circle, Line, Text as SvgText, G } from 'react-native-svg';
 
 /**
  * Wagon wheel heatmap. Orientation per project spec:
- *   - Viewed from bowler's end. Batsman at BOTTOM (wheel centre), bowler at TOP.
+ *   - Keeper's view. Batsman at BOTTOM (wheel centre), bowler at TOP.
  *   - 0° = top (straight, toward bowler), clockwise positive.
  *   - 12 uniform 30° sectors, 2° gap between each.
- *   - RHB: off side = LEFT, leg side = RIGHT. LHB: labels flip, geometry stays.
+ *   - RHB: off side = RIGHT, leg side = LEFT. LHB: labels flip, geometry stays.
  */
 
 const SECTORS = 12;
@@ -67,8 +67,9 @@ export default function WagonWheel({
   const maxRuns = Math.max(1, ...data);
   const totalRuns = data.reduce((sum, v) => sum + v, 0);
 
-  const offLabel = batsmanHand === 'RHB' ? 'OFF' : 'LEG';
-  const legLabel = batsmanHand === 'RHB' ? 'LEG' : 'OFF';
+  // Keeper's view: RHB off side = right, leg side = left (LHB mirrored).
+  const leftLabel = batsmanHand === 'RHB' ? 'LEG' : 'OFF';
+  const rightLabel = batsmanHand === 'RHB' ? 'OFF' : 'LEG';
 
   return (
     <View style={{ alignItems: 'center' }}>
@@ -104,10 +105,10 @@ export default function WagonWheel({
             BATSMAN
           </SvgText>
           <SvgText x={10} y={cy} fill="#64748b" fontSize={10} fontWeight="700" textAnchor="start">
-            {offLabel}
+            {leftLabel}
           </SvgText>
           <SvgText x={size - 10} y={cy} fill="#64748b" fontSize={10} fontWeight="700" textAnchor="end">
-            {legLabel}
+            {rightLabel}
           </SvgText>
         </G>
       </Svg>

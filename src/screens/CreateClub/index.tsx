@@ -37,10 +37,15 @@ export default function CreateClubScreen({ navigation }: Props) {
     setLoading(true);
     setError(null);
     try {
-      await createClub(user.uid, trimmedName, description.trim());
+      await createClub(user.uid, trimmedName, description.trim(), {
+        displayName: user.displayName ?? user.email ?? 'Me',
+        email: user.email ?? undefined,
+        photoURL: user.photoURL ?? undefined,
+      });
       await queryClient.invalidateQueries({ queryKey: ['clubs', user.uid] });
       navigation.goBack();
-    } catch {
+    } catch (err) {
+      console.error('createClub failed', err);
       setError('Failed to create club. Please try again.');
       setLoading(false);
     }
