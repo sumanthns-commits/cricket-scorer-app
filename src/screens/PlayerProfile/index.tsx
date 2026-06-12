@@ -18,7 +18,15 @@ export default function PlayerProfileScreen() {
     queryFn: () => getClubMember(params.clubId, uid!),
     enabled: !!uid,
   });
-  const canEdit = !!uid && (me?.role === 'admin' || params.playerId === uid);
+  const isAdmin = me?.role === 'admin';
+  const canEdit = !!uid && (isAdmin || params.playerId === uid);
 
-  return <PlayerProfileView clubId={params.clubId} playerId={params.playerId} canEdit={canEdit} />;
+  return (
+    <PlayerProfileView
+      clubId={params.clubId}
+      playerId={params.playerId}
+      canEdit={canEdit}
+      isAdmin={isAdmin}
+    />
+  );
 }

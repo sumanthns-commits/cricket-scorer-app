@@ -4,6 +4,7 @@ import {
   Text,
   TouchableOpacity,
   Animated,
+  Easing,
   ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -24,6 +25,7 @@ export default function TossScreen() {
   const [winnerId, setWinnerId] = useState<'homeTeam' | 'awayTeam' | null>(null);
   const [choice, setChoice] = useState<'bat' | 'field' | null>(null);
   const [flipped, setFlipped] = useState(false);
+  const [flipping, setFlipping] = useState(false);
   const [coin, setCoin] = useState<'Heads' | 'Tails' | null>(null);
 
   const flipAnim = useRef(new Animated.Value(0)).current;
@@ -34,35 +36,30 @@ export default function TossScreen() {
   });
 
   const flipCoin = () => {
+    if (flipping) return;
     setFlipped(false);
-    // Fair 50/50 outcome, revealed when the animation lands.
+    setCoin(null);
+    setFlipping(true);
+    // Fair 50/50 outcome, revealed when the 5s spin lands.
     const result: 'Heads' | 'Tails' = Math.random() < 0.5 ? 'Heads' : 'Tails';
     flipAnim.setValue(0);
-    Animated.sequence([
-      Animated.timing(flipAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(flipAnim, {
-        toValue: 2,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
+    Animated.timing(flipAnim, {
+      toValue: 1,
+      duration: 5000,
+      easing: Easing.out(Easing.cubic), // spins fast, decelerates into the result
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (!finished) return;
       setCoin(result);
       setFlipped(true);
+      setFlipping(false);
     });
   };
 
+  // ~9 full rotations across the 5 seconds.
   const rotateY = flipAnim.interpolate({
-    inputRange: [0, 1, 2],
-    outputRange: ['0deg', '90deg', '0deg'],
-  });
-
-  const scale = flipAnim.interpolate({
-    inputRange: [0, 1, 2],
-    outputRange: [1, 0.7, 1],
+    inputRange: [0, 1],
+    outputRange: ['0deg', '3240deg'],
   });
 
   const { mutate: confirm, isPending, error } = useMutation({
@@ -72,9 +69,9 @@ export default function TossScreen() {
       return setMatchToss(clubId, matchId, { winnerId, winnerName, choice });
     },
     onSuccess: () => {
-      // Land directly on the Live scoring tab — it drives opening batsman/bowler
-      // selection (setup-batsmen → setup-bowler) once it sees the live match.
-      navigation.navigate('Tabs', { screen: 'Live' });
+      // Land directly on this match's Live scoring screen — it drives opening
+      // batsman/bowler selection (setup-batsmen → setup-bowler) once it loads.
+      navigation.replace('LiveScoring', { clubId, matchId });
     },
   });
 
@@ -115,28 +112,35 @@ export default function TossScreen() {
       )}
 
       {/* Coin */}
-      <TouchableOpacity onPress={flipCoin} style={{ alignItems: 'center', marginBottom: 32 }}>
-        <Animated.View
-          style={{
-            width: 100,
-            height: 100,
-            borderRadius: 50,
-            backgroundColor: flipped ? '#fbbf24' : '#1e2d45',
-            borderWidth: 3,
-            borderColor: '#fbbf24',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transform: [{ rotateY }, { scale }],
-          }}
-        >
-          <Text style={{ fontSize: flipped ? 30 : 36, fontWeight: '800', color: flipped ? '#0a1628' : '#ffffff' }}>
-            {flipped ? (coin === 'Heads' ? 'H' : 'T') : '🪙'}
-          </Text>
-        </Animated.View>
+      <View style={{ alignItems: 'center', marginBottom: 32 }}>
+        <TouchableOpacity onPress={flipCoin} disabled={flipping} activeOpacity={0.8}>
+          <Animated.View
+            style={{
+              width: 100,
+              height: 100,
+              borderRadius: 50,
+              backgroundColor: flipped ? '#fbbf24' : '#1e2d45',
+              borderWidth: 3,
+              borderColor: '#fbbf24',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transform: [{ rotateY }],
+            }}
+          >
+            <Text style={{ fontSize: flipped ? 30 : 36, fontWeight: '800', color: flipped ? '#0a1628' : '#ffffff' }}>
+              {flipped ? (coin === 'Heads' ? 'H' : 'T') : '🪙'}
+            </Text>
+          </Animated.View>
+        </TouchableOpacity>
         <Text style={{ color: '#fbbf24', marginTop: 10, fontSize: 14, fontWeight: '600' }}>
-          {flipped && coin ? `${coin}!` : 'Tap to flip coin'}
+          {flipping ? 'Flipping…' : flipped && coin ? `${coin}!` : 'Tap to flip coin'}
         </Text>
-      </TouchableOpacity>
+        {flipped && !flipping && (
+          <TouchableOpacity onPress={flipCoin} style={{ marginTop: 8, paddingVertical: 6, paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderColor: '#2d3f58' }}>
+            <Text style={{ color: '#9ca3af', fontSize: 13, fontWeight: '600' }}>↻ Flip again</Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
       {/* Toss winner */}
       <Text style={{ color: '#9ca3af', fontSize: 12, marginBottom: 8 }}>TOSS WON BY</Text>

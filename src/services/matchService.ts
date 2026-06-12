@@ -20,6 +20,7 @@ const emptyStats: CareerStats = {
   totalRunsConceded: 0,
   totalCatches: 0,
   totalRunOuts: 0,
+  totalStumpings: 0,
   highScore: 0,
   matchesPlayed: 0,
 };
@@ -30,6 +31,9 @@ export async function getClubPlayers(clubId: string): Promise<Player[]> {
 
   for (const d of snap.docs) {
     const data = d.data();
+    // Linked ghosts have been absorbed into a registered member; exclude them
+    // from team selection so the same person can't be picked twice.
+    if (data.type === 'linked') continue;
     if (data.displayName) {
       results.push({ id: d.id, ...data } as Player);
     } else {
@@ -95,11 +99,15 @@ export async function setMatchTeams(params: {
   matchId: string;
   teamA: string[];
   teamB: string[];
+  captainA?: string;
+  captainB?: string;
 }): Promise<void> {
-  const { clubId, matchId, teamA, teamB } = params;
+  const { clubId, matchId, teamA, teamB, captainA, captainB } = params;
   await updateDoc(doc(db, 'clubs', clubId, 'matches', matchId), {
     teamA,
     teamB,
+    captainA: captainA ?? null,
+    captainB: captainB ?? null,
   });
 }
 
@@ -126,6 +134,19 @@ export async function completeMatch(
   });
 }
 
+// Adjust the overs-per-innings limit mid-match (1st innings only — see
+// LiveScoring). The caller guarantees the new value isn't below overs already
+// bowled, so completed overs are never discarded.
+export async function updateMatchOvers(
+  clubId: string,
+  matchId: string,
+  oversPerInnings: number,
+): Promise<void> {
+  await updateDoc(doc(db, 'clubs', clubId, 'matches', matchId), {
+    'rules.oversPerInnings': oversPerInnings,
+  });
+}
+
 export async function abandonMatch(clubId: string, matchId: string): Promise<void> {
   await updateDoc(doc(db, 'clubs', clubId, 'matches', matchId), {
     status: 'abandoned',
@@ -137,11 +158,6 @@ export async function abandonMatch(clubId: string, matchId: string): Promise<voi
 // Only valid before the first ball — there are no overs to orphan yet.
 export async function deleteMatch(clubId: string, matchId: string): Promise<void> {
   await deleteDoc(doc(db, 'clubs', clubId, 'matches', matchId));
-}
-
-export async function getLiveMatch(clubId: string): Promise<Match | null> {
-  const all = await getClubMatches(clubId);
-  return all.find((m) => m.status === 'live') ?? null;
 }
 
 export async function getMatchOvers(

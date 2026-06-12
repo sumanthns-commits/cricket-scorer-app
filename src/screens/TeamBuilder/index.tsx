@@ -40,6 +40,8 @@ function PlayerRow({
   name,
   badge,
   shared,
+  isCaptain,
+  onSetCaptain,
   onMoveA,
   onMoveB,
   onRemove,
@@ -47,6 +49,8 @@ function PlayerRow({
   name: string;
   badge: 'A' | 'B' | null;
   shared?: boolean;
+  isCaptain?: boolean;
+  onSetCaptain?: () => void;
   onMoveA: () => void;
   onMoveB: () => void;
   onRemove?: () => void;
@@ -90,13 +94,28 @@ function PlayerRow({
           }}
         />
       )}
-      <Text style={{ color: '#ffffff', fontSize: 14, flexShrink: 1 }}>{name}</Text>
+      <Text numberOfLines={1} style={{ color: '#ffffff', fontSize: 14, flex: 1 }}>{name}</Text>
       {shared && (
-        <View style={{ backgroundColor: '#3b2f0a', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, marginLeft: 6, borderWidth: 1, borderColor: '#fbbf24' }}>
-          <Text style={{ color: '#fbbf24', fontSize: 9, fontWeight: '700' }}>SHARED</Text>
+        <View style={{ backgroundColor: '#3b2f0a', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, marginRight: 6, borderWidth: 1, borderColor: '#fbbf24' }}>
+          <Text style={{ color: '#fbbf24', fontSize: 9, fontWeight: '700' }}>SH</Text>
         </View>
       )}
-      <View style={{ flex: 1 }} />
+      {onSetCaptain && (
+        <TouchableOpacity
+          onPress={onSetCaptain}
+          style={{
+            paddingHorizontal: 10,
+            paddingVertical: 4,
+            borderRadius: 6,
+            backgroundColor: isCaptain ? '#3b2f0a' : '#1a1605',
+            borderWidth: 1,
+            borderColor: isCaptain ? '#fbbf24' : '#4b421a',
+            marginRight: 6,
+          }}
+        >
+          <Text style={{ color: isCaptain ? '#fbbf24' : '#8a7a3a', fontSize: 12, fontWeight: '700' }}>C</Text>
+        </TouchableOpacity>
+      )}
       <TouchableOpacity
         onPress={onMoveA}
         style={{
@@ -145,6 +164,8 @@ export default function TeamBuilderScreen() {
 
   const [teamA, setTeamA] = useState<string[]>([]);
   const [teamB, setTeamB] = useState<string[]>([]);
+  const [captainA, setCaptainA] = useState<string | null>(null);
+  const [captainB, setCaptainB] = useState<string | null>(null);
   const [aiThinking, setAiThinking] = useState(false);
   const [aiError, setAiError] = useState('');
   const [rationale, setRationale] = useState('');
@@ -163,6 +184,8 @@ export default function TeamBuilderScreen() {
   useEffect(() => {
     if (match?.teamA?.length) setTeamA(match.teamA);
     if (match?.teamB?.length) setTeamB(match.teamB);
+    if (match?.captainA) setCaptainA(match.captainA);
+    if (match?.captainB) setCaptainB(match.captainB);
   }, [match]);
 
   const playerMap = useMemo(() => {
@@ -191,6 +214,18 @@ export default function TeamBuilderScreen() {
     setTeamB((prev) => prev.filter((p) => p !== id));
   };
 
+  // Tapping the star toggles that team's captain (one per team).
+  const toggleCaptainA = (id: string) => setCaptainA((c) => (c === id ? null : id));
+  const toggleCaptainB = (id: string) => setCaptainB((c) => (c === id ? null : id));
+
+  // Drop captaincy if the captain is no longer in their team.
+  useEffect(() => {
+    if (captainA && !teamA.includes(captainA)) setCaptainA(null);
+  }, [teamA, captainA]);
+  useEffect(() => {
+    if (captainB && !teamB.includes(captainB)) setCaptainB(null);
+  }, [teamB, captainB]);
+
   const runAI = async () => {
     setAiThinking(true);
     setAiError('');
@@ -214,7 +249,15 @@ export default function TeamBuilderScreen() {
   };
 
   const { mutate: confirm, isPending } = useMutation({
-    mutationFn: () => setMatchTeams({ clubId, matchId, teamA, teamB }),
+    mutationFn: () =>
+      setMatchTeams({
+        clubId,
+        matchId,
+        teamA,
+        teamB,
+        captainA: captainA ?? undefined,
+        captainB: captainB ?? undefined,
+      }),
     onSuccess: () => navigation.replace('Toss', { clubId, matchId }),
   });
 
@@ -234,8 +277,8 @@ export default function TeamBuilderScreen() {
       contentContainerStyle={{ padding: 16 }}
     >
       {/* Header */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+        <View style={{ flex: 1, marginRight: 12 }}>
           <Text style={{ color: '#ffffff', fontSize: 18, fontWeight: '700' }}>
             {match?.homeTeam ?? 'Home'} vs {match?.awayTeam ?? 'Away'}
           </Text>
@@ -245,6 +288,11 @@ export default function TeamBuilderScreen() {
           {allowShared && (
             <Text style={{ color: '#fbbf24', fontSize: 11, marginTop: 2 }}>
               Odd squad — tap A and B on one player to share them across both teams
+            </Text>
+          )}
+          {(!captainA || !captainB) && (teamA.length > 0 || teamB.length > 0) && (
+            <Text style={{ color: '#9ca3af', fontSize: 11, marginTop: 2 }}>
+              Tap the gold C on a player to set each team's captain (optional)
             </Text>
           )}
         </View>
@@ -346,6 +394,8 @@ export default function TeamBuilderScreen() {
               name={playerMap.get(id) ?? id}
               badge="A"
               shared={teamB.includes(id)}
+              isCaptain={captainA === id}
+              onSetCaptain={() => toggleCaptainA(id)}
               onMoveA={() => moveToA(id)}
               onMoveB={() => moveToB(id)}
               onRemove={() => unassign(id)}
@@ -387,6 +437,8 @@ export default function TeamBuilderScreen() {
               name={playerMap.get(id) ?? id}
               badge="B"
               shared={teamA.includes(id)}
+              isCaptain={captainB === id}
+              onSetCaptain={() => toggleCaptainB(id)}
               onMoveA={() => moveToA(id)}
               onMoveB={() => moveToB(id)}
               onRemove={() => unassign(id)}

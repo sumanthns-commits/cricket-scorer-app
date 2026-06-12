@@ -2,7 +2,6 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import HomeScreen from '../screens/Home';
 import MatchesScreen from '../screens/Matches';
-import LiveScoringScreen from '../screens/LiveScoring';
 import SquadScreen from '../screens/Squad';
 import ProfileScreen from '../screens/Profile';
 import AIAssistantScreen from '../screens/AIAssistant';
@@ -10,7 +9,6 @@ import AIAssistantScreen from '../screens/AIAssistant';
 export type TabParamList = {
   Home: undefined;
   Matches: undefined;
-  Live: undefined;
   Squad: undefined;
   Assistant: undefined;
   Profile: undefined;
@@ -21,7 +19,6 @@ const Tab = createBottomTabNavigator<TabParamList>();
 const TAB_ICONS: Record<keyof TabParamList, keyof typeof Ionicons.glyphMap> = {
   Home: 'home',
   Matches: 'calendar',
-  Live: 'radio',
   Squad: 'people',
   Assistant: 'sparkles',
   Profile: 'person-circle',
@@ -43,11 +40,6 @@ export default function TabNavigator() {
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Matches" component={MatchesScreen} />
-      <Tab.Screen
-        name="Live"
-        component={LiveScoringScreen}
-        options={{ title: 'Live Scoring' }}
-      />
       <Tab.Screen name="Squad" component={SquadScreen} />
       <Tab.Screen
         name="Assistant"

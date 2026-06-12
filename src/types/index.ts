@@ -6,6 +6,36 @@ export interface AppUser {
   email: string;
   photoURL?: string;
   createdAt: Timestamp;
+  // Global player profile fields, editable by the user and visible to a club
+  // admin reviewing their join request (see EditProfile / RequesterProfile).
+  battingHand?: BattingHand;
+  bowlingStyle?: BowlingStyle;
+  bio?: string;
+}
+
+export type JoinRequestStatus = 'pending' | 'approved' | 'rejected';
+
+export interface JoinRequest {
+  uid: string;
+  displayName: string;
+  photoURL?: string | null;
+  status: JoinRequestStatus;
+  createdAt: Timestamp;
+  resolvedAt?: Timestamp;
+  resolvedBy?: string;
+}
+
+// Public, server-written mirror of a registered player's per-club career stats
+// (publicPlayerStats/{uid}_{clubId}). Lets a club admin review a requester's
+// record across every club without reading member-private player docs.
+export interface PublicPlayerStats {
+  uid: string;
+  clubId: string;
+  clubName: string;
+  displayName: string;
+  photoURL?: string | null;
+  careerStats: CareerStats;
+  updatedAt: Timestamp;
 }
 
 export interface UserMembership {
@@ -32,8 +62,31 @@ export interface CareerStats {
   totalRunsConceded: number;
   totalCatches: number;
   totalRunOuts: number;
+  totalStumpings: number;
   highScore: number;
   matchesPlayed: number;
+  // Tally of configured fielding events credited to this player, keyed by the
+  // event label at the time (e.g. { "Great stop": 3, "Drop": 1 }).
+  fieldingEventCounts?: Record<string, number>;
+  // Net rating points from non-dismissal fielding events, baked in at match
+  // completion from each event's polarity (positive adds, negative subtracts).
+  // Stored as a scalar so computeSkillRating stays pure on CareerStats.
+  fieldingPoints?: number;
+}
+
+// Stats accumulated only in matches where the player was a team captain.
+export interface CaptainStats {
+  matches: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  runs: number;
+  ballsFaced: number;
+  dismissals: number;
+  ballsBowled: number;
+  runsConceded: number;
+  wickets: number;
+  highScore: number;
 }
 
 export interface ClaimSnapshot {
@@ -82,10 +135,15 @@ export interface CustomDismissal {
   bowlerGetsWicket: boolean;
 }
 
+export type FieldingPolarity = 'positive' | 'negative' | 'neutral';
+
 export interface FieldingEventConfig {
   id: string;
   label: string;
   enabled: boolean;
+  // How this event affects the fielder's rating. Admin-controlled in the rules
+  // screen. Resolved to signed points at match completion (see scoring rules).
+  polarity: FieldingPolarity;
 }
 
 export interface ClubRules {
@@ -108,6 +166,13 @@ export interface Club {
   rules: ClubRules;
   createdAt: Timestamp;
   createdBy: string;
+  // Drives Summer/Winter season naming. Optional: clubs created before this
+  // field existed read as 'N'.
+  hemisphere?: 'N' | 'S';
+  // Set when an admin archives the club; null/absent while active. A scheduled
+  // Cloud Function permanently deletes the club and all its matches 30 days
+  // after this timestamp.
+  archivedAt?: Timestamp | null;
 }
 
 export interface ClubMember {
@@ -121,6 +186,15 @@ export interface ClubMember {
 export type BattingHand = 'RHB' | 'LHB';
 export type BowlingStyle = 'fast' | 'medium' | 'spin';
 
+// Pointer left on a registered member after an admin links a ghost into them at
+// join-approval. The ghost's stats are merged into the member's careerStats; the
+// ghost doc (type:'linked') keeps the frozen copy used to reverse the merge.
+export interface LinkedGhost {
+  ghostId: string;
+  displayName: string;
+  linkedAt: Timestamp;
+}
+
 export interface Player {
   id: string;
   displayName: string;
@@ -132,6 +206,11 @@ export interface Player {
   skillRating?: number;
   battingHand?: BattingHand;
   bowlingStyle?: BowlingStyle;
+  captainStats?: CaptainStats;
+  // Set on a registered member that absorbed a ghost; absent otherwise.
+  linkedGhost?: LinkedGhost;
+  // Set on a ghost doc once linked into a member (type becomes 'linked').
+  linkedTo?: string;
 }
 
 export type ExtrasType = 'wide' | 'no-ball' | 'bye' | 'leg-bye';
@@ -139,6 +218,7 @@ export type ExtrasType = 'wide' | 'no-ball' | 'bye' | 'leg-bye';
 export interface DismissalEntry {
   type: string;
   fielderId?: string;
+  fielderIds?: string[]; // run-outs may involve multiple fielders
   bowlerId?: string;
 }
 
@@ -158,7 +238,7 @@ export interface BallEntry {
   extras?: { type: ExtrasType; runs: number };
   dismissal?: DismissalEntry;
   wagon?: WagonShot;
-  fielding?: { eventId?: string; fielderId?: string };
+  fielding?: { eventId?: string; eventLabel?: string; fielderId?: string };
   timestamp?: Timestamp;
 }
 
@@ -200,6 +280,9 @@ export interface Match {
   squad?: string[];
   teamA?: string[];
   teamB?: string[];
+  captainA?: string;
+  captainB?: string;
+  winnerTeam?: 'A' | 'B' | 'tie';
   toss?: MatchToss;
   result?: string;
 }

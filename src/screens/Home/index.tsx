@@ -20,10 +20,14 @@ function ClubCard({
   club,
   onRulesPress,
   onMatchesPress,
+  onEditPress,
+  onRequestsPress,
 }: {
   club: Club;
   onRulesPress: () => void;
   onMatchesPress: () => void;
+  onEditPress: () => void;
+  onRequestsPress: () => void;
 }) {
   return (
     <View
@@ -36,7 +40,14 @@ function ClubCard({
         borderColor: '#2d3f58',
       }}
     >
-      <Text style={{ color: '#ffffff', fontSize: 18, fontWeight: '600' }}>{club.name}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Text style={{ color: '#ffffff', fontSize: 18, fontWeight: '600' }}>{club.name}</Text>
+        {club.archivedAt ? (
+          <View style={{ backgroundColor: '#3b1d1d', borderRadius: 4, borderWidth: 1, borderColor: '#7f1d1d', paddingHorizontal: 6, paddingVertical: 2 }}>
+            <Text style={{ color: '#fca5a5', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>ARCHIVED</Text>
+          </View>
+        ) : null}
+      </View>
       {club.description ? (
         <Text style={{ color: '#9ca3af', fontSize: 14, marginTop: 4 }}>{club.description}</Text>
       ) : null}
@@ -44,8 +55,14 @@ function ClubCard({
         <TouchableOpacity onPress={onMatchesPress}>
           <Text style={{ color: '#4ade80', fontSize: 13, fontWeight: '600' }}>Matches</Text>
         </TouchableOpacity>
+        <TouchableOpacity onPress={onRequestsPress}>
+          <Text style={{ color: '#60a5fa', fontSize: 13, fontWeight: '600' }}>Requests</Text>
+        </TouchableOpacity>
         <TouchableOpacity onPress={onRulesPress}>
           <Text style={{ color: '#60a5fa', fontSize: 13, fontWeight: '600' }}>⚙ Rules</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onEditPress}>
+          <Text style={{ color: '#60a5fa', fontSize: 13, fontWeight: '600' }}>✎ Edit</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -79,17 +96,32 @@ export default function HomeScreen() {
         }}
       >
         <Text style={{ color: '#ffffff', fontSize: 22, fontWeight: '700' }}>My Clubs</Text>
-        <TouchableOpacity
-          onPress={() => navigation.navigate('CreateClub')}
-          style={{
-            backgroundColor: '#4ade80',
-            borderRadius: 8,
-            paddingVertical: 8,
-            paddingHorizontal: 14,
-          }}
-        >
-          <Text style={{ color: '#0a1628', fontSize: 14, fontWeight: '700' }}>+ Create Club</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('FindClubs')}
+            style={{
+              backgroundColor: '#1e2d45',
+              borderRadius: 8,
+              paddingVertical: 8,
+              paddingHorizontal: 14,
+              borderWidth: 1,
+              borderColor: '#2d3f58',
+            }}
+          >
+            <Text style={{ color: '#60a5fa', fontSize: 14, fontWeight: '700' }}>🔍 Find</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('CreateClub')}
+            style={{
+              backgroundColor: '#4ade80',
+              borderRadius: 8,
+              paddingVertical: 8,
+              paddingHorizontal: 14,
+            }}
+          >
+            <Text style={{ color: '#0a1628', fontSize: 14, fontWeight: '700' }}>+ Create</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {isLoading ? (
@@ -102,7 +134,9 @@ export default function HomeScreen() {
             <ClubCard
               club={item}
               onMatchesPress={() => handleMatchesPress(item)}
+              onRequestsPress={() => navigation.navigate('JoinRequests', { clubId: item.id })}
               onRulesPress={() => navigation.navigate('ClubRulesAdmin', { clubId: item.id })}
+              onEditPress={() => navigation.navigate('EditClub', { clubId: item.id })}
             />
           )}
         />

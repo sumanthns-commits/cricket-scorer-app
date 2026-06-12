@@ -12,7 +12,8 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useAuthStore } from '../../store/authStore';
-import { createClub } from '../../services/clubService';
+import { createClub, ClubNameTakenError } from '../../services/clubService';
+import { detectHemisphere, type Hemisphere } from '../../utils/seasons';
 import { useQueryClient } from '@tanstack/react-query';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CreateClub'>;
@@ -23,6 +24,7 @@ export default function CreateClubScreen({ navigation }: Props) {
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [hemisphere, setHemisphere] = useState<Hemisphere>(() => detectHemisphere());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,16 +39,26 @@ export default function CreateClubScreen({ navigation }: Props) {
     setLoading(true);
     setError(null);
     try {
-      await createClub(user.uid, trimmedName, description.trim(), {
-        displayName: user.displayName ?? user.email ?? 'Me',
-        email: user.email ?? undefined,
-        photoURL: user.photoURL ?? undefined,
-      });
+      await createClub(
+        user.uid,
+        trimmedName,
+        description.trim(),
+        {
+          displayName: user.displayName ?? user.email ?? 'Me',
+          email: user.email ?? undefined,
+          photoURL: user.photoURL ?? undefined,
+        },
+        hemisphere
+      );
       await queryClient.invalidateQueries({ queryKey: ['clubs', user.uid] });
       navigation.goBack();
     } catch (err) {
       console.error('createClub failed', err);
-      setError('Failed to create club. Please try again.');
+      setError(
+        err instanceof ClubNameTakenError
+          ? `A club named "${trimmedName}" already exists. Please choose another name.`
+          : 'Failed to create club. Please try again.'
+      );
       setLoading(false);
     }
   }
@@ -106,6 +118,43 @@ export default function CreateClubScreen({ navigation }: Props) {
             minHeight: 80,
           }}
         />
+
+        <Text style={{ color: '#9ca3af', fontSize: 13, marginBottom: 6 }}>
+          HEMISPHERE
+        </Text>
+        <Text style={{ color: '#6b7280', fontSize: 12, marginBottom: 8 }}>
+          Sets how seasons are named (Summer / Winter). Auto-detected — change if it's wrong.
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 32 }}>
+          {(['N', 'S'] as const).map((h) => {
+            const selected = hemisphere === h;
+            return (
+              <TouchableOpacity
+                key={h}
+                onPress={() => setHemisphere(h)}
+                style={{
+                  flex: 1,
+                  backgroundColor: selected ? '#4ade80' : '#1e2d45',
+                  borderRadius: 8,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                  borderWidth: 1,
+                  borderColor: selected ? '#4ade80' : '#2d3f58',
+                }}
+              >
+                <Text
+                  style={{
+                    color: selected ? '#0a1628' : '#ffffff',
+                    fontSize: 15,
+                    fontWeight: '700',
+                  }}
+                >
+                  {h === 'N' ? 'Northern' : 'Southern'}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
         {error && (
           <Text style={{ color: '#ef4444', marginBottom: 16, fontSize: 14 }}>

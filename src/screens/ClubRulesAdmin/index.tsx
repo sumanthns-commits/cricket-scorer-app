@@ -8,8 +8,10 @@ import {
   Switch,
   ActivityIndicator,
   Animated,
-  KeyboardAvoidingView,
-  Platform,
+  Keyboard,
+  Dimensions,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -20,6 +22,7 @@ import type {
   CustomDismissal,
   ExtrasType,
   FieldingEventConfig,
+  FieldingPolarity,
   StandardDismissalType,
 } from '../../types';
 import {
@@ -64,13 +67,29 @@ function resolveRules(raw: Partial<ClubRules>): ClubRules {
     lastManStands: raw.lastManStands ?? false,
     compulsoryRetirementAt: raw.compulsoryRetirementAt,
     maxBowlerOvers: raw.maxBowlerOvers,
-    fieldingEvents: raw.fieldingEvents ?? [],
+    // Legacy events saved before polarity existed default to 'neutral' (no
+    // rating effect) so an admin opts into good/bad deliberately.
+    fieldingEvents: (raw.fieldingEvents ?? []).map((e) => ({
+      ...e,
+      polarity: e.polarity ?? 'neutral',
+    })),
   };
 }
 
 function genId(): string {
   return Math.random().toString(36).slice(2, 10);
 }
+
+// Display + cycle order for the fielding-event polarity control.
+const POLARITY_META: Record<
+  FieldingPolarity,
+  { label: string; color: string; bg: string }
+> = {
+  positive: { label: '＋ Good', color: '#4ade80', bg: 'rgba(74,222,128,0.12)' },
+  negative: { label: '－ Bad', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
+  neutral: { label: '○ Neutral', color: '#9ca3af', bg: 'rgba(156,163,175,0.12)' },
+};
+const POLARITY_CYCLE: FieldingPolarity[] = ['positive', 'negative', 'neutral'];
 
 // ─── Sub-components ───────────────────────────────────────────────
 
@@ -140,6 +159,7 @@ function NumberRow({
   placeholder,
   disabled,
   min,
+  onFocus,
 }: {
   label: string;
   value: number | undefined;
@@ -147,6 +167,7 @@ function NumberRow({
   placeholder?: string;
   disabled: boolean;
   min?: number;
+  onFocus?: () => void;
 }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
@@ -158,6 +179,7 @@ function NumberRow({
           const n = parseInt(t, 10);
           if (!isNaN(n) && (min === undefined || n >= min)) onChange(n);
         }}
+        onFocus={onFocus}
         keyboardType="numeric"
         editable={!disabled}
         placeholder={placeholder ?? '–'}
@@ -183,11 +205,13 @@ function CustomDismissalCard({
   item,
   onChange,
   onRemove,
+  onFocus,
   disabled,
 }: {
   item: CustomDismissal;
   onChange: (patch: Partial<CustomDismissal>) => void;
   onRemove: () => void;
+  onFocus?: () => void;
   disabled: boolean;
 }) {
   return (
@@ -207,6 +231,7 @@ function CustomDismissalCard({
       <TextInput
         value={item.label}
         onChangeText={(t) => onChange({ label: t })}
+        onFocus={onFocus}
         placeholder="e.g. Mankad"
         placeholderTextColor="#4b5563"
         editable={!disabled}
@@ -251,6 +276,7 @@ function CustomDismissalCard({
             const n = parseInt(t, 10);
             if (!isNaN(n) && n >= 0) onChange({ runsScored: n });
           }}
+          onFocus={onFocus}
           keyboardType="numeric"
           editable={!disabled}
           placeholder="0"
@@ -290,6 +316,7 @@ function FieldingEventRow({
   onRemove,
   onMoveUp,
   onMoveDown,
+  onFocus,
   disabled,
 }: {
   item: FieldingEventConfig;
@@ -299,6 +326,7 @@ function FieldingEventRow({
   onRemove: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  onFocus?: () => void;
   disabled: boolean;
 }) {
   return (
@@ -339,6 +367,7 @@ function FieldingEventRow({
       <TextInput
         value={item.label}
         onChangeText={(t) => onChange({ label: t })}
+        onFocus={onFocus}
         placeholder="Event label"
         placeholderTextColor="#4b5563"
         editable={!disabled}
@@ -354,6 +383,34 @@ function FieldingEventRow({
           borderColor: '#2d3f58',
         }}
       />
+
+      {(() => {
+        const meta = POLARITY_META[item.polarity ?? 'neutral'];
+        return (
+          <TouchableOpacity
+            onPress={() => {
+              const i = POLARITY_CYCLE.indexOf(item.polarity ?? 'neutral');
+              onChange({ polarity: POLARITY_CYCLE[(i + 1) % POLARITY_CYCLE.length] });
+            }}
+            disabled={disabled}
+            style={{
+              paddingHorizontal: 8,
+              paddingVertical: 6,
+              borderRadius: 6,
+              borderWidth: 1,
+              borderColor: meta.color,
+              backgroundColor: meta.bg,
+              minWidth: 78,
+              alignItems: 'center',
+              opacity: disabled ? 0.5 : 1,
+            }}
+          >
+            <Text style={{ color: meta.color, fontSize: 12, fontWeight: '700' }}>
+              {meta.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })()}
 
       {!disabled && (
         <View style={{ flexDirection: 'row', gap: 4 }}>
@@ -439,6 +496,50 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
   const [toastMsg, setToastMsg] = useState('');
   const [toastKey, setToastKey] = useState(0);
 
+  // Keyboard-aware scrolling. Expo Go (no native keyboard libs) + SDK 54
+  // edge-to-edge means neither adjustResize nor automaticallyAdjustKeyboardInsets
+  // reliably reveals an input near the bottom (e.g. a fielding-event label), so
+  // we pad the scroll content by the keyboard height and scroll the focused
+  // input into view ourselves. measureInWindow (not measureLayout) is used since
+  // the New Architecture rejects measureLayout against a numeric node handle.
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollYRef = useRef(0);
+  const [kbHeight, setKbHeight] = useState(0);
+
+  // If the focused input sits under (or close to) the keyboard, scroll up by
+  // just enough to clear it. Called on keyboard-open and on each input focus.
+  function scrollFocusedIntoView(keyboardHeight: number) {
+    if (keyboardHeight <= 0) return;
+    setTimeout(() => {
+      const focused = TextInput.State.currentlyFocusedInput?.();
+      const sv = scrollRef.current;
+      if (!focused || !sv) return;
+      focused.measureInWindow((_x: number, y: number, _w: number, h: number) => {
+        const keyboardTop = Dimensions.get('window').height - keyboardHeight;
+        const margin = 24;
+        const overlap = y + h - (keyboardTop - margin);
+        if (overlap > 0) sv.scrollTo({ y: scrollYRef.current + overlap, animated: true });
+      });
+    }, 60); // let the bottom padding apply first
+  }
+
+  function handleInputFocus() {
+    scrollFocusedIntoView(kbHeight);
+  }
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      const h = e.endCoordinates?.height ?? 0;
+      setKbHeight(h);
+      scrollFocusedIntoView(h);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKbHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   const { data, isLoading, error } = useQuery({
     queryKey: ['clubRulesAdmin', clubId, user?.uid],
     queryFn: async () => {
@@ -521,7 +622,12 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
 
   function addFieldingEvent() {
     if (!draft || locked) return;
-    const newItem: FieldingEventConfig = { id: genId(), label: '', enabled: true };
+    const newItem: FieldingEventConfig = {
+      id: genId(),
+      label: '',
+      enabled: true,
+      polarity: 'neutral',
+    };
     setField('fieldingEvents', [...draft.fieldingEvents, newItem]);
   }
 
@@ -618,11 +724,15 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#0a1628' }}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={{ padding: 20, paddingBottom: 60 + kbHeight }}
+          keyboardShouldPersistTaps="handled"
+          scrollEventThrottle={16}
+          onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
+            scrollYRef.current = e.nativeEvent.contentOffset.y;
+          }}
+        >
 
           {locked && (
             <View
@@ -654,6 +764,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
             placeholder="6"
             disabled={locked}
             min={1}
+            onFocus={handleInputFocus}
           />
           <NumberRow
             label="Max overs per innings"
@@ -662,6 +773,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
             placeholder="unlimited"
             disabled={locked}
             min={1}
+            onFocus={handleInputFocus}
           />
 
           {/* ── DISMISSALS ── */}
@@ -686,6 +798,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
               item={item}
               onChange={(patch) => updateCustomDismissal(item.id, patch)}
               onRemove={() => removeCustomDismissal(item.id)}
+              onFocus={handleInputFocus}
               disabled={locked}
             />
           ))}
@@ -728,6 +841,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
             placeholder="no cap"
             disabled={locked}
             min={0}
+            onFocus={handleInputFocus}
           />
 
           {/* ── BATTING ── */}
@@ -749,6 +863,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
             placeholder="none"
             disabled={locked}
             min={1}
+            onFocus={handleInputFocus}
           />
 
           {/* ── BOWLING ── */}
@@ -760,10 +875,17 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
             placeholder="no limit"
             disabled={locked}
             min={1}
+            onFocus={handleInputFocus}
           />
 
           {/* ── FIELDING EVENTS ── */}
           <SectionHeader title="FIELDING EVENTS" />
+          <Text style={{ color: '#6b7280', fontSize: 12, marginBottom: 10, lineHeight: 17 }}>
+            Tap the tag to set how each event affects a fielder&apos;s rating:{' '}
+            <Text style={{ color: '#4ade80', fontWeight: '700' }}>Good</Text> adds,{' '}
+            <Text style={{ color: '#ef4444', fontWeight: '700' }}>Bad</Text> subtracts,{' '}
+            <Text style={{ color: '#9ca3af', fontWeight: '700' }}>Neutral</Text> is just tracked.
+          </Text>
           {draft.fieldingEvents.map((item, index) => (
             <FieldingEventRow
               key={item.id}
@@ -774,6 +896,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
               onRemove={() => removeFieldingEvent(item.id)}
               onMoveUp={() => moveFieldingEvent(index, -1)}
               onMoveDown={() => moveFieldingEvent(index, 1)}
+              onFocus={handleInputFocus}
               disabled={locked}
             />
           ))}
@@ -825,7 +948,6 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
             </View>
           )}
         </ScrollView>
-      </KeyboardAvoidingView>
 
       <Toast message={toastMsg} toastKey={toastKey} />
     </View>

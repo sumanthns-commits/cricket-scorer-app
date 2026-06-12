@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { resolvePlayerStats } from '../services/statsResolver';
+import { unlinkGhost } from '../services/joinRequestService';
 import {
   computeDerivedStats,
   computeSkillRating,
@@ -67,7 +68,15 @@ function fmt(value: number | null, digits = 1): string {
   return value === null ? '—' : value.toFixed(digits);
 }
 
-function StatBox({ label, value }: { label: string; value: string }) {
+function StatBox({
+  label,
+  value,
+  valueColor = '#ffffff',
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
   return (
     <View
       style={{
@@ -79,7 +88,7 @@ function StatBox({ label, value }: { label: string; value: string }) {
         borderColor: '#2d3f58',
       }}
     >
-      <Text style={{ color: '#ffffff', fontSize: 20, fontWeight: '800' }}>{value}</Text>
+      <Text style={{ color: valueColor, fontSize: 20, fontWeight: '800' }}>{value}</Text>
       <Text style={{ color: '#9ca3af', fontSize: 11, marginTop: 2 }}>{label}</Text>
     </View>
   );
@@ -140,12 +149,27 @@ export default function PlayerProfileView({
   clubId,
   playerId,
   canEdit = false,
+  isAdmin = false,
 }: {
   clubId: string;
   playerId: string;
   canEdit?: boolean;
+  isAdmin?: boolean;
 }) {
   const queryClient = useQueryClient();
+  const [unlinking, setUnlinking] = useState(false);
+  const handleUnlink = () => {
+    setUnlinking(true);
+    unlinkGhost(clubId, playerId)
+      .then(() =>
+        Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['player', clubId, playerId] }),
+          queryClient.invalidateQueries({ queryKey: ['resolvedStats', clubId, playerId] }),
+        ])
+      )
+      .catch((e) => console.error('unlinkGhost failed', e))
+      .finally(() => setUnlinking(false));
+  };
   const { data: player, isLoading: loadingPlayer } = useQuery({
     queryKey: ['player', clubId, playerId],
     queryFn: () => getPlayer(clubId, playerId),
@@ -236,6 +260,46 @@ export default function PlayerProfileView({
 
       {showProvisional && <CooldownBanner mergeAtMs={mergeAtMs} />}
 
+      {isAdmin && player.linkedGhost ? (
+        <View
+          style={{
+            backgroundColor: '#0e2436',
+            borderRadius: 10,
+            padding: 12,
+            marginTop: 16,
+            borderWidth: 1,
+            borderColor: '#2d3f58',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+          }}
+        >
+          <Text style={{ color: '#9ca3af', fontSize: 12, flex: 1 }}>
+            Linked from ghost <Text style={{ color: '#ffffff', fontWeight: '700' }}>{player.linkedGhost.displayName}</Text>. Its stats are merged in.
+          </Text>
+          <TouchableOpacity
+            onPress={handleUnlink}
+            disabled={unlinking}
+            style={{
+              backgroundColor: '#1e2d45',
+              borderWidth: 1,
+              borderColor: '#7f1d1d',
+              borderRadius: 8,
+              paddingVertical: 8,
+              paddingHorizontal: 12,
+              opacity: unlinking ? 0.6 : 1,
+            }}
+          >
+            {unlinking ? (
+              <ActivityIndicator color="#fca5a5" />
+            ) : (
+              <Text style={{ color: '#fca5a5', fontSize: 13, fontWeight: '700' }}>Unlink</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       {/* Player info — editable for admins (any player) or for your own profile */}
       {canEdit ? (
         <>
@@ -295,6 +359,80 @@ export default function PlayerProfileView({
           <StatBox label="Strike rate" value={fmt(derived.bowlingStrikeRate)} />
         </View>
       </Section>
+
+      {/* Fielding */}
+      {(() => {
+        const fe = resolved.stats.fieldingEventCounts ?? {};
+        const events = Object.entries(fe).filter(([, n]) => n > 0);
+        const catches = resolved.stats.totalCatches;
+        const runOuts = resolved.stats.totalRunOuts;
+        const stumpings = resolved.stats.totalStumpings ?? 0;
+        const netPoints = resolved.stats.fieldingPoints ?? 0;
+        if (
+          catches === 0 &&
+          runOuts === 0 &&
+          stumpings === 0 &&
+          netPoints === 0 &&
+          events.length === 0
+        )
+          return null;
+        const netColor = netPoints > 0 ? '#4ade80' : netPoints < 0 ? '#ef4444' : '#ffffff';
+        return (
+          <Section title="FIELDING">
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <StatBox label="Catches" value={String(catches)} />
+              <StatBox label="Run-outs" value={String(runOuts)} />
+              <StatBox label="Stumpings" value={String(stumpings)} />
+            </View>
+            {netPoints !== 0 && (
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <StatBox
+                  label="Net fielding score"
+                  value={netPoints > 0 ? `+${netPoints}` : String(netPoints)}
+                  valueColor={netColor}
+                />
+              </View>
+            )}
+            {events.length > 0 && (
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                {events.map(([label, n]) => (
+                  <View key={label} style={{ flexGrow: 1, minWidth: '30%' }}>
+                    <StatBox label={label} value={String(n)} />
+                  </View>
+                ))}
+              </View>
+            )}
+          </Section>
+        );
+      })()}
+
+      {/* As captain */}
+      {player.captainStats && player.captainStats.matches > 0 && (() => {
+        const c = player.captainStats;
+        const winPct = c.matches > 0 ? Math.round((c.wins / c.matches) * 100) : 0;
+        const avg = c.dismissals > 0 ? c.runs / c.dismissals : null;
+        const econ = c.ballsBowled > 0 ? (c.runsConceded / (c.ballsBowled / 6)) : null;
+        return (
+          <Section title="AS CAPTAIN">
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <StatBox label="Played" value={String(c.matches)} />
+              <StatBox label="Won" value={String(c.wins)} />
+              <StatBox label="Win %" value={`${winPct}%`} />
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+              <StatBox label="Lost" value={String(c.losses)} />
+              <StatBox label="Tied" value={String(c.ties)} />
+              <StatBox label="HS" value={String(c.highScore)} />
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+              <StatBox label="Runs (capt)" value={String(c.runs)} />
+              <StatBox label="Avg (capt)" value={fmt(avg)} />
+              <StatBox label="Wkts (capt)" value={String(c.wickets)} />
+              <StatBox label="Econ (capt)" value={fmt(econ, 2)} />
+            </View>
+          </Section>
+        );
+      })()}
 
       {/* Form */}
       <Section title="FORM · LAST 5">

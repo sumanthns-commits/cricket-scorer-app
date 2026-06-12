@@ -12,16 +12,19 @@ import {
   Alert,
 } from 'react-native';
 import type { GestureResponderEvent } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import { useClubStore } from '../../store/clubStore';
+import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../../navigation/RootNavigator';
 import {
-  getLiveMatch,
+  getMatch,
   getClubPlayers,
   getMatchOvers,
   saveOver,
   completeMatch,
   abandonMatch,
   deleteMatch,
+  updateMatchOvers,
 } from '../../services/matchService';
 import { getClub } from '../../services/clubService';
 import { recordBall } from '../../services/scoringEngine';
@@ -256,12 +259,14 @@ function FieldingPanel({
   runs,
   players,
   fieldingEvents,
+  hideFielders,
   onDone,
 }: {
   visible: boolean;
   runs: number;
   players: Player[];
   fieldingEvents: Array<{ id: string; label: string }>;
+  hideFielders: boolean;
   onDone: (eventId: string | null, fielderId: string | null) => void;
 }) {
   const slideY = useRef(new Animated.Value(400)).current;
@@ -335,35 +340,39 @@ function FieldingPanel({
           <Animated.View style={{ height: 3, width: barWidth, backgroundColor: '#4ade80' }} />
         </View>
 
-        {isBoundary ? (
-          <Text style={{ color: '#fbbf24', fontSize: 22, fontWeight: '800', textAlign: 'center', marginBottom: 8 }}>
+        {/* Celebrate the boundary, but still offer fielding-event chips below
+            so a misfield/drop that leaked to the rope can be credited. */}
+        {isBoundary && (
+          <Text style={{ color: '#fbbf24', fontSize: 22, fontWeight: '800', textAlign: 'center', marginBottom: 14 }}>
             {runs === 4 ? '⚡ FOUR!' : '💥 SIX!'}
           </Text>
-        ) : (
-          <>
-            {fieldingEvents.length > 0 && (
-              <>
-                <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700', marginBottom: 10 }}>FIELDING EVENT</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-                  {fieldingEvents.map((ev) => (
-                    <TouchableOpacity
-                      key={ev.id}
-                      onPress={() => pickEvent(ev.id)}
-                      style={{
-                        paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-                        backgroundColor: eventId === ev.id ? '#4ade80' : '#1e2d45',
-                        borderWidth: 1, borderColor: eventId === ev.id ? '#4ade80' : '#2d3f58',
-                      }}
-                    >
-                      <Text style={{ color: eventId === ev.id ? '#0a1628' : '#d1d5db', fontSize: 13, fontWeight: '600' }}>
-                        {ev.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </>
-            )}
+        )}
 
+        {fieldingEvents.length > 0 && (
+          <>
+            <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700', marginBottom: 10 }}>FIELDING EVENT</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+              {fieldingEvents.map((ev) => (
+                <TouchableOpacity
+                  key={ev.id}
+                  onPress={() => pickEvent(ev.id)}
+                  style={{
+                    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+                    backgroundColor: eventId === ev.id ? '#4ade80' : '#1e2d45',
+                    borderWidth: 1, borderColor: eventId === ev.id ? '#4ade80' : '#2d3f58',
+                  }}
+                >
+                  <Text style={{ color: eventId === ev.id ? '#0a1628' : '#d1d5db', fontSize: 13, fontWeight: '600' }}>
+                    {ev.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
+
+        {!hideFielders && (
+          <>
             <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700', marginBottom: 10 }}>FIELDER (optional)</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
               <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -465,6 +474,90 @@ function ExtrasRunsModal({
   );
 }
 
+// ─── Edit overs modal ───────────────────────────────────────────────
+// Mid-innings overs adjustment. minOvers is the number already bowled, so the
+// limit can be raised freely but never cut below overs that have been played.
+
+function EditOversModal({
+  visible,
+  current,
+  minOvers,
+  onConfirm,
+  onCancel,
+}: {
+  visible: boolean;
+  current: number;
+  minOvers: number;
+  onConfirm: (overs: number) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState(current);
+
+  useEffect(() => { if (visible) setValue(Math.max(current, minOvers)); }, [visible, current, minOvers]);
+
+  const dec = () => setValue((v) => Math.max(minOvers, v - 1));
+  const inc = () => setValue((v) => v + 1);
+  const canDec = value > minOvers;
+  const changed = value !== current;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={{ flex: 1, backgroundColor: '#000000cc', justifyContent: 'center', alignItems: 'center' }}>
+        <View style={{ backgroundColor: '#0a1628', borderRadius: 16, padding: 20, width: 320 }}>
+          <Text style={{ color: '#ffffff', fontSize: 20, fontWeight: '700', textAlign: 'center' }}>
+            Overs per innings
+          </Text>
+          <Text style={{ color: '#6b7280', fontSize: 13, textAlign: 'center', marginTop: 4, marginBottom: 20 }}>
+            Can be raised any time, but not below the {minOvers} over{minOvers !== 1 ? 's' : ''} already bowled.
+          </Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 24 }}>
+            <TouchableOpacity
+              onPress={dec}
+              disabled={!canDec}
+              style={{
+                width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center',
+                backgroundColor: '#1e2d45', borderWidth: 1.5, borderColor: canDec ? '#2d3f58' : '#162033',
+              }}
+            >
+              <Text style={{ color: canDec ? '#ffffff' : '#374151', fontSize: 28, fontWeight: '800' }}>−</Text>
+            </TouchableOpacity>
+
+            <Text style={{ color: '#ffffff', fontSize: 44, fontWeight: '800', minWidth: 70, textAlign: 'center' }}>
+              {value}
+            </Text>
+
+            <TouchableOpacity
+              onPress={inc}
+              style={{
+                width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center',
+                backgroundColor: '#1e2d45', borderWidth: 1.5, borderColor: '#2d3f58',
+              }}
+            >
+              <Text style={{ color: '#ffffff', fontSize: 28, fontWeight: '800' }}>+</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            onPress={() => onConfirm(value)}
+            disabled={!changed}
+            style={{
+              marginTop: 24, padding: 14, borderRadius: 10, alignItems: 'center',
+              backgroundColor: changed ? '#4ade80' : '#1e2d45',
+              borderWidth: changed ? 0 : 1, borderColor: '#2d3f58',
+            }}
+          >
+            <Text style={{ color: changed ? '#0a1628' : '#9ca3af', fontWeight: '700' }}>Save</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onCancel} style={{ marginTop: 10, padding: 10, alignItems: 'center' }}>
+            <Text style={{ color: '#9ca3af', fontWeight: '600' }}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 // ─── Wicket sheet ───────────────────────────────────────────────────
 
 const STD_LABELS: Record<StandardDismissalType, string> = {
@@ -481,6 +574,11 @@ const STD_LABELS: Record<StandardDismissalType, string> = {
 };
 
 const FIELDER_NEEDED: StandardDismissalType[] = ['caught', 'stumped', 'run-out'];
+// These dismissals have no shot to plot, so the wagon wheel is skipped.
+const NO_WAGON: StandardDismissalType[] = ['stumped', 'hit-wicket'];
+// Dismissals where a fielder is already captured on the wicket sheet, so the
+// fielding overlay shouldn't ask for the fielder again.
+const FIELDER_ALREADY_RECORDED: StandardDismissalType[] = ['caught', 'run-out', 'stumped'];
 
 function WicketSheet({
   visible,
@@ -494,17 +592,22 @@ function WicketSheet({
   enabledDismissals: StandardDismissalType[];
   customDismissals: Array<{ id: string; label: string; batterIsOut: boolean }>;
   fieldingPlayers: Player[];
-  onSelect: (type: string, fielderId?: string) => void;
+  onSelect: (type: string, fielderIds?: string[], completedRuns?: number) => void;
   onClose: () => void;
 }) {
   const [step, setStep] = useState<'type' | 'fielder'>('type');
   const [selectedType, setSelectedType] = useState<string | null>(null);
+  const [pickedFielders, setPickedFielders] = useState<string[]>([]);
+  const [completedRuns, setCompletedRuns] = useState(0);
   const slideY = useRef(new Animated.Value(500)).current;
+  const multiFielder = selectedType === 'run-out'; // run-outs can involve several fielders
 
   useEffect(() => {
     if (visible) {
       setStep('type');
       setSelectedType(null);
+      setPickedFielders([]);
+      setCompletedRuns(0);
       Animated.spring(slideY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
     } else {
       Animated.timing(slideY, { toValue: 500, duration: 200, useNativeDriver: true }).start();
@@ -515,11 +618,15 @@ function WicketSheet({
   const pickType = (type: string, needsFielder: boolean) => {
     if (needsFielder) {
       setSelectedType(type);
+      setPickedFielders([]);
       setStep('fielder');
     } else {
       onSelect(type);
     }
   };
+
+  const toggleFielder = (id: string) =>
+    setPickedFielders((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
 
   if (!visible) return null;
 
@@ -539,7 +646,7 @@ function WicketSheet({
       >
         <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#2d3f58', alignSelf: 'center', marginBottom: 16 }} />
         <Text style={{ color: '#ffffff', fontSize: 17, fontWeight: '700', marginBottom: 16 }}>
-          {step === 'type' ? 'Wicket — how out?' : 'Select fielder'}
+          {step === 'type' ? 'Wicket — how out?' : multiFielder ? 'Select fielders involved' : 'Select fielder'}
         </Text>
 
         {step === 'type' ? (
@@ -573,13 +680,65 @@ function WicketSheet({
               </TouchableOpacity>
             ))}
           </ScrollView>
+        ) : multiFielder ? (
+          <>
+            <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700', marginBottom: 10 }}>RUNS COMPLETED</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+              {[0, 1, 2, 3].map((r) => (
+                <TouchableOpacity
+                  key={r}
+                  onPress={() => setCompletedRuns(r)}
+                  style={{
+                    width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: completedRuns === r ? '#4ade80' : '#1e2d45',
+                    borderWidth: 1, borderColor: completedRuns === r ? '#4ade80' : '#2d3f58',
+                  }}
+                >
+                  <Text style={{ color: completedRuns === r ? '#0a1628' : '#d1d5db', fontSize: 16, fontWeight: '700' }}>{r}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <FlatList
+              data={fieldingPlayers}
+              keyExtractor={(p) => p.id}
+              renderItem={({ item }) => {
+                const picked = pickedFielders.includes(item.id);
+                return (
+                  <TouchableOpacity
+                    onPress={() => toggleFielder(item.id)}
+                    style={{
+                      padding: 14, borderRadius: 8, marginBottom: 8,
+                      backgroundColor: picked ? '#0d2e1a' : '#1e2d45',
+                      borderWidth: 1, borderColor: picked ? '#4ade80' : '#2d3f58',
+                      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: '#ffffff', fontSize: 15 }}>{item.displayName}</Text>
+                    {picked && <Text style={{ color: '#4ade80', fontSize: 14, fontWeight: '900' }}>✓</Text>}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+            <TouchableOpacity
+              onPress={() => onSelect(selectedType!, pickedFielders, completedRuns)}
+              disabled={pickedFielders.length === 0}
+              style={{
+                backgroundColor: pickedFielders.length > 0 ? '#4ade80' : '#2d3f58',
+                borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 4,
+              }}
+            >
+              <Text style={{ color: pickedFielders.length > 0 ? '#0a1628' : '#6b7280', fontWeight: '700', fontSize: 15 }}>
+                Done ({pickedFielders.length})
+              </Text>
+            </TouchableOpacity>
+          </>
         ) : (
           <FlatList
             data={fieldingPlayers}
             keyExtractor={(p) => p.id}
             renderItem={({ item }) => (
               <TouchableOpacity
-                onPress={() => onSelect(selectedType!, item.id)}
+                onPress={() => onSelect(selectedType!, [item.id])}
                 style={{
                   padding: 14, borderRadius: 8, marginBottom: 8,
                   backgroundColor: '#1e2d45', borderWidth: 1, borderColor: '#2d3f58',
@@ -717,6 +876,7 @@ function BatterRow({
   hand,
   onToggleHand,
   onEdit,
+  showStrikeHint,
 }: {
   player: Player | undefined;
   stats: BatterStats;
@@ -724,6 +884,7 @@ function BatterRow({
   hand: 'RHB' | 'LHB';
   onToggleHand: () => void;
   onEdit?: () => void;
+  showStrikeHint?: boolean;
 }) {
   const sr = stats.balls > 0 ? ((stats.runs / stats.balls) * 100).toFixed(0) : '–';
   return (
@@ -755,11 +916,13 @@ function BatterRow({
           <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '700' }}>
             {player?.displayName ?? '–'}
           </Text>
-          {onStrike && (
+          {onStrike ? (
             <View style={{ backgroundColor: '#164d29', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
               <Text style={{ color: '#4ade80', fontSize: 10, fontWeight: '700' }}>ON STRIKE</Text>
             </View>
-          )}
+          ) : showStrikeHint ? (
+            <Text style={{ color: '#4b5563', fontSize: 10, fontWeight: '600', fontStyle: 'italic' }}>tap to face</Text>
+          ) : null}
         </View>
         <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 1 }}>
           SR {sr} · {stats.fours}×4 · {stats.sixes}×6
@@ -925,7 +1088,9 @@ function emptyBowlerStats(): BowlerStats {
 type Phase = 'loading' | 'no-match' | 'scoring' | 'new-bowler' | 'new-batter' | 'innings-over';
 
 export default function LiveScoringScreen() {
-  const activeClubId = useClubStore((s) => s.activeClubId);
+  const route = useRoute<RouteProp<RootStackParamList, 'LiveScoring'>>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { clubId, matchId } = route.params;
   const [phase, setPhase] = useState<Phase>('loading');
   const [match, setMatch] = useState<Match | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -945,34 +1110,43 @@ export default function LiveScoringScreen() {
   // Pending ball flow
   const pendingInputRef = useRef<BallInput | null>(null);
   const pendingWagonRef = useRef<WagonShot | null>(null);
-  const pendingFieldingRef = useRef<{ eventId?: string; fielderId?: string } | null>(null);
+  const pendingFieldingRef = useRef<{ eventId?: string; eventLabel?: string; fielderId?: string } | null>(null);
   const [showWagon, setShowWagon] = useState(false);
   const [showFielding, setShowFielding] = useState(false);
+  // Hide the fielder picker when the wicket sheet already captured the fielder
+  // (caught / run-out) so we don't ask for it twice.
+  const [hideFieldingFielders, setHideFieldingFielders] = useState(false);
   const [pendingRuns, setPendingRuns] = useState(0);
+  // Which end a replacement batter enters at — flips to 'offStrike' when an odd
+  // number of runs is completed on a run-out (the batters crossed).
+  const newBatterEndRef = useRef<'onStrike' | 'offStrike'>('onStrike');
 
   // Modals
   const [showWicket, setShowWicket] = useState(false);
   const [pendingExtra, setPendingExtra] = useState<ExtrasType | null>(null);
   const [changeTarget, setChangeTarget] = useState<'onStrike' | 'offStrike' | 'bowler' | null>(null);
+  const [showEditOvers, setShowEditOvers] = useState(false);
 
   // ── Load data ────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
-    if (!activeClubId) { setPhase('no-match'); return; }
     setPhase('loading');
     try {
       const [liveMatch, clubPlayers, club] = await Promise.all([
-        getLiveMatch(activeClubId),
-        getClubPlayers(activeClubId),
-        getClub(activeClubId),
+        getMatch(clubId, matchId),
+        getClubPlayers(clubId),
+        getClub(clubId),
       ]);
-      if (!liveMatch) { setPhase('no-match'); return; }
+      if (!liveMatch || (liveMatch.status !== 'live' && liveMatch.status !== 'scheduled')) {
+        setPhase('no-match');
+        return;
+      }
       setMatch(liveMatch);
       setPlayers(clubPlayers);
       setClubRules(club?.rules ?? liveMatch.rules);
 
       // Try to reconstruct innings from Firestore overs
-      const overs = await getMatchOvers(activeClubId, liveMatch.id);
+      const overs = await getMatchOvers(clubId, liveMatch.id);
       const ballsPerOver = liveMatch.rules.ballsPerOver;
       const lastManStands = club?.rules.lastManStands ?? liveMatch.rules.lastManStands;
       const oversPerInnings = liveMatch.rules.oversPerInnings;
@@ -1002,7 +1176,7 @@ export default function LiveScoringScreen() {
     } catch {
       setPhase('no-match');
     }
-  }, [activeClubId]);
+  }, [clubId, matchId]);
 
   function sumInningsRuns(overs: import('../../types').OverDocument[]): number {
     let total = 0;
@@ -1024,7 +1198,7 @@ export default function LiveScoringScreen() {
   const sealedRef = useRef(false);
   useEffect(() => {
     if (phase !== 'innings-over' || inningsNumber !== 2) return;
-    if (!innings || !match || !activeClubId || sealedRef.current) return;
+    if (!innings || !match || !clubId || sealedRef.current) return;
     sealedRef.current = true;
     let result = '';
     if (firstInningsRuns != null) {
@@ -1032,8 +1206,8 @@ export default function LiveScoringScreen() {
       else if (innings.totalRuns === firstInningsRuns) result = 'Match tied';
       else result = `Team batting first won by ${firstInningsRuns - innings.totalRuns} runs`;
     }
-    completeMatch(activeClubId, match.id, result).catch(() => {/* UI already updated */});
-  }, [phase, inningsNumber, innings, match, activeClubId, firstInningsRuns]);
+    completeMatch(clubId, match.id, result).catch(() => {/* UI already updated */});
+  }, [phase, inningsNumber, innings, match, clubId, firstInningsRuns]);
 
   // ── Innings reconstruction ──────────────────────────────────────
 
@@ -1187,28 +1361,51 @@ export default function LiveScoringScreen() {
     pendingWagonRef.current = null;
     pendingFieldingRef.current = null;
     setPendingRuns(input.runs + (input.extras?.runs ?? 0));
-    setShowWagon(true);
+    // Stumped / hit-wicket have no shot to plot — skip the wagon wheel.
+    const d = input.dismissal;
+    const skipWagon = !!d && NO_WAGON.includes(d.type as StandardDismissalType);
+    if (skipWagon) {
+      proceedAfterWagon();
+    } else {
+      setShowWagon(true);
+    }
   }
 
   function handleWagonDone(shot: WagonShot | null) {
     pendingWagonRef.current = shot;
     setShowWagon(false);
+    proceedAfterWagon();
+  }
+
+  function proceedAfterWagon() {
     // Skip the fielding overlay for wickets where no fielder is involved
     // (bowled, lbw, hit-wicket, etc.) — only caught/stumped/run-out need one.
     const d = pendingInputRef.current?.dismissal;
     const isNoFielderWicket =
       !!d && d.type in STD_LABELS && !FIELDER_NEEDED.includes(d.type as StandardDismissalType);
-    if (isNoFielderWicket) {
+    // Caught / run-out already recorded the fielder on the wicket sheet.
+    const fielderAlreadyRecorded =
+      !!d && FIELDER_ALREADY_RECORDED.includes(d.type as StandardDismissalType);
+    if (isNoFielderWicket || (fielderAlreadyRecorded && enabledFieldingEvents.length === 0)) {
+      // Nothing left to collect — skip the overlay entirely.
       pendingFieldingRef.current = null;
       commitBall();
     } else {
+      // Hide the fielder picker when it's already recorded; only offer the
+      // fielding-event chips.
+      setHideFieldingFielders(fielderAlreadyRecorded);
       setShowFielding(true);
     }
   }
 
   function handleFieldingDone(eventId: string | null, fielderId: string | null) {
+    // Snapshot the event label so counts survive later rule edits.
+    const eventLabel = eventId
+      ? clubRules?.fieldingEvents.find((e) => e.id === eventId)?.label
+      : undefined;
     pendingFieldingRef.current = {
       eventId: eventId ?? undefined,
+      eventLabel,
       fielderId: fielderId ?? undefined,
     };
     setShowFielding(false);
@@ -1272,6 +1469,14 @@ export default function LiveScoringScreen() {
     const isLoneBatter = innings.offStrikeId === '';
     if (result.rotateStrike && !isLoneBatter) [newOnStrike, newOffStrike] = [newOffStrike, newOnStrike];
 
+    // Run-out with an odd number of completed runs → the batters crossed, so the
+    // surviving partner is now on strike and the replacement comes in off strike.
+    const crossedOnRunOut =
+      result.batterIsOut &&
+      input.dismissal?.type === 'run-out' &&
+      result.runsScored % 2 !== 0 &&
+      !isLoneBatter;
+
     let newOverNumber = innings.overNumber;
     let newLegalBalls = result.newLegalBallsInOver;
     let newCurrentOverBalls = newOverBalls;
@@ -1292,8 +1497,8 @@ export default function LiveScoringScreen() {
       totalWickets: newWickets,
       overNumber: newOverNumber,
       legalBallsInOver: newLegalBalls,
-      onStrikeId: result.batterIsOut ? innings.onStrikeId : newOnStrike,
-      offStrikeId: result.batterIsOut ? innings.offStrikeId : newOffStrike,
+      onStrikeId: result.batterIsOut ? (crossedOnRunOut ? innings.offStrikeId : innings.onStrikeId) : newOnStrike,
+      offStrikeId: result.batterIsOut ? (crossedOnRunOut ? innings.onStrikeId : innings.offStrikeId) : newOffStrike,
       batterStats: newBatterStats,
       bowlerStats: newBowlerStats,
       currentOverBalls: newCurrentOverBalls,
@@ -1302,9 +1507,9 @@ export default function LiveScoringScreen() {
     setInnings(newInnings);
 
     // Persist
-    if (activeClubId && match) {
+    if (clubId && match) {
       saveOver({
-        clubId: activeClubId,
+        clubId,
         matchId: match.id,
         inningsId: innings.inningsId,
         overNumber: innings.overNumber,
@@ -1345,7 +1550,9 @@ export default function LiveScoringScreen() {
         setPhase(oversDone ? 'innings-over' : result.isOverComplete ? 'new-bowler' : 'scoring');
         return;
       }
-      // Replacement available.
+      // Replacement available. On a crossed run-out the out batter now sits at
+      // the off-strike slot, so the replacement fills that end instead.
+      newBatterEndRef.current = crossedOnRunOut ? 'offStrike' : 'onStrike';
       setPhase(oversDone ? 'innings-over' : result.isOverComplete ? 'new-bowler' : 'new-batter');
       return;
     }
@@ -1383,21 +1590,39 @@ export default function LiveScoringScreen() {
 
   // ── Wicket ───────────────────────────────────────────────────────
 
-  function handleWicketSelect(type: string, fielderId?: string) {
+  function handleWicketSelect(type: string, fielderIds?: string[], completedRuns?: number) {
     setShowWicket(false);
     if (!innings) return;
     startBall({
       batsmanId: innings.onStrikeId,
       bowlerId: innings.bowlerId,
-      runs: 0,
-      dismissal: { type, fielderId },
+      // Run-outs can be completed after the batters have run; those runs count.
+      runs: type === 'run-out' ? completedRuns ?? 0 : 0,
+      dismissal: {
+        type,
+        fielderId: fielderIds?.[0],
+        fielderIds: fielderIds && fielderIds.length > 1 ? fielderIds : undefined,
+      },
     });
   }
 
   // ── Undo ────────────────────────────────────────────────────────
 
+  function handleSaveOvers(newOvers: number) {
+    if (!match) return;
+    setShowEditOvers(false);
+    if (newOvers === match.rules.oversPerInnings) return;
+    // Optimistically apply so the over-limit / chase maths update immediately.
+    const updated: Match = { ...match, rules: { ...match.rules, oversPerInnings: newOvers } };
+    setMatch(updated);
+    updateMatchOvers(clubId, match.id, newOvers).catch(() => {
+      Alert.alert('Could not update overs. Please try again.');
+      load();
+    });
+  }
+
   function handleAbandon() {
-    if (!match || !activeClubId) return;
+    if (!match || !clubId) return;
     Alert.alert(
       'Abandon match?',
       'This ends the match with no result and cannot be undone.',
@@ -1407,8 +1632,8 @@ export default function LiveScoringScreen() {
           text: 'Abandon',
           style: 'destructive',
           onPress: () => {
-            abandonMatch(activeClubId, match.id)
-              .then(() => load())
+            abandonMatch(clubId, match.id)
+              .then(() => navigation.goBack())
               .catch(() => Alert.alert('Could not abandon the match. Please try again.'));
           },
         },
@@ -1417,7 +1642,7 @@ export default function LiveScoringScreen() {
   }
 
   function handleDeleteMatch() {
-    if (!match || !activeClubId) return;
+    if (!match || !clubId) return;
     Alert.alert(
       'Delete match?',
       'No ball has been bowled — this removes the match entirely and cannot be undone.',
@@ -1427,8 +1652,8 @@ export default function LiveScoringScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            deleteMatch(activeClubId, match.id)
-              .then(() => load())
+            deleteMatch(clubId, match.id)
+              .then(() => navigation.goBack())
               .catch(() => Alert.alert('Could not delete the match. Please try again.'));
           },
         },
@@ -1437,14 +1662,14 @@ export default function LiveScoringScreen() {
   }
 
   function handleUndo() {
-    if (history.length === 0 || !innings || !match || !activeClubId) return;
+    if (history.length === 0 || !innings || !match || !clubId) return;
     const prev = history[history.length - 1];
     setHistory((h) => h.slice(0, -1));
     setInnings(prev);
 
     // Rewrite over to Firestore
     saveOver({
-      clubId: activeClubId,
+      clubId,
       matchId: match.id,
       inningsId: prev.inningsId,
       overNumber: prev.overNumber,
@@ -1473,9 +1698,11 @@ export default function LiveScoringScreen() {
 
   function handleNewBatter(id: string) {
     if (!innings) return;
+    const end = newBatterEndRef.current;
+    newBatterEndRef.current = 'onStrike';
     setInnings((prev) => {
       if (!prev) return prev;
-      return { ...prev, onStrikeId: id };
+      return { ...prev, [end === 'offStrike' ? 'offStrikeId' : 'onStrikeId']: id };
     });
     setPhase('scoring');
   }
@@ -1529,6 +1756,15 @@ export default function LiveScoringScreen() {
     });
   }
 
+  // Tap the non-striker's row to hand them strike (no-op for a lone batter).
+  function swapStrike() {
+    setInnings((prev) =>
+      prev && prev.offStrikeId
+        ? { ...prev, onStrikeId: prev.offStrikeId, offStrikeId: prev.onStrikeId }
+        : prev
+    );
+  }
+
   const enabledExtras = match?.rules.enabledExtras ?? [];
   const enabledDismissals = clubRules?.enabledDismissals ?? match?.rules.enabledDismissals ?? [];
   const liveCustomDismissals: CustomDismissal[] =
@@ -1551,9 +1787,9 @@ export default function LiveScoringScreen() {
   if (phase === 'no-match') {
     return (
       <View style={{ flex: 1, backgroundColor: '#0a1628', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-        <Text style={{ color: '#6b7280', fontSize: 18, textAlign: 'center', marginBottom: 8 }}>No live match</Text>
+        <Text style={{ color: '#6b7280', fontSize: 18, textAlign: 'center', marginBottom: 8 }}>Match not available</Text>
         <Text style={{ color: '#4b5563', fontSize: 14, textAlign: 'center' }}>
-          Start a match from the Matches tab to begin scoring.
+          This match is no longer live. Go back to Matches to pick another.
         </Text>
       </View>
     );
@@ -1638,6 +1874,11 @@ export default function LiveScoringScreen() {
   // Which innings the scorecard tab shows (innings 1 lives in firstInnings once the chase starts).
   const scorecardInn = inningsNumber === 2 ? (cardInnings === 1 ? firstInnings : innings) : innings;
 
+  // Overs can only be edited while the 1st innings is in progress, and never
+  // below the overs already bowled (a part-bowled over counts as one).
+  const oversFloor = Math.max(1, innings.overNumber + (innings.legalBallsInOver > 0 ? 1 : 0));
+  const canEditOvers = inningsNumber === 1 && phase === 'scoring' && match?.rules.oversPerInnings != null;
+
   return (
     <View style={{ flex: 1, backgroundColor: '#0a1628' }}>
       {/* Top tabs */}
@@ -1688,6 +1929,24 @@ export default function LiveScoringScreen() {
         matchName={match ? `${match.homeTeam} vs ${match.awayTeam}` : ''}
       />
 
+      {/* Overs limit — editable during the 1st innings */}
+      {match?.rules.oversPerInnings != null && (
+        <TouchableOpacity
+          disabled={!canEditOvers}
+          onPress={() => setShowEditOvers(true)}
+          style={{
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+            paddingVertical: 6, backgroundColor: '#0c1a2e',
+            borderBottomWidth: 1, borderBottomColor: '#1e2d45',
+          }}
+        >
+          <Text style={{ color: '#6b7280', fontSize: 12 }}>
+            {match.rules.oversPerInnings} over match
+          </Text>
+          {canEditOvers && <Text style={{ color: '#60a5fa', fontSize: 12, fontWeight: '600' }}>✎ Edit</Text>}
+        </TouchableOpacity>
+      )}
+
       {/* Chase target (2nd innings) */}
       {inningsNumber === 2 && firstInningsRuns != null && (() => {
         const target = firstInningsRuns + 1;
@@ -1713,7 +1972,8 @@ export default function LiveScoringScreen() {
         );
       })()}
 
-      {/* Batter rows — tap ✎ (or long-press) to select / change */}
+      {/* Batter rows — tap the non-striker to give them strike;
+          tap ✎ (or long-press) to select / change a batter */}
       <TouchableOpacity activeOpacity={1} onLongPress={() => setChangeTarget('onStrike')}>
         <BatterRow
           player={onStrikePlayer}
@@ -1729,35 +1989,21 @@ export default function LiveScoringScreen() {
           <Text style={{ color: '#6b7280', fontSize: 12, fontStyle: 'italic' }}>Last man standing — batting alone</Text>
         </View>
       ) : (
-        <>
-          <TouchableOpacity activeOpacity={1} onLongPress={() => setChangeTarget('offStrike')}>
-            <BatterRow
-              player={offStrikePlayer}
-              stats={offStrikeStat}
-              onStrike={false}
-              hand={offStrikeHand}
-              onToggleHand={() => toggleHand(innings.offStrikeId)}
-              onEdit={() => setChangeTarget('offStrike')}
-            />
-          </TouchableOpacity>
-
-          {/* Swap strike */}
-          <TouchableOpacity
-            onPress={() =>
-              setInnings((prev) =>
-                prev ? { ...prev, onStrikeId: prev.offStrikeId, offStrikeId: prev.onStrikeId } : prev
-              )
-            }
-            style={{
-              flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-              paddingVertical: 6, backgroundColor: '#0c1a2e',
-              borderBottomWidth: 1, borderBottomColor: '#1e2d45',
-              gap: 6,
-            }}
-          >
-            <Text style={{ color: '#4b5563', fontSize: 12 }}>⇅ Swap strike</Text>
-          </TouchableOpacity>
-        </>
+        <TouchableOpacity
+          activeOpacity={0.6}
+          onPress={swapStrike}
+          onLongPress={() => setChangeTarget('offStrike')}
+        >
+          <BatterRow
+            player={offStrikePlayer}
+            stats={offStrikeStat}
+            onStrike={false}
+            hand={offStrikeHand}
+            onToggleHand={() => toggleHand(innings.offStrikeId)}
+            onEdit={() => setChangeTarget('offStrike')}
+            showStrikeHint
+          />
+        </TouchableOpacity>
       )}
 
       {/* Bowler row — tap ✎ (or long-press) to select / change */}
@@ -1889,6 +2135,7 @@ export default function LiveScoringScreen() {
         runs={pendingRuns}
         players={fieldingPlayers}
         fieldingEvents={enabledFieldingEvents}
+        hideFielders={hideFieldingFielders}
         onDone={handleFieldingDone}
       />
 
@@ -1930,6 +2177,14 @@ export default function LiveScoringScreen() {
         excludeIds={[]}
         onSelect={handleChangePlayer}
         onClose={() => setChangeTarget(null)}
+      />
+
+      <EditOversModal
+        visible={showEditOvers}
+        current={match?.rules.oversPerInnings ?? oversFloor}
+        minOvers={oversFloor}
+        onConfirm={handleSaveOvers}
+        onCancel={() => setShowEditOvers(false)}
       />
     </View>
   );

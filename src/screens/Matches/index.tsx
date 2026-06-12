@@ -1,11 +1,39 @@
-import { View, Text, TouchableOpacity, FlatList, ActivityIndicator, Alert } from 'react-native';
+import { useMemo } from 'react';
+import { View, Text, TouchableOpacity, SectionList, ActivityIndicator, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useClubStore } from '../../store/clubStore';
 import { getClubMatches, deleteMatch, getMatchOvers } from '../../services/matchService';
+import { getClub } from '../../services/clubService';
+import { seasonLabel, seasonSortValue, type Hemisphere } from '../../utils/seasons';
 import type { Match } from '../../types';
+
+interface MatchSection {
+  title: string;
+  sortValue: number;
+  data: Match[];
+}
+
+// Group date-sorted matches into season buckets, newest season first.
+function groupBySeason(matches: Match[], hemisphere: Hemisphere): MatchSection[] {
+  const sorted = [...matches].sort((a, b) => b.date.toMillis() - a.date.toMillis());
+  const sections = new Map<string, MatchSection>();
+
+  for (const match of sorted) {
+    const date = match.date.toDate();
+    const title = seasonLabel(date, hemisphere);
+    const existing = sections.get(title);
+    if (existing) {
+      existing.data.push(match);
+    } else {
+      sections.set(title, { title, sortValue: seasonSortValue(date), data: [match] });
+    }
+  }
+
+  return [...sections.values()].sort((a, b) => b.sortValue - a.sortValue);
+}
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -105,6 +133,19 @@ export default function MatchesScreen() {
     enabled: !!activeClubId,
   });
 
+  const { data: club } = useQuery({
+    queryKey: ['club', activeClubId],
+    queryFn: () => getClub(activeClubId!),
+    enabled: !!activeClubId,
+  });
+
+  const hemisphere: Hemisphere = club?.hemisphere ?? 'N';
+
+  const sections = useMemo(
+    () => groupBySeason(matches ?? [], hemisphere),
+    [matches, hemisphere]
+  );
+
   const handleMatchPress = (match: Match) => {
     const clubId = match.clubId;
     const matchId = match.id;
@@ -116,7 +157,7 @@ export default function MatchesScreen() {
       return;
     }
     if (match.status === 'live' || hasToss) {
-      navigation.navigate('Tabs', { screen: 'Live' });
+      navigation.navigate('LiveScoring', { clubId, matchId });
       return;
     }
     if (hasTeams) {
@@ -176,25 +217,56 @@ export default function MatchesScreen() {
         }}
       >
         <Text style={{ color: '#ffffff', fontSize: 22, fontWeight: '700' }}>Matches</Text>
-        <TouchableOpacity
-          onPress={() => navigation.navigate('ScheduleMatch', { clubId: activeClubId })}
-          style={{
-            backgroundColor: '#4ade80',
-            borderRadius: 8,
-            paddingVertical: 8,
-            paddingHorizontal: 14,
-          }}
-        >
-          <Text style={{ color: '#0a1628', fontSize: 14, fontWeight: '700' }}>+ Schedule</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Leaderboard', { clubId: activeClubId })}
+            style={{
+              backgroundColor: '#1e3a5f',
+              borderRadius: 8,
+              paddingVertical: 8,
+              paddingHorizontal: 12,
+              borderWidth: 1,
+              borderColor: '#2d3f58',
+            }}
+          >
+            <Text style={{ color: '#4ade80', fontSize: 14, fontWeight: '700' }}>🏆 Leaders</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('ScheduleMatch', { clubId: activeClubId })}
+            style={{
+              backgroundColor: '#4ade80',
+              borderRadius: 8,
+              paddingVertical: 8,
+              paddingHorizontal: 14,
+            }}
+          >
+            <Text style={{ color: '#0a1628', fontSize: 14, fontWeight: '700' }}>+ Schedule</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {isLoading ? (
         <ActivityIndicator color="#4ade80" style={{ marginTop: 40 }} />
-      ) : matches && matches.length > 0 ? (
-        <FlatList
-          data={[...matches].sort((a, b) => b.date.toMillis() - a.date.toMillis())}
+      ) : sections.length > 0 ? (
+        <SectionList
+          sections={sections}
           keyExtractor={(item) => item.id}
+          renderSectionHeader={({ section }) => (
+            <Text
+              style={{
+                color: '#9ca3af',
+                fontSize: 13,
+                fontWeight: '700',
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+                backgroundColor: '#0a1628',
+                paddingTop: 12,
+                paddingBottom: 8,
+              }}
+            >
+              {section.title}
+            </Text>
+          )}
           renderItem={({ item }) => (
             <MatchCard
               match={item}

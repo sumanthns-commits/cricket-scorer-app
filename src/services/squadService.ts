@@ -16,6 +16,7 @@ const emptyStats: CareerStats = {
   totalRunsConceded: 0,
   totalCatches: 0,
   totalRunOuts: 0,
+  totalStumpings: 0,
   highScore: 0,
   matchesPlayed: 0,
 };
@@ -31,6 +32,8 @@ export async function getClubSquad(clubId: string): Promise<SquadEntry[]> {
 
   for (const d of snap.docs) {
     const data = d.data();
+    // Linked ghosts are absorbed into a registered member — hide from the squad.
+    if (data.type === 'linked') continue;
     const role: 'admin' | 'member' = data.role === 'admin' ? 'admin' : 'member';
 
     if (data.displayName) {

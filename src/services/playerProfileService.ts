@@ -117,14 +117,19 @@ export async function getPlayerForm(
     ? (raw as RawFormMatch[])
     : ((raw as { matches?: RawFormMatch[] })?.matches ?? []);
 
-  return matches.map((m, i) => ({
-    matchId: m.matchId ?? String(i),
-    label: m.label ?? m.opponent ?? `M${i + 1}`,
-    runs: toNumber(m.runs),
-    ballsFaced: toNumber(m.ballsFaced),
-    wickets: toNumber(m.wickets),
-    notOut: m.notOut === true,
-  }));
+  // The function returns newest-first (to apply the limit); reverse so the
+  // chart reads chronologically, oldest on the left.
+  return matches
+    .slice()
+    .reverse()
+    .map((m, i) => ({
+      matchId: m.matchId ?? String(i),
+      label: m.label ?? m.opponent ?? `M${i + 1}`,
+      runs: toNumber(m.runs),
+      ballsFaced: toNumber(m.ballsFaced),
+      wickets: toNumber(m.wickets),
+      notOut: m.notOut === true,
+    }));
 }
 
 /** Runs per wagon-wheel sector. Index 0 = straight (toward bowler), clockwise. */

@@ -9,7 +9,7 @@ export interface BallInput {
   bowlerId: string;
   runs: number;
   extras?: { type: ExtrasType; runs: number };
-  dismissal?: { type: string; fielderId?: string };
+  dismissal?: { type: string; fielderId?: string; fielderIds?: string[] };
 }
 
 export interface BallResult {
@@ -90,6 +90,7 @@ export function recordBall(
           dismissal: {
             type: input.dismissal.type,
             fielderId: input.dismissal.fielderId,
+            fielderIds: input.dismissal.fielderIds,
             bowlerId: input.bowlerId,
           },
         }

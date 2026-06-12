@@ -32,28 +32,47 @@ src/
   — no Tailwind colour classes with arbitrary values like bg-[#1e293b]
 
 ## Domain: player types
-- ghost     — imported from PDF/CSV, no auth, claimStatus: open
-- registered — has Firebase auth, activeClaim: null
-- linked    — ghost merged into registered after cooldown
+- ghost      — imported from PDF/CSV (or seeded), no auth
+- registered — has Firebase auth, a club member
+- linked     — a ghost an admin merged into a registered member (see Ghost
+               linking); stats folded into the member, hidden from selection
 
-## Domain: claim lifecycle
-open → cooldown → merged          (auto via Cloud Task at mergeScheduledAt)
+## Authoritative player model
+Players are subcollection docs `clubs/{clubId}/players/{playerId}` (ghost id =
+arbitrary, registered/linked id = uid), with `type`, `role`, `careerStats`.
+A LEGACY top-level `players` collection still backs onStatsImport + fuzzyMatcher;
+it is otherwise unused. Build new code against the subcollection.
+
+## Domain: ghost linking (IMPLEMENTED)
+An admin links an existing ghost to a new member when approving their join
+request — `resolveJoinRequest({ ..., linkGhostId })`, Admin SDK:
+- DIRECT per-club merge: `addCareerStats` folds the ghost's careerStats into the
+  member's `clubs/{clubId}/players/{uid}.careerStats`. No cooldown.
+- ghost doc → `type:'linked'`, `linkedTo: uid` (its frozen stats ARE the reversal
+  snapshot); member gets a `linkedGhost { ghostId, displayName, linkedAt }` pointer.
+- Reversible: `unlinkGhost` subtracts the ghost's frozen stats back out and
+  restores `type:'ghost'`.
+- Suppression: `type:'linked'` is filtered from team selection (getClubPlayers),
+  squad (getClubSquad), and AI selection (getAvailablePlayers).
+- Global/cross-club stats need no special handling — the `publicPlayerStats`
+  mirror (per `uid_clubId`, kept in sync by the `mirrorPlayerStats` trigger)
+  reflects the merged per-club totals automatically.
+
+## Self-service claim lifecycle (PLANNED — NOT implemented)
+The cooldown/contest/auto-merge flow below is a design target only. No code
+creates or merges claims today; `statsResolver` merely PREVIEWS a claim's
+snapshot if one existed. Ghost→member linking currently happens ONLY via the
+admin path above.
+open → cooldown → merged          (intended: auto via Cloud Task at mergeScheduledAt)
 cooldown → contested              (2nd player claims same ghost during cooldown)
 contested → admin resolves        (picks winner, rejects loser)
-cooldown | contested → reverted   (trivial — stats never touched during cooldown)
-merged → reverted                 (admin only — snapshot arithmetic reverses merge)
-
-## Claim snapshot rule — CRITICAL
-Only ghost stats snapshotted at claim time (ghost never changes after import).
-Registered player stats always read LIVE at merge time.
-Post-merge revert: registeredPreMerge = subtractStats(mergedStats, snapshot.ghostStats)
+merged → reverted                 (snapshot arithmetic reverses the merge)
 
 ## Stats resolver rule
-resolvePlayerStats() and resolveSquadStats() handle cooldown preview:
-- ghost stats: from claim.snapshot.ghostStats
-- registered stats: live from player doc
-- preview merge: mergeStatsFromTotals(snapshot.ghostStats, liveRegisteredStats)
-- dedup: suppress ghost from squad if its claimant is also in the squad
+resolvePlayerStats() / resolveSquadStats() preview a ghost's pending claim
+(dormant until the claim flow above is built):
+- ghost stats: from claim.snapshot.ghostStats; registered stats: live from doc
+- dedup: suppress a ghost from a squad if its claimant is also in the squad
 
 ## Scoring engine rule
 scoringEngine.ts only needs dismissalConfig (built by screen from match.rules).
