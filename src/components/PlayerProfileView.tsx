@@ -15,7 +15,7 @@ import {
 import PlayerAvatar from './PlayerAvatar';
 import FormChart from './FormChart';
 import WagonWheel from './WagonWheel';
-import type { BattingHand, BowlingStyle, PlayerType } from '../types';
+import type { BattingHand, BowlingStyle, PlayerType, WicketKeepingAbility } from '../types';
 
 const BATTING_HANDS: { value: BattingHand; label: string }[] = [
   { value: 'RHB', label: 'Right hand' },
@@ -25,6 +25,10 @@ const BOWLING_STYLES: { value: BowlingStyle; label: string }[] = [
   { value: 'fast', label: 'Fast' },
   { value: 'medium', label: 'Medium' },
   { value: 'spin', label: 'Spin' },
+];
+const WICKET_KEEPING_OPTIONS: { value: WicketKeepingAbility; label: string }[] = [
+  { value: 'keeper', label: 'Primary keeper' },
+  { value: 'can-keep', label: 'Can keep' },
 ];
 
 function ChipRow<T extends string>({
@@ -175,7 +179,7 @@ export default function PlayerProfileView({
     queryFn: () => getPlayer(clubId, playerId),
   });
 
-  const saveAttr = (attrs: { displayName?: string; battingHand?: BattingHand; bowlingStyle?: BowlingStyle }) => {
+  const saveAttr = (attrs: { displayName?: string; battingHand?: BattingHand; bowlingStyle?: BowlingStyle; wicketKeeping?: WicketKeepingAbility }) => {
     updatePlayerAttributes(clubId, playerId, attrs)
       .then(() => queryClient.invalidateQueries({ queryKey: ['player', clubId, playerId] }))
       .catch(() => {/* keep last value on failure */});
@@ -187,6 +191,9 @@ export default function PlayerProfileView({
     const next = nameDraft.trim();
     if (next && next !== player?.displayName) saveAttr({ displayName: next });
   };
+
+  const [keepingDraft, setKeepingDraft] = useState<WicketKeepingAbility | undefined>(undefined);
+  useEffect(() => { setKeepingDraft(player?.wicketKeeping); }, [player?.wicketKeeping]);
 
   const { data: resolved, isLoading: loadingStats } = useQuery({
     queryKey: ['resolvedStats', clubId, playerId],
@@ -324,12 +331,20 @@ export default function PlayerProfileView({
           <Section title="BOWLING STYLE">
             <ChipRow options={BOWLING_STYLES} selected={player.bowlingStyle} onSelect={(v) => saveAttr({ bowlingStyle: v })} />
           </Section>
+          <Section title="WICKET KEEPING">
+            <ChipRow
+              options={WICKET_KEEPING_OPTIONS}
+              selected={keepingDraft}
+              onSelect={(v) => { setKeepingDraft(v); saveAttr({ wicketKeeping: v }); }}
+            />
+          </Section>
         </>
       ) : (
         <Section title="PLAYER INFO">
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <StatBox label="Batting" value={BATTING_HANDS.find((h) => h.value === player.battingHand)?.label ?? '—'} />
             <StatBox label="Bowling" value={BOWLING_STYLES.find((s) => s.value === player.bowlingStyle)?.label ?? '—'} />
+            <StatBox label="Keeping" value={WICKET_KEEPING_OPTIONS.find((k) => k.value === player.wicketKeeping)?.label ?? '—'} />
           </View>
         </Section>
       )}

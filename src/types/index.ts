@@ -10,6 +10,7 @@ export interface AppUser {
   // admin reviewing their join request (see EditProfile / RequesterProfile).
   battingHand?: BattingHand;
   bowlingStyle?: BowlingStyle;
+  wicketKeeping?: WicketKeepingAbility;
   bio?: string;
 }
 
@@ -185,6 +186,7 @@ export interface ClubMember {
 
 export type BattingHand = 'RHB' | 'LHB';
 export type BowlingStyle = 'fast' | 'medium' | 'spin';
+export type WicketKeepingAbility = 'keeper' | 'can-keep';
 
 // Pointer left on a registered member after an admin links a ghost into them at
 // join-approval. The ghost's stats are merged into the member's careerStats; the
@@ -206,6 +208,7 @@ export interface Player {
   skillRating?: number;
   battingHand?: BattingHand;
   bowlingStyle?: BowlingStyle;
+  wicketKeeping?: WicketKeepingAbility;
   captainStats?: CaptainStats;
   // Set on a registered member that absorbed a ghost; absent otherwise.
   linkedGhost?: LinkedGhost;

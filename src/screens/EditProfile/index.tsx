@@ -14,7 +14,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useAuthStore } from '../../store/authStore';
 import { getUserProfile, updateUserProfile } from '../../services/userProfileService';
-import type { BattingHand, BowlingStyle } from '../../types';
+import type { BattingHand, BowlingStyle, WicketKeepingAbility } from '../../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EditProfile'>;
 
@@ -26,6 +26,10 @@ const BOWLING_STYLES: { value: BowlingStyle; label: string }[] = [
   { value: 'fast', label: 'Fast' },
   { value: 'medium', label: 'Medium' },
   { value: 'spin', label: 'Spin' },
+];
+const WICKET_KEEPING_OPTIONS: { value: WicketKeepingAbility; label: string }[] = [
+  { value: 'keeper', label: 'Primary keeper' },
+  { value: 'can-keep', label: 'Can keep' },
 ];
 
 function ChipRow<T extends string>({
@@ -77,6 +81,7 @@ export default function EditProfileScreen({ navigation }: Props) {
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [battingHand, setBattingHand] = useState<BattingHand | undefined>(undefined);
   const [bowlingStyle, setBowlingStyle] = useState<BowlingStyle | undefined>(undefined);
+  const [wicketKeeping, setWicketKeeping] = useState<WicketKeepingAbility | undefined>(undefined);
   const [bio, setBio] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -86,6 +91,7 @@ export default function EditProfileScreen({ navigation }: Props) {
     setDisplayName(profile.displayName ?? '');
     setBattingHand(profile.battingHand);
     setBowlingStyle(profile.bowlingStyle);
+    setWicketKeeping(profile.wicketKeeping);
     setBio(profile.bio ?? '');
     setSeeded(true);
   }
@@ -98,6 +104,7 @@ export default function EditProfileScreen({ navigation }: Props) {
         displayName: (displayName ?? '').trim() || (user.displayName ?? 'Player'),
         battingHand,
         bowlingStyle,
+        wicketKeeping,
         bio: (bio ?? '').trim(),
       });
       await queryClient.invalidateQueries({ queryKey: ['userProfile', user.uid] });
@@ -149,6 +156,11 @@ export default function EditProfileScreen({ navigation }: Props) {
         <Text style={{ color: '#9ca3af', fontSize: 13, marginBottom: 10 }}>BOWLING</Text>
         <View style={{ marginBottom: 24 }}>
           <ChipRow options={BOWLING_STYLES} selected={bowlingStyle} onSelect={setBowlingStyle} />
+        </View>
+
+        <Text style={{ color: '#9ca3af', fontSize: 13, marginBottom: 10 }}>WICKET KEEPING</Text>
+        <View style={{ marginBottom: 24 }}>
+          <ChipRow options={WICKET_KEEPING_OPTIONS} selected={wicketKeeping} onSelect={setWicketKeeping} />
         </View>
 
         <Text style={{ color: '#9ca3af', fontSize: 13, marginBottom: 6 }}>BIO</Text>

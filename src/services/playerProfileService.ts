@@ -1,12 +1,12 @@
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import { callCallableFunction } from './functionsClient';
-import type { BattingHand, BowlingStyle, CareerStats, Claim, Player } from '../types';
+import type { BattingHand, BowlingStyle, CareerStats, Claim, Player, WicketKeepingAbility } from '../types';
 
 export async function updatePlayerAttributes(
   clubId: string,
   playerId: string,
-  attrs: { displayName?: string; battingHand?: BattingHand; bowlingStyle?: BowlingStyle }
+  attrs: { displayName?: string; battingHand?: BattingHand; bowlingStyle?: BowlingStyle; wicketKeeping?: WicketKeepingAbility }
 ): Promise<void> {
   await updateDoc(doc(db, 'clubs', clubId, 'players', playerId), attrs);
 }

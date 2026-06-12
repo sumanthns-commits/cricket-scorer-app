@@ -1,6 +1,6 @@
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
-import type { AppUser, BattingHand, BowlingStyle } from '../types';
+import type { AppUser, BattingHand, BowlingStyle, WicketKeepingAbility } from '../types';
 
 // The global player profile lives on users/{uid} (signed-in-readable,
 // self-writable). It travels with the player across every club and is what a
@@ -14,6 +14,7 @@ export type UserProfileEdits = {
   displayName?: string;
   battingHand?: BattingHand;
   bowlingStyle?: BowlingStyle;
+  wicketKeeping?: WicketKeepingAbility;
   bio?: string;
 };
 

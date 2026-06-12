@@ -17,6 +17,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'RequesterProfile'>;
 
 const HAND_LABEL: Record<string, string> = { RHB: 'Right hand bat', LHB: 'Left hand bat' };
 const STYLE_LABEL: Record<string, string> = { fast: 'Fast', medium: 'Medium', spin: 'Spin' };
+const KEEPING_LABEL: Record<string, string> = { keeper: 'Keeper', 'can-keep': 'Can keep' };
 
 function fmt(value: number | null, digits = 1): string {
   return value === null ? '—' : value.toFixed(digits);
@@ -160,7 +161,8 @@ export default function RequesterProfileScreen({ route, navigation }: Props) {
           <Text style={{ color: '#ffffff', fontSize: 20, fontWeight: '700' }}>{name}</Text>
           <Text style={{ color: '#9ca3af', fontSize: 13, marginTop: 2 }}>
             {[profile?.battingHand && HAND_LABEL[profile.battingHand],
-              profile?.bowlingStyle && STYLE_LABEL[profile.bowlingStyle]]
+              profile?.bowlingStyle && STYLE_LABEL[profile.bowlingStyle],
+              profile?.wicketKeeping && KEEPING_LABEL[profile.wicketKeeping]]
               .filter(Boolean)
               .join(' · ') || 'No profile details'}
           </Text>
