@@ -2,6 +2,7 @@ import { View, ActivityIndicator } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import { useAuthStore } from '../store/authStore';
+import { useThemeStore } from '../store/themeStore';
 import TabNavigator, { type TabParamList } from './TabNavigator';
 import SignInScreen from '../screens/SignIn';
 import CreateClubScreen from '../screens/CreateClub';
@@ -43,11 +44,12 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export default function RootNavigator() {
   const user = useAuthStore((s) => s.user);
   const initialized = useAuthStore((s) => s.initialized);
+  const theme = useThemeStore((s) => s.theme);
 
   if (!initialized) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0a1628', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#4ade80" />
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color={theme.accent} />
       </View>
     );
   }
@@ -55,9 +57,9 @@ export default function RootNavigator() {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: { backgroundColor: '#0a1628' },
-        headerTintColor: '#ffffff',
-        contentStyle: { backgroundColor: '#0a1628' },
+        headerStyle: { backgroundColor: theme.bg },
+        headerTintColor: theme.text,
+        contentStyle: { backgroundColor: theme.bg },
       }}
     >
       {user ? (
