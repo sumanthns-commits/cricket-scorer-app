@@ -81,14 +81,31 @@ export default function WagonWheel({
         {data.map((runs, i) => {
           const start = i * SECTOR_DEG + GAP_DEG / 2;
           const end = (i + 1) * SECTOR_DEG - GAP_DEG / 2;
+          const midDeg = (start + end) / 2;
+          const labelR = r * 0.62;
+          const [lx, ly] = point(cx, cy, labelR, midDeg);
+          const pct = totalRuns > 0 ? Math.round((runs / totalRuns) * 100) : 0;
           return (
-            <Path
-              key={i}
-              d={wedgePath(cx, cy, r, start, end)}
-              fill={heatColor(runs / maxRuns)}
-              stroke="#0a1628"
-              strokeWidth={1}
-            />
+            <G key={i}>
+              <Path
+                d={wedgePath(cx, cy, r, start, end)}
+                fill={heatColor(runs / maxRuns)}
+                stroke="#0a1628"
+                strokeWidth={1}
+              />
+              {runs > 0 && (
+                <SvgText
+                  x={lx}
+                  y={ly + 4}
+                  fill={runs / maxRuns > 0.5 ? '#ffffff' : '#cbd5e1'}
+                  fontSize={9}
+                  fontWeight="700"
+                  textAnchor="middle"
+                >
+                  {pct}%
+                </SvgText>
+              )}
+            </G>
           );
         })}
 
