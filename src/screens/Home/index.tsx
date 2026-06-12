@@ -32,7 +32,9 @@ function ClubCard({
   onRequestsPress: () => void;
 }) {
   return (
-    <View
+    <TouchableOpacity
+      onPress={onMatchesPress}
+      activeOpacity={0.8}
       style={{
         backgroundColor: '#1e2d45',
         borderRadius: 12,
@@ -71,7 +73,7 @@ function ClubCard({
           </TouchableOpacity>
         )}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 

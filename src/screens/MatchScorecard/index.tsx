@@ -12,12 +12,25 @@ type Route = RouteProp<RootStackParamList, 'MatchScorecard'>;
 const num = { width: 38, textAlign: 'right' as const, color: '#d1d5db', fontSize: 13 };
 const bnum = { width: 44, textAlign: 'right' as const, color: '#d1d5db', fontSize: 13 };
 
+function CaptainBadge() {
+  return (
+    <View style={{
+      backgroundColor: '#1e3a1e', borderRadius: 4, borderWidth: 1, borderColor: '#4ade80',
+      paddingHorizontal: 5, paddingVertical: 1, alignSelf: 'flex-start',
+    }}>
+      <Text style={{ color: '#4ade80', fontSize: 9, fontWeight: '800' }}>C</Text>
+    </View>
+  );
+}
+
 function InningsView({
   card,
   nameOf,
+  captains,
 }: {
   card: InningsCard;
   nameOf: (id: string) => string;
+  captains: Set<string>;
 }) {
   return (
     <View style={{ padding: 16 }}>
@@ -36,7 +49,10 @@ function InningsView({
         return (
           <View key={b.id} style={{ flexDirection: 'row', paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#1e2d45' }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: '#ffffff', fontSize: 13 }}>{nameOf(b.id)}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={{ color: '#ffffff', fontSize: 13 }}>{nameOf(b.id)}</Text>
+                {captains.has(b.id) && <CaptainBadge />}
+              </View>
               <Text style={{ color: b.out ? '#6b7280' : '#4ade80', fontSize: 10 }}>{b.out ? 'out' : 'not out'}</Text>
             </View>
             <Text style={num}>{b.runs}</Text>
@@ -57,8 +73,11 @@ function InningsView({
         const oversNum = b.balls / 6;
         const econ = b.balls > 0 ? (b.runs / oversNum).toFixed(1) : '–';
         return (
-          <View key={b.id} style={{ flexDirection: 'row', paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#1e2d45' }}>
-            <Text style={{ flex: 1, color: '#ffffff', fontSize: 13 }}>{nameOf(b.id)}</Text>
+          <View key={b.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#1e2d45' }}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={{ color: '#ffffff', fontSize: 13 }}>{nameOf(b.id)}</Text>
+              {captains.has(b.id) && <CaptainBadge />}
+            </View>
             <Text style={bnum}>{Math.floor(b.balls / 6)}.{b.balls % 6}</Text>
             <Text style={bnum}>{b.runs}</Text>
             <Text style={bnum}>{b.wickets}</Text>
@@ -107,6 +126,7 @@ export default function MatchScorecardScreen() {
   const nameOf = (id: string) => nameMap[id] ?? id;
   const hasBoth = !!card1 && !!card2;
   const card = innings === 1 ? card1 : card2;
+  const captains = new Set([match?.captainA, match?.captainB].filter(Boolean) as string[]);
 
   return (
     <View style={{ flex: 1, backgroundColor: '#0a1628' }}>
@@ -140,7 +160,7 @@ export default function MatchScorecardScreen() {
 
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
         {card ? (
-          <InningsView card={card} nameOf={nameOf} />
+          <InningsView card={card} nameOf={nameOf} captains={captains} />
         ) : (
           <Text style={{ color: '#6b7280', textAlign: 'center', marginTop: 40 }}>No scorecard data.</Text>
         )}

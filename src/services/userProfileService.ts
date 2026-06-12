@@ -1,4 +1,4 @@
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, deleteField } from 'firebase/firestore';
 import { db } from './firebase';
 import type { AppUser, BattingHand, BowlingStyle, WicketKeepingAbility } from '../types';
 
@@ -14,7 +14,7 @@ export type UserProfileEdits = {
   displayName?: string;
   battingHand?: BattingHand;
   bowlingStyle?: BowlingStyle;
-  wicketKeeping?: WicketKeepingAbility;
+  wicketKeeping?: WicketKeepingAbility | null;
   bio?: string;
 };
 
@@ -22,5 +22,7 @@ export async function updateUserProfile(
   uid: string,
   edits: UserProfileEdits
 ): Promise<void> {
-  await updateDoc(doc(db, 'users', uid), edits);
+  const update: Record<string, unknown> = { ...edits };
+  if (edits.wicketKeeping === null) update.wicketKeeping = deleteField();
+  await updateDoc(doc(db, 'users', uid), update);
 }

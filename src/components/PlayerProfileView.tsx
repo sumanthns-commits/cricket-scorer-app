@@ -37,10 +37,12 @@ function ChipRow<T extends string>({
   options,
   selected,
   onSelect,
+  onDeselect,
 }: {
   options: { value: T; label: string }[];
   selected: T | undefined;
   onSelect: (v: T) => void;
+  onDeselect?: () => void;
 }) {
   return (
     <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
@@ -49,7 +51,7 @@ function ChipRow<T extends string>({
         return (
           <TouchableOpacity
             key={o.value}
-            onPress={() => onSelect(o.value)}
+            onPress={() => (active && onDeselect ? onDeselect() : onSelect(o.value))}
             style={{
               paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
               backgroundColor: active ? '#4ade80' : '#1e2d45',
@@ -228,7 +230,7 @@ export default function PlayerProfileView({
     queryFn: () => getPlayer(clubId, playerId),
   });
 
-  const saveAttr = (attrs: { displayName?: string; battingHand?: BattingHand; bowlingStyle?: BowlingStyle; wicketKeeping?: WicketKeepingAbility }) => {
+  const saveAttr = (attrs: { displayName?: string; battingHand?: BattingHand; bowlingStyle?: BowlingStyle; wicketKeeping?: WicketKeepingAbility | null }) => {
     updatePlayerAttributes(clubId, playerId, attrs)
       .then(() => queryClient.invalidateQueries({ queryKey: ['player', clubId, playerId] }))
       .catch(() => {/* keep last value on failure */});
@@ -413,6 +415,7 @@ export default function PlayerProfileView({
               options={WICKET_KEEPING_OPTIONS}
               selected={keepingDraft}
               onSelect={(v) => { setKeepingDraft(v); saveAttr({ wicketKeeping: v }); }}
+              onDeselect={() => { setKeepingDraft(undefined); saveAttr({ wicketKeeping: null }); }}
             />
           </Section>
           <Section title="STRENGTH OVERRIDE">

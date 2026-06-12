@@ -75,7 +75,7 @@ export default function ScheduleMatchScreen() {
   const [day, setDay] = useState(tomorrow.getDate());
   const [month, setMonth] = useState(tomorrow.getMonth());
   const [year, setYear] = useState(tomorrow.getFullYear());
-  const [format, setFormat] = useState<MatchFormat>('T20');
+  const [format, setFormat] = useState<MatchFormat>('custom');
   const [customOvers, setCustomOvers] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [reusePrev, setReusePrev] = useState(true);

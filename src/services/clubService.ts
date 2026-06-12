@@ -233,3 +233,11 @@ export async function archiveClub(clubId: string): Promise<void> {
 export async function unarchiveClub(clubId: string): Promise<void> {
   await updateDoc(doc(db, 'clubs', clubId), { archivedAt: null });
 }
+
+export async function setMemberRole(
+  clubId: string,
+  playerId: string,
+  role: 'admin' | 'member'
+): Promise<void> {
+  await updateDoc(doc(db, 'clubs', clubId, 'players', playerId), { role });
+}

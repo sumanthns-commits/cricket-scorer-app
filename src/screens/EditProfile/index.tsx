@@ -36,10 +36,12 @@ function ChipRow<T extends string>({
   options,
   selected,
   onSelect,
+  onDeselect,
 }: {
   options: { value: T; label: string }[];
   selected: T | undefined;
   onSelect: (v: T) => void;
+  onDeselect?: () => void;
 }) {
   return (
     <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
@@ -48,7 +50,7 @@ function ChipRow<T extends string>({
         return (
           <TouchableOpacity
             key={o.value}
-            onPress={() => onSelect(o.value)}
+            onPress={() => (active && onDeselect ? onDeselect() : onSelect(o.value))}
             style={{
               paddingHorizontal: 14,
               paddingVertical: 8,
@@ -104,7 +106,7 @@ export default function EditProfileScreen({ navigation }: Props) {
         displayName: (displayName ?? '').trim() || (user.displayName ?? 'Player'),
         battingHand,
         bowlingStyle,
-        wicketKeeping,
+        wicketKeeping: wicketKeeping ?? null,
         bio: (bio ?? '').trim(),
       });
       await queryClient.invalidateQueries({ queryKey: ['userProfile', user.uid] });
@@ -160,7 +162,7 @@ export default function EditProfileScreen({ navigation }: Props) {
 
         <Text style={{ color: '#9ca3af', fontSize: 13, marginBottom: 10 }}>WICKET KEEPING</Text>
         <View style={{ marginBottom: 24 }}>
-          <ChipRow options={WICKET_KEEPING_OPTIONS} selected={wicketKeeping} onSelect={setWicketKeeping} />
+          <ChipRow options={WICKET_KEEPING_OPTIONS} selected={wicketKeeping} onSelect={setWicketKeeping} onDeselect={() => setWicketKeeping(undefined)} />
         </View>
 
         <Text style={{ color: '#9ca3af', fontSize: 13, marginBottom: 6 }}>BIO</Text>

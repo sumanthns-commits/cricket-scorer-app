@@ -1,4 +1,4 @@
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, deleteField } from 'firebase/firestore';
 import { db } from './firebase';
 import { callCallableFunction } from './functionsClient';
 import type { BattingHand, BowlingStyle, CareerStats, Claim, Player, StrengthOverride, WicketKeepingAbility } from '../types';
@@ -6,9 +6,11 @@ import type { BattingHand, BowlingStyle, CareerStats, Claim, Player, StrengthOve
 export async function updatePlayerAttributes(
   clubId: string,
   playerId: string,
-  attrs: { displayName?: string; battingHand?: BattingHand; bowlingStyle?: BowlingStyle; wicketKeeping?: WicketKeepingAbility }
+  attrs: { displayName?: string; battingHand?: BattingHand; bowlingStyle?: BowlingStyle; wicketKeeping?: WicketKeepingAbility | null }
 ): Promise<void> {
-  await updateDoc(doc(db, 'clubs', clubId, 'players', playerId), attrs);
+  const update: Record<string, unknown> = { ...attrs };
+  if (attrs.wicketKeeping === null) update.wicketKeeping = deleteField();
+  await updateDoc(doc(db, 'clubs', clubId, 'players', playerId), update);
 }
 
 export async function updateStrengthOverride(
