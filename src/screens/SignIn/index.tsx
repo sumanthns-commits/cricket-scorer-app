@@ -58,11 +58,11 @@ export default function SignInScreen() {
         padding: 24,
       }}
     >
-      <Text style={{ color: '#4ade80', fontSize: 32, fontWeight: '700', marginBottom: 8 }}>
-        Cricket Scorer
+      <Text style={{ color: '#4ade80', fontSize: 48, fontWeight: '800', marginBottom: 6, letterSpacing: 2 }}>
+        Crease
       </Text>
-      <Text style={{ color: '#9ca3af', fontSize: 16, marginBottom: 48 }}>
-        Club management & live scoring
+      <Text style={{ color: '#64748b', fontSize: 15, marginBottom: 48, letterSpacing: 0.5 }}>
+        Where every run tells a story.
       </Text>
 
       {loading ? (
