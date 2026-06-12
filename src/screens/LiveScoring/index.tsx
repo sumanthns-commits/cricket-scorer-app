@@ -28,6 +28,7 @@ import {
 } from '../../services/matchService';
 import { getClub, getClubMember } from '../../services/clubService';
 import { useAuthStore } from '../../store/authStore';
+import { useThemeStore } from '../../store/themeStore';
 import { recordBall } from '../../services/scoringEngine';
 import type {
   BallEntry,
@@ -809,6 +810,7 @@ function SelectPlayerModal({
 // ─── Ball circles ────────────────────────────────────────────────────
 
 function BallCircle({ ball }: { ball: BallEntry }) {
+  const theme = useThemeStore((s) => s.theme);
   const isDot = ball.runs === 0 && !ball.extras && !ball.dismissal;
   const isWicket = !!ball.dismissal;
   const isWide = ball.extras?.type === 'wide';
@@ -816,8 +818,10 @@ function BallCircle({ ball }: { ball: BallEntry }) {
   const isFour = ball.runs === 4 && !ball.extras;
   const isSix = ball.runs === 6 && !ball.extras;
 
-  const bg = isWicket ? '#dc2626' : isFour || isSix ? '#1e3a5f' : '#1e2d45';
-  const border = isWicket ? '#dc2626' : isFour || isSix ? '#4ade80' : '#2d3f58';
+  const sixBg = theme.id === 'light' ? '#ede9fe' : '#2d1a5f';
+  const bg = isWicket ? '#dc2626' : isSix ? sixBg : isFour ? theme.accentDim : theme.surface;
+  const border = isWicket ? '#dc2626' : isSix ? '#a78bfa' : isFour ? theme.accent : theme.border;
+  const textColor = isWicket ? '#ffffff' : isSix ? '#a78bfa' : isFour ? theme.accent : theme.textSecondary;
   const label = isWicket
     ? 'W'
     : isWide
@@ -838,7 +842,7 @@ function BallCircle({ ball }: { ball: BallEntry }) {
         marginRight: 6,
       }}
     >
-      <Text style={{ color: isWicket ? '#ffffff' : '#d1d5db', fontSize: 12, fontWeight: '700' }}>
+      <Text style={{ color: textColor, fontSize: 12, fontWeight: '700' }}>
         {label}
       </Text>
     </View>
@@ -852,16 +856,17 @@ function ScoreHeader({
 }: {
   runs: number; wickets: number; overNumber: number; legalBalls: number; ballsPerOver: number; matchName: string;
 }) {
+  const theme = useThemeStore((s) => s.theme);
   const oversDisplay = `${overNumber}.${legalBalls}`;
   const ballsBowled = overNumber * ballsPerOver + legalBalls;
   const crr = ballsBowled > 0 ? ((runs * ballsPerOver) / ballsBowled).toFixed(2) : '0.00';
   return (
-    <View style={{ backgroundColor: '#0f1e35', padding: 20, paddingTop: 16 }}>
-      <Text style={{ color: '#6b7280', fontSize: 13, textAlign: 'center', marginBottom: 4 }}>{matchName}</Text>
-      <Text style={{ color: '#ffffff', fontSize: 52, fontWeight: '800', textAlign: 'center', lineHeight: 58 }}>
-        {runs}<Text style={{ color: '#6b7280', fontSize: 32, fontWeight: '600' }}>/{wickets}</Text>
+    <View style={{ backgroundColor: theme.surface, padding: 20, paddingTop: 16 }}>
+      <Text style={{ color: theme.textMuted, fontSize: 13, textAlign: 'center', marginBottom: 4 }}>{matchName}</Text>
+      <Text style={{ color: theme.text, fontSize: 52, fontWeight: '800', textAlign: 'center', lineHeight: 58 }}>
+        {runs}<Text style={{ color: theme.textMuted, fontSize: 32, fontWeight: '600' }}>/{wickets}</Text>
       </Text>
-      <Text style={{ color: '#9ca3af', fontSize: 16, textAlign: 'center' }}>
+      <Text style={{ color: theme.textSecondary, fontSize: 16, textAlign: 'center' }}>
         {oversDisplay} ov{ballsPerOver !== 6 ? ` (${ballsPerOver} ball overs)` : ''} · CRR {crr}
       </Text>
     </View>
@@ -887,6 +892,7 @@ function BatterRow({
   onEdit?: () => void;
   showStrikeHint?: boolean;
 }) {
+  const theme = useThemeStore((s) => s.theme);
   const sr = stats.balls > 0 ? ((stats.runs / stats.balls) * 100).toFixed(0) : '–';
   return (
     <View
@@ -896,16 +902,16 @@ function BatterRow({
         paddingHorizontal: 16,
         paddingVertical: 10,
         borderBottomWidth: 1,
-        borderBottomColor: '#1e2d45',
+        borderBottomColor: theme.border,
       }}
     >
       {/* Strike bar */}
       <View
         style={{
           width: 4, height: 36, borderRadius: 2,
-          backgroundColor: onStrike ? '#4ade80' : 'transparent',
+          backgroundColor: onStrike ? theme.accent : 'transparent',
           marginRight: 10,
-          shadowColor: onStrike ? '#4ade80' : 'transparent',
+          shadowColor: onStrike ? theme.accent : 'transparent',
           shadowOffset: { width: 0, height: 0 },
           shadowOpacity: onStrike ? 0.9 : 0,
           shadowRadius: 6,
@@ -914,25 +920,25 @@ function BatterRow({
 
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '700' }}>
+          <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>
             {player?.displayName ?? '–'}
           </Text>
           {onStrike ? (
-            <View style={{ backgroundColor: '#164d29', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
-              <Text style={{ color: '#4ade80', fontSize: 10, fontWeight: '700' }}>ON STRIKE</Text>
+            <View style={{ backgroundColor: theme.accentDim, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+              <Text style={{ color: theme.accent, fontSize: 10, fontWeight: '700' }}>ON STRIKE</Text>
             </View>
           ) : showStrikeHint ? (
-            <Text style={{ color: '#4b5563', fontSize: 10, fontWeight: '600', fontStyle: 'italic' }}>tap to face</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 10, fontWeight: '600', fontStyle: 'italic' }}>tap to face</Text>
           ) : null}
         </View>
-        <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 1 }}>
+        <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 1 }}>
           SR {sr} · {stats.fours}×4 · {stats.sixes}×6
         </Text>
       </View>
 
       {onEdit && (
         <TouchableOpacity onPress={onEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 8, marginRight: 4 }}>
-          <Text style={{ color: '#60a5fa', fontSize: 15 }}>✎</Text>
+          <Text style={{ color: theme.accent, fontSize: 15 }}>✎</Text>
         </TouchableOpacity>
       )}
 
@@ -940,17 +946,17 @@ function BatterRow({
         onPress={onToggleHand}
         style={{
           paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6,
-          backgroundColor: '#1e2d45', borderWidth: 1, borderColor: '#2d3f58',
+          backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
           marginRight: 14,
         }}
       >
-        <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '600' }}>{hand}</Text>
+        <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>{hand}</Text>
       </TouchableOpacity>
 
-      <Text style={{ color: '#ffffff', fontSize: 20, fontWeight: '800', minWidth: 36, textAlign: 'right' }}>
+      <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800', minWidth: 36, textAlign: 'right' }}>
         {stats.runs}
       </Text>
-      <Text style={{ color: '#6b7280', fontSize: 13, marginLeft: 2, minWidth: 28 }}>
+      <Text style={{ color: theme.textMuted, fontSize: 13, marginLeft: 2, minWidth: 28 }}>
         ({stats.balls})
       </Text>
     </View>
@@ -970,6 +976,7 @@ function BowlerRow({
   ballsPerOver: number;
   onEdit?: () => void;
 }) {
+  const theme = useThemeStore((s) => s.theme);
   const oversFull = stats.completedOvers + (stats.legalBalls % ballsPerOver) / 10;
   const economy = stats.legalBalls > 0
     ? ((stats.runsConceded / stats.legalBalls) * 6).toFixed(1)
@@ -979,21 +986,21 @@ function BowlerRow({
       style={{
         flexDirection: 'row', alignItems: 'center',
         paddingHorizontal: 16, paddingVertical: 10,
-        backgroundColor: '#0c1a2e',
-        borderBottomWidth: 1, borderBottomColor: '#1e2d45',
+        backgroundColor: theme.surfaceAlt,
+        borderBottomWidth: 1, borderBottomColor: theme.border,
       }}
     >
-      <Text style={{ color: '#6b7280', fontSize: 13, marginRight: 8 }}>🎯</Text>
-      <Text style={{ color: '#d1d5db', fontSize: 14, flex: 1 }}>{player?.displayName ?? '–'}</Text>
+      <Text style={{ color: theme.textMuted, fontSize: 13, marginRight: 8 }}>🎯</Text>
+      <Text style={{ color: theme.textSecondary, fontSize: 14, flex: 1 }}>{player?.displayName ?? '–'}</Text>
       {onEdit && (
         <TouchableOpacity onPress={onEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 8, marginRight: 6 }}>
-          <Text style={{ color: '#60a5fa', fontSize: 15 }}>✎</Text>
+          <Text style={{ color: theme.accent, fontSize: 15 }}>✎</Text>
         </TouchableOpacity>
       )}
-      <Text style={{ color: '#9ca3af', fontSize: 13 }}>
+      <Text style={{ color: theme.textSecondary, fontSize: 13 }}>
         {oversFull.toFixed(1)}-0-{stats.runsConceded}-{stats.wickets}
       </Text>
-      <Text style={{ color: '#4b5563', fontSize: 12, marginLeft: 10 }}>econ {economy}</Text>
+      <Text style={{ color: theme.textMuted, fontSize: 12, marginLeft: 10 }}>econ {economy}</Text>
     </View>
   );
 }
@@ -1009,26 +1016,27 @@ function Scorecard({
   playerMap: Record<string, Player | undefined>;
   ballsPerOver: number;
 }) {
+  const theme = useThemeStore((s) => s.theme);
   const oversBowled = `${inn.overNumber}.${inn.legalBallsInOver}`;
   const batters = inn.battingIds.filter((id) => {
     const s = inn.batterStats[id];
     return !!s && (s.balls > 0 || s.runs > 0 || s.isOut || id === inn.onStrikeId || id === inn.offStrikeId);
   });
   const bowlers = inn.bowlingIds.filter((id) => !!inn.bowlerStats[id]);
-  const num = { width: 38, textAlign: 'right' as const, color: '#d1d5db', fontSize: 13 };
-  const bnum = { width: 44, textAlign: 'right' as const, color: '#d1d5db', fontSize: 13 };
-  const head = { textAlign: 'right' as const, color: '#4b5563', fontSize: 11 };
+  const num = { width: 38, textAlign: 'right' as const, color: theme.textSecondary, fontSize: 13 };
+  const bnum = { width: 44, textAlign: 'right' as const, color: theme.textSecondary, fontSize: 13 };
+  const head = { textAlign: 'right' as const, color: theme.textMuted, fontSize: 11 };
 
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
-      <Text style={{ color: '#ffffff', fontSize: 20, fontWeight: '800' }}>
+      <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800' }}>
         {inn.totalRuns}/{inn.totalWickets}{' '}
-        <Text style={{ color: '#6b7280', fontSize: 14 }}>({oversBowled} ov)</Text>
+        <Text style={{ color: theme.textMuted, fontSize: 14 }}>({oversBowled} ov)</Text>
       </Text>
 
-      <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700', marginTop: 18, marginBottom: 6 }}>BATTING</Text>
+      <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '700', marginTop: 18, marginBottom: 6 }}>BATTING</Text>
       <View style={{ flexDirection: 'row', paddingBottom: 4 }}>
-        <Text style={{ flex: 1, color: '#4b5563', fontSize: 11 }}>Batter</Text>
+        <Text style={{ flex: 1, color: theme.textMuted, fontSize: 11 }}>Batter</Text>
         {['R', 'B', '4s', '6s', 'SR'].map((h) => <Text key={h} style={{ ...head, width: 38 }}>{h}</Text>)}
       </View>
       {batters.map((id) => {
@@ -1037,10 +1045,10 @@ function Scorecard({
         const status = s.isOut ? 'out' : atCrease ? 'not out' : '';
         const sr = s.balls > 0 ? ((s.runs / s.balls) * 100).toFixed(0) : '–';
         return (
-          <View key={id} style={{ flexDirection: 'row', paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#1e2d45' }}>
+          <View key={id} style={{ flexDirection: 'row', paddingVertical: 6, borderTopWidth: 1, borderTopColor: theme.border }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: '#ffffff', fontSize: 13 }}>{playerMap[id]?.displayName ?? id}</Text>
-              {status ? <Text style={{ color: s.isOut ? '#6b7280' : '#4ade80', fontSize: 10 }}>{status}</Text> : null}
+              <Text style={{ color: theme.text, fontSize: 13 }}>{playerMap[id]?.displayName ?? id}</Text>
+              {status ? <Text style={{ color: s.isOut ? theme.textMuted : theme.accent, fontSize: 10 }}>{status}</Text> : null}
             </View>
             <Text style={num}>{s.runs}</Text>
             <Text style={num}>{s.balls}</Text>
@@ -1051,9 +1059,9 @@ function Scorecard({
         );
       })}
 
-      <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700', marginTop: 22, marginBottom: 6 }}>BOWLING</Text>
+      <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '700', marginTop: 22, marginBottom: 6 }}>BOWLING</Text>
       <View style={{ flexDirection: 'row', paddingBottom: 4 }}>
-        <Text style={{ flex: 1, color: '#4b5563', fontSize: 11 }}>Bowler</Text>
+        <Text style={{ flex: 1, color: theme.textMuted, fontSize: 11 }}>Bowler</Text>
         {['O', 'R', 'W', 'Econ'].map((h) => <Text key={h} style={{ ...head, width: 44 }}>{h}</Text>)}
       </View>
       {bowlers.map((id) => {
@@ -1061,8 +1069,8 @@ function Scorecard({
         const overs = `${Math.floor(b.legalBalls / ballsPerOver)}.${b.legalBalls % ballsPerOver}`;
         const econ = b.legalBalls > 0 ? (b.runsConceded / (b.legalBalls / ballsPerOver)).toFixed(1) : '–';
         return (
-          <View key={id} style={{ flexDirection: 'row', paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#1e2d45' }}>
-            <Text style={{ flex: 1, color: '#ffffff', fontSize: 13 }}>{playerMap[id]?.displayName ?? id}</Text>
+          <View key={id} style={{ flexDirection: 'row', paddingVertical: 6, borderTopWidth: 1, borderTopColor: theme.border }}>
+            <Text style={{ flex: 1, color: theme.text, fontSize: 13 }}>{playerMap[id]?.displayName ?? id}</Text>
             <Text style={bnum}>{overs}</Text>
             <Text style={bnum}>{b.runsConceded}</Text>
             <Text style={bnum}>{b.wickets}</Text>
@@ -1093,6 +1101,7 @@ export default function LiveScoringScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { clubId, matchId } = route.params;
   const user = useAuthStore((s) => s.user);
+  const theme = useThemeStore((s) => s.theme);
   const [isAdmin, setIsAdmin] = useState(false);
   const [phase, setPhase] = useState<Phase>('loading');
   const [match, setMatch] = useState<Match | null>(null);
@@ -1783,17 +1792,17 @@ export default function LiveScoringScreen() {
 
   if (phase === 'loading') {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0a1628', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#4ade80" />
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color={theme.accent} />
       </View>
     );
   }
 
   if (phase === 'no-match') {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0a1628', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-        <Text style={{ color: '#6b7280', fontSize: 18, textAlign: 'center', marginBottom: 8 }}>Match not available</Text>
-        <Text style={{ color: '#4b5563', fontSize: 14, textAlign: 'center' }}>
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+        <Text style={{ color: theme.textSecondary, fontSize: 18, textAlign: 'center', marginBottom: 8 }}>Match not available</Text>
+        <Text style={{ color: theme.textMuted, fontSize: 14, textAlign: 'center' }}>
           This match is no longer live. Go back to Matches to pick another.
         </Text>
       </View>
@@ -1818,15 +1827,15 @@ export default function LiveScoringScreen() {
       }
     }
     return (
-      <View style={{ flex: 1, backgroundColor: '#0a1628', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-        <Text style={{ color: '#4ade80', fontSize: 14, fontWeight: '700', letterSpacing: 1, marginBottom: 12 }}>
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+        <Text style={{ color: theme.accent, fontSize: 14, fontWeight: '700', letterSpacing: 1, marginBottom: 12 }}>
           {isFirstInnings ? '1ST INNINGS COMPLETE' : 'MATCH COMPLETE'}
         </Text>
-        <Text style={{ color: '#ffffff', fontSize: 44, fontWeight: '800' }}>
+        <Text style={{ color: theme.text, fontSize: 44, fontWeight: '800' }}>
           {innings.totalRuns}
-          <Text style={{ color: '#6b7280', fontSize: 30, fontWeight: '600' }}>/{innings.totalWickets}</Text>
+          <Text style={{ color: theme.textMuted, fontSize: 30, fontWeight: '600' }}>/{innings.totalWickets}</Text>
         </Text>
-        <Text style={{ color: '#9ca3af', fontSize: 15, marginTop: 6 }}>
+        <Text style={{ color: theme.textSecondary, fontSize: 15, marginTop: 6 }}>
           {innings.overNumber} overs · {overs} balls
         </Text>
 
@@ -1834,24 +1843,24 @@ export default function LiveScoringScreen() {
           isAdmin ? (
           <TouchableOpacity
             onPress={() => startSecondInnings(innings)}
-            style={{ marginTop: 32, backgroundColor: '#4ade80', borderRadius: 10, paddingVertical: 14, paddingHorizontal: 28 }}
+            style={{ marginTop: 32, backgroundColor: theme.accent, borderRadius: 10, paddingVertical: 14, paddingHorizontal: 28 }}
           >
-            <Text style={{ color: '#0a1628', fontSize: 16, fontWeight: '700' }}>
+            <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '700' }}>
               Start 2nd innings (target {innings.totalRuns + 1})
             </Text>
           </TouchableOpacity>
           ) : (
-          <Text style={{ color: '#9ca3af', fontSize: 14, marginTop: 24, textAlign: 'center' }}>
+          <Text style={{ color: theme.textMuted, fontSize: 14, marginTop: 24, textAlign: 'center' }}>
             Waiting for 2nd innings...
           </Text>
           )
         ) : (
-          <Text style={{ color: '#fbbf24', fontSize: 16, fontWeight: '700', marginTop: 24, textAlign: 'center' }}>
+          <Text style={{ color: '#d97706', fontSize: 16, fontWeight: '700', marginTop: 24, textAlign: 'center' }}>
             {resultLine}
           </Text>
         )}
 
-        <Text style={{ color: '#4b5563', fontSize: 13, marginTop: 24, textAlign: 'center' }}>
+        <Text style={{ color: theme.textMuted, fontSize: 13, marginTop: 24, textAlign: 'center' }}>
           {match ? `${match.homeTeam} vs ${match.awayTeam}` : ''}
         </Text>
       </View>
@@ -1891,16 +1900,16 @@ export default function LiveScoringScreen() {
   const canEditOvers = isAdmin && inningsNumber === 1 && phase === 'scoring' && match?.rules.oversPerInnings != null;
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#0a1628' }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
       {/* Top tabs */}
-      <View style={{ flexDirection: 'row', backgroundColor: '#0c1a2e' }}>
+      <View style={{ flexDirection: 'row', backgroundColor: theme.surfaceAlt }}>
         {(['scoring', 'scorecard'] as const).map((t) => (
           <TouchableOpacity
             key={t}
             onPress={() => setTab(t)}
-            style={{ flex: 1, paddingVertical: 12, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: tab === t ? '#4ade80' : 'transparent' }}
+            style={{ flex: 1, paddingVertical: 12, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: tab === t ? theme.accent : 'transparent' }}
           >
-            <Text style={{ color: tab === t ? '#4ade80' : '#9ca3af', fontWeight: '700', fontSize: 13 }}>
+            <Text style={{ color: tab === t ? theme.accent : theme.textMuted, fontWeight: '700', fontSize: 13 }}>
               {t === 'scoring' ? 'SCORING' : 'SCORECARD'}
             </Text>
           </TouchableOpacity>
@@ -1915,9 +1924,9 @@ export default function LiveScoringScreen() {
                 <TouchableOpacity
                   key={n}
                   onPress={() => setCardInnings(n)}
-                  style={{ flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: cardInnings === n ? '#1e3a5f' : '#11203a', borderWidth: 1, borderColor: cardInnings === n ? '#4ade80' : '#2d3f58', alignItems: 'center' }}
+                  style={{ flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: cardInnings === n ? theme.accentDim : theme.surface, borderWidth: 1, borderColor: cardInnings === n ? theme.accent : theme.border, alignItems: 'center' }}
                 >
-                  <Text style={{ color: cardInnings === n ? '#4ade80' : '#9ca3af', fontWeight: '600' }}>Innings {n}</Text>
+                  <Text style={{ color: cardInnings === n ? theme.accent : theme.textMuted, fontWeight: '600' }}>Innings {n}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -1925,7 +1934,7 @@ export default function LiveScoringScreen() {
           {scorecardInn ? (
             <Scorecard inn={scorecardInn} playerMap={playerMap} ballsPerOver={match?.rules.ballsPerOver ?? 6} />
           ) : (
-            <Text style={{ color: '#6b7280', textAlign: 'center', marginTop: 40 }}>No data yet</Text>
+            <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 40 }}>No data yet</Text>
           )}
         </View>
       ) : (
@@ -1947,14 +1956,14 @@ export default function LiveScoringScreen() {
           onPress={() => setShowEditOvers(true)}
           style={{
             flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-            paddingVertical: 6, backgroundColor: '#0c1a2e',
-            borderBottomWidth: 1, borderBottomColor: '#1e2d45',
+            paddingVertical: 6, backgroundColor: theme.surfaceAlt,
+            borderBottomWidth: 1, borderBottomColor: theme.border,
           }}
         >
-          <Text style={{ color: '#6b7280', fontSize: 12 }}>
+          <Text style={{ color: theme.textMuted, fontSize: 12 }}>
             {match.rules.oversPerInnings} over match
           </Text>
-          {canEditOvers && <Text style={{ color: '#60a5fa', fontSize: 12, fontWeight: '600' }}>✎ Edit</Text>}
+          {canEditOvers && <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '600' }}>✎ Edit</Text>}
         </TouchableOpacity>
       )}
 
@@ -1969,13 +1978,13 @@ export default function LiveScoringScreen() {
         const rrr =
           ballsLeft != null && ballsLeft > 0 ? ((need * ballsPerOver) / ballsLeft).toFixed(2) : null;
         return (
-          <View style={{ backgroundColor: '#11203a', paddingVertical: 6, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#1e2d45' }}>
-            <Text style={{ color: '#fbbf24', fontSize: 13, fontWeight: '700' }}>
+          <View style={{ backgroundColor: theme.surface, paddingVertical: 6, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: theme.border }}>
+            <Text style={{ color: '#d97706', fontSize: 13, fontWeight: '700' }}>
               Need {need} run{need !== 1 ? 's' : ''}
               {ballsLeft != null ? ` from ${ballsLeft} ball${ballsLeft !== 1 ? 's' : ''}` : ''}
             </Text>
             {rrr != null && (
-              <Text style={{ color: '#9ca3af', fontSize: 11, marginTop: 1 }}>
+              <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 1 }}>
                 Target {target} · RRR {rrr}
               </Text>
             )}
@@ -1996,8 +2005,8 @@ export default function LiveScoringScreen() {
         />
       </TouchableOpacity>
       {isLoneBatter ? (
-        <View style={{ paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1e2d45' }}>
-          <Text style={{ color: '#6b7280', fontSize: 12, fontStyle: 'italic' }}>Last man standing — batting alone</Text>
+        <View style={{ paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
+          <Text style={{ color: theme.textMuted, fontSize: 12, fontStyle: 'italic' }}>Last man standing — batting alone</Text>
         </View>
       ) : (
         <TouchableOpacity
@@ -2028,23 +2037,23 @@ export default function LiveScoringScreen() {
       </TouchableOpacity>
 
       {isAdmin && !scoringReady && (
-        <Text style={{ color: '#fbbf24', fontSize: 13, textAlign: 'center', paddingVertical: 10 }}>
+        <Text style={{ color: '#d97706', fontSize: 13, textAlign: 'center', paddingVertical: 10 }}>
           Select both batsmen and the bowler (✎) to start scoring
         </Text>
       )}
 
       {/* Ball log */}
       <View style={{ paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-        <Text style={{ color: '#4b5563', fontSize: 12, marginRight: 8 }}>This over:</Text>
+        <Text style={{ color: theme.textMuted, fontSize: 12, marginRight: 8 }}>This over:</Text>
         {innings.currentOverBalls.length === 0 ? (
-          <Text style={{ color: '#2d3f58', fontSize: 13 }}>–</Text>
+          <Text style={{ color: theme.border, fontSize: 13 }}>–</Text>
         ) : (
           innings.currentOverBalls.map((ball, i) => <BallCircle key={i} ball={ball} />)
         )}
       </View>
 
       {/* Divider */}
-      <View style={{ height: 1, backgroundColor: '#1e2d45', marginHorizontal: 16, marginBottom: 12 }} />
+      <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 16, marginBottom: 12 }} />
 
       {isAdmin ? (
         <>
@@ -2058,14 +2067,14 @@ export default function LiveScoringScreen() {
               }
               style={{
                 flex: 1, paddingVertical: 16, borderRadius: 10,
-                backgroundColor: r === 4 ? '#1e3a5f' : r === 6 ? '#2d1a5f' : '#1e2d45',
+                backgroundColor: r === 4 ? theme.accentDim : r === 6 ? (theme.id === 'light' ? '#ede9fe' : '#2d1a5f') : theme.surface,
                 borderWidth: 1.5,
-                borderColor: r === 4 ? '#4ade80' : r === 6 ? '#a78bfa' : '#2d3f58',
+                borderColor: r === 4 ? theme.accent : r === 6 ? '#a78bfa' : theme.border,
                 alignItems: 'center',
               }}
             >
               <Text style={{
-                color: r === 4 ? '#4ade80' : r === 6 ? '#a78bfa' : '#ffffff',
+                color: r === 4 ? theme.accent : r === 6 ? '#a78bfa' : theme.text,
                 fontSize: 20, fontWeight: '800',
               }}>
                 {r}
@@ -2083,11 +2092,11 @@ export default function LiveScoringScreen() {
                 onPress={() => handleExtra(type)}
                 style={{
                   flex: 1, paddingVertical: 10, borderRadius: 8,
-                  backgroundColor: '#1e2d45', borderWidth: 1, borderColor: '#2d3f58',
+                  backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' }}>
+                <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' }}>
                   {type === 'no-ball' ? 'NB' : type === 'leg-bye' ? 'LB' : type === 'wide' ? 'Wd' : 'Bye'}
                 </Text>
               </TouchableOpacity>
@@ -2102,7 +2111,8 @@ export default function LiveScoringScreen() {
             disabled={!scoringReady}
             style={{
               flex: 3, paddingVertical: 14, borderRadius: 10,
-              backgroundColor: '#2d1515', borderWidth: 1.5, borderColor: '#dc2626',
+              backgroundColor: theme.id === 'light' ? '#fef2f2' : '#2d1515',
+              borderWidth: 1.5, borderColor: '#dc2626',
               alignItems: 'center', opacity: scoringReady ? 1 : 0.4,
             }}
           >
@@ -2113,12 +2123,12 @@ export default function LiveScoringScreen() {
             disabled={history.length === 0}
             style={{
               flex: 1, paddingVertical: 14, borderRadius: 10,
-              backgroundColor: '#1e2d45', borderWidth: 1, borderColor: '#2d3f58',
+              backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
               alignItems: 'center',
               opacity: history.length === 0 ? 0.4 : 1,
             }}
           >
-            <Text style={{ color: '#9ca3af', fontSize: 15, fontWeight: '700' }}>↩ Undo</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 15, fontWeight: '700' }}>↩ Undo</Text>
           </TouchableOpacity>
         </View>
 
@@ -2127,14 +2137,14 @@ export default function LiveScoringScreen() {
           onPress={firstBallBowled ? handleAbandon : handleDeleteMatch}
           style={{ alignSelf: 'center', paddingVertical: 14, marginTop: 4 }}
         >
-          <Text style={{ color: '#6b7280', fontSize: 13, fontWeight: '600' }}>
+          <Text style={{ color: theme.textMuted, fontSize: 13, fontWeight: '600' }}>
             {firstBallBowled ? 'Abandon match' : 'Delete match'}
           </Text>
         </TouchableOpacity>
         </>
       ) : (
         <View style={{ alignItems: 'center', paddingVertical: 20 }}>
-          <Text style={{ color: '#4b5563', fontSize: 13 }}>Watching live</Text>
+          <Text style={{ color: theme.textMuted, fontSize: 13 }}>Watching live</Text>
         </View>
       )}
       </>
