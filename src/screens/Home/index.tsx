@@ -8,7 +8,7 @@ import type { RootStackParamList } from '../../navigation/RootNavigator';
 import type { TabParamList } from '../../navigation/TabNavigator';
 import { useAuthStore } from '../../store/authStore';
 import { useClubStore } from '../../store/clubStore';
-import { getUserClubs } from '../../services/clubService';
+import { getUserClubsWithRoles } from '../../services/clubService';
 import type { Club } from '../../types';
 
 type Nav = CompositeNavigationProp<
@@ -18,12 +18,14 @@ type Nav = CompositeNavigationProp<
 
 function ClubCard({
   club,
+  isAdmin,
   onRulesPress,
   onMatchesPress,
   onEditPress,
   onRequestsPress,
 }: {
   club: Club;
+  isAdmin: boolean;
   onRulesPress: () => void;
   onMatchesPress: () => void;
   onEditPress: () => void;
@@ -55,15 +57,19 @@ function ClubCard({
         <TouchableOpacity onPress={onMatchesPress}>
           <Text style={{ color: '#4ade80', fontSize: 13, fontWeight: '600' }}>Matches</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={onRequestsPress}>
-          <Text style={{ color: '#60a5fa', fontSize: 13, fontWeight: '600' }}>Requests</Text>
-        </TouchableOpacity>
         <TouchableOpacity onPress={onRulesPress}>
           <Text style={{ color: '#60a5fa', fontSize: 13, fontWeight: '600' }}>⚙ Rules</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={onEditPress}>
-          <Text style={{ color: '#60a5fa', fontSize: 13, fontWeight: '600' }}>✎ Edit</Text>
-        </TouchableOpacity>
+        {isAdmin && (
+          <TouchableOpacity onPress={onRequestsPress}>
+            <Text style={{ color: '#60a5fa', fontSize: 13, fontWeight: '600' }}>Requests</Text>
+          </TouchableOpacity>
+        )}
+        {isAdmin && (
+          <TouchableOpacity onPress={onEditPress}>
+            <Text style={{ color: '#60a5fa', fontSize: 13, fontWeight: '600' }}>✎ Edit</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -74,9 +80,9 @@ export default function HomeScreen() {
   const user = useAuthStore((s) => s.user);
   const setActiveClubId = useClubStore((s) => s.setActiveClubId);
 
-  const { data: clubs, isLoading } = useQuery({
+  const { data: clubsWithRoles, isLoading } = useQuery({
     queryKey: ['clubs', user?.uid],
-    queryFn: () => getUserClubs(user!.uid),
+    queryFn: () => getUserClubsWithRoles(user!.uid),
     enabled: !!user,
   });
 
@@ -126,17 +132,18 @@ export default function HomeScreen() {
 
       {isLoading ? (
         <ActivityIndicator color="#4ade80" style={{ marginTop: 40 }} />
-      ) : clubs && clubs.length > 0 ? (
+      ) : clubsWithRoles && clubsWithRoles.length > 0 ? (
         <FlatList
-          data={clubs}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
+          data={clubsWithRoles}
+          keyExtractor={({ club }) => club.id}
+          renderItem={({ item: { club, isAdmin } }) => (
             <ClubCard
-              club={item}
-              onMatchesPress={() => handleMatchesPress(item)}
-              onRequestsPress={() => navigation.navigate('JoinRequests', { clubId: item.id })}
-              onRulesPress={() => navigation.navigate('ClubRulesAdmin', { clubId: item.id })}
-              onEditPress={() => navigation.navigate('EditClub', { clubId: item.id })}
+              club={club}
+              isAdmin={isAdmin}
+              onMatchesPress={() => handleMatchesPress(club)}
+              onRequestsPress={() => navigation.navigate('JoinRequests', { clubId: club.id })}
+              onRulesPress={() => navigation.navigate('ClubRulesAdmin', { clubId: club.id })}
+              onEditPress={() => navigation.navigate('EditClub', { clubId: club.id })}
             />
           )}
         />

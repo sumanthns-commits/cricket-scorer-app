@@ -565,6 +565,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
   }
 
   const locked = data?.isLive ?? false;
+  const readOnly = !data?.isAdmin || locked;
 
   // ── Draft mutators ───────────────────────────────────────────
 
@@ -573,7 +574,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
   }
 
   function toggleDismissal(type: StandardDismissalType) {
-    if (!draft || locked) return;
+    if (!draft || readOnly) return;
     const enabled = draft.enabledDismissals.includes(type);
     setField(
       'enabledDismissals',
@@ -584,7 +585,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
   }
 
   function toggleExtra(type: ExtrasType) {
-    if (!draft || locked) return;
+    if (!draft || readOnly) return;
     const enabled = draft.enabledExtras.includes(type);
     setField(
       'enabledExtras',
@@ -595,7 +596,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
   }
 
   function addCustomDismissal() {
-    if (!draft || locked) return;
+    if (!draft || readOnly) return;
     const newItem: CustomDismissal = {
       id: genId(),
       label: '',
@@ -621,7 +622,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
   }
 
   function addFieldingEvent() {
-    if (!draft || locked) return;
+    if (!draft || readOnly) return;
     const newItem: FieldingEventConfig = {
       id: genId(),
       label: '',
@@ -656,7 +657,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
   // ── Save ─────────────────────────────────────────────────────
 
   async function handleSave() {
-    if (!draft || locked || saving) return;
+    if (!draft || readOnly || saving) return;
 
     if (draft.ballsPerOver < 1) {
       setSaveError('Balls per over must be at least 1.');
@@ -707,19 +708,6 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
     );
   }
 
-  if (!data.isAdmin) {
-    return (
-      <View style={{ flex: 1, backgroundColor: '#0a1628', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <Text style={{ color: '#9ca3af', fontSize: 16, textAlign: 'center' }}>
-          Only club admins can manage rules.
-        </Text>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 20 }}>
-          <Text style={{ color: '#4ade80', fontSize: 15 }}>Go back</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
   if (!draft) return null;
 
   return (
@@ -734,6 +722,26 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
           }}
         >
 
+          {!data.isAdmin && (
+            <View
+              style={{
+                backgroundColor: '#12233a',
+                borderWidth: 1,
+                borderColor: '#3b82f6',
+                borderRadius: 10,
+                padding: 14,
+                marginBottom: 4,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+              }}
+            >
+              <Text style={{ fontSize: 18 }}>👁</Text>
+              <Text style={{ color: '#93c5fd', fontSize: 13, flex: 1, lineHeight: 18 }}>
+                View only. Only club admins can edit rules.
+              </Text>
+            </View>
+          )}
           {locked && (
             <View
               style={{
@@ -762,7 +770,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
             value={draft.ballsPerOver}
             onChange={(v) => setField('ballsPerOver', v ?? 6)}
             placeholder="6"
-            disabled={locked}
+            disabled={readOnly}
             min={1}
             onFocus={handleInputFocus}
           />
@@ -771,7 +779,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
             value={draft.oversPerInnings}
             onChange={(v) => setField('oversPerInnings', v)}
             placeholder="unlimited"
-            disabled={locked}
+            disabled={readOnly}
             min={1}
             onFocus={handleInputFocus}
           />
@@ -785,7 +793,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
               label={label}
               checked={draft.enabledDismissals.includes(type)}
               onToggle={() => toggleDismissal(type)}
-              disabled={locked}
+              disabled={readOnly}
             />
           ))}
 
@@ -799,10 +807,10 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
               onChange={(patch) => updateCustomDismissal(item.id, patch)}
               onRemove={() => removeCustomDismissal(item.id)}
               onFocus={handleInputFocus}
-              disabled={locked}
+              disabled={readOnly}
             />
           ))}
-          {!locked && (
+          {!readOnly && (
             <TouchableOpacity
               onPress={addCustomDismissal}
               style={{
@@ -828,7 +836,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
               label={label}
               checked={draft.enabledExtras.includes(type)}
               onToggle={() => toggleExtra(type)}
-              disabled={locked}
+              disabled={readOnly}
             />
           ))}
 
@@ -839,7 +847,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
             value={draft.roverThrowCap}
             onChange={(v) => setField('roverThrowCap', v)}
             placeholder="no cap"
-            disabled={locked}
+            disabled={readOnly}
             min={0}
             onFocus={handleInputFocus}
           />
@@ -851,7 +859,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
             <Switch
               value={draft.lastManStands}
               onValueChange={(v) => setField('lastManStands', v)}
-              disabled={locked}
+              disabled={readOnly}
               trackColor={{ false: '#2d3f58', true: '#166534' }}
               thumbColor={draft.lastManStands ? '#4ade80' : '#6b7280'}
             />
@@ -861,7 +869,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
             value={draft.compulsoryRetirementAt}
             onChange={(v) => setField('compulsoryRetirementAt', v)}
             placeholder="none"
-            disabled={locked}
+            disabled={readOnly}
             min={1}
             onFocus={handleInputFocus}
           />
@@ -873,7 +881,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
             value={draft.maxBowlerOvers}
             onChange={(v) => setField('maxBowlerOvers', v)}
             placeholder="no limit"
-            disabled={locked}
+            disabled={readOnly}
             min={1}
             onFocus={handleInputFocus}
           />
@@ -897,10 +905,10 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
               onMoveUp={() => moveFieldingEvent(index, -1)}
               onMoveDown={() => moveFieldingEvent(index, 1)}
               onFocus={handleInputFocus}
-              disabled={locked}
+              disabled={readOnly}
             />
           ))}
-          {!locked && (
+          {!readOnly && (
             <TouchableOpacity
               onPress={addFieldingEvent}
               style={{
@@ -919,7 +927,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
           )}
 
           {/* ── SAVE ── */}
-          {!locked && (
+          {!readOnly && (
             <View style={{ marginTop: 32 }}>
               {saveError && (
                 <Text style={{ color: '#ef4444', fontSize: 13, marginBottom: 12, textAlign: 'center' }}>

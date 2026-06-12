@@ -26,7 +26,8 @@ import {
   deleteMatch,
   updateMatchOvers,
 } from '../../services/matchService';
-import { getClub } from '../../services/clubService';
+import { getClub, getClubMember } from '../../services/clubService';
+import { useAuthStore } from '../../store/authStore';
 import { recordBall } from '../../services/scoringEngine';
 import type {
   BallEntry,
@@ -1091,6 +1092,8 @@ export default function LiveScoringScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'LiveScoring'>>();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { clubId, matchId } = route.params;
+  const user = useAuthStore((s) => s.user);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [phase, setPhase] = useState<Phase>('loading');
   const [match, setMatch] = useState<Match | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -1132,11 +1135,13 @@ export default function LiveScoringScreen() {
   const load = useCallback(async () => {
     setPhase('loading');
     try {
-      const [liveMatch, clubPlayers, club] = await Promise.all([
+      const [liveMatch, clubPlayers, club, member] = await Promise.all([
         getMatch(clubId, matchId),
         getClubPlayers(clubId),
         getClub(clubId),
+        user ? getClubMember(clubId, user.uid) : Promise.resolve(null),
       ]);
+      setIsAdmin(member?.role === 'admin');
       if (!liveMatch || (liveMatch.status !== 'live' && liveMatch.status !== 'scheduled')) {
         setPhase('no-match');
         return;
@@ -1826,6 +1831,7 @@ export default function LiveScoringScreen() {
         </Text>
 
         {isFirstInnings ? (
+          isAdmin ? (
           <TouchableOpacity
             onPress={() => startSecondInnings(innings)}
             style={{ marginTop: 32, backgroundColor: '#4ade80', borderRadius: 10, paddingVertical: 14, paddingHorizontal: 28 }}
@@ -1834,6 +1840,11 @@ export default function LiveScoringScreen() {
               Start 2nd innings (target {innings.totalRuns + 1})
             </Text>
           </TouchableOpacity>
+          ) : (
+          <Text style={{ color: '#9ca3af', fontSize: 14, marginTop: 24, textAlign: 'center' }}>
+            Waiting for 2nd innings...
+          </Text>
+          )
         ) : (
           <Text style={{ color: '#fbbf24', fontSize: 16, fontWeight: '700', marginTop: 24, textAlign: 'center' }}>
             {resultLine}
@@ -1877,7 +1888,7 @@ export default function LiveScoringScreen() {
   // Overs can only be edited while the 1st innings is in progress, and never
   // below the overs already bowled (a part-bowled over counts as one).
   const oversFloor = Math.max(1, innings.overNumber + (innings.legalBallsInOver > 0 ? 1 : 0));
-  const canEditOvers = inningsNumber === 1 && phase === 'scoring' && match?.rules.oversPerInnings != null;
+  const canEditOvers = isAdmin && inningsNumber === 1 && phase === 'scoring' && match?.rules.oversPerInnings != null;
 
   return (
     <View style={{ flex: 1, backgroundColor: '#0a1628' }}>
@@ -1974,14 +1985,14 @@ export default function LiveScoringScreen() {
 
       {/* Batter rows — tap the non-striker to give them strike;
           tap ✎ (or long-press) to select / change a batter */}
-      <TouchableOpacity activeOpacity={1} onLongPress={() => setChangeTarget('onStrike')}>
+      <TouchableOpacity activeOpacity={1} onLongPress={() => isAdmin && setChangeTarget('onStrike')}>
         <BatterRow
           player={onStrikePlayer}
           stats={onStrikeStat}
           onStrike
           hand={onStrikeHand}
-          onToggleHand={() => toggleHand(innings.onStrikeId)}
-          onEdit={() => setChangeTarget('onStrike')}
+          onToggleHand={() => isAdmin && toggleHand(innings.onStrikeId)}
+          onEdit={isAdmin ? () => setChangeTarget('onStrike') : undefined}
         />
       </TouchableOpacity>
       {isLoneBatter ? (
@@ -1991,32 +2002,32 @@ export default function LiveScoringScreen() {
       ) : (
         <TouchableOpacity
           activeOpacity={0.6}
-          onPress={swapStrike}
-          onLongPress={() => setChangeTarget('offStrike')}
+          onPress={isAdmin ? swapStrike : undefined}
+          onLongPress={() => isAdmin && setChangeTarget('offStrike')}
         >
           <BatterRow
             player={offStrikePlayer}
             stats={offStrikeStat}
             onStrike={false}
             hand={offStrikeHand}
-            onToggleHand={() => toggleHand(innings.offStrikeId)}
-            onEdit={() => setChangeTarget('offStrike')}
-            showStrikeHint
+            onToggleHand={() => isAdmin && toggleHand(innings.offStrikeId)}
+            onEdit={isAdmin ? () => setChangeTarget('offStrike') : undefined}
+            showStrikeHint={isAdmin}
           />
         </TouchableOpacity>
       )}
 
       {/* Bowler row — tap ✎ (or long-press) to select / change */}
-      <TouchableOpacity activeOpacity={1} onLongPress={() => setChangeTarget('bowler')}>
+      <TouchableOpacity activeOpacity={1} onLongPress={() => isAdmin && setChangeTarget('bowler')}>
         <BowlerRow
           player={bowlerPlayer}
           stats={bowlerStat}
           ballsPerOver={match?.rules.ballsPerOver ?? 6}
-          onEdit={() => setChangeTarget('bowler')}
+          onEdit={isAdmin ? () => setChangeTarget('bowler') : undefined}
         />
       </TouchableOpacity>
 
-      {!scoringReady && (
+      {isAdmin && !scoringReady && (
         <Text style={{ color: '#fbbf24', fontSize: 13, textAlign: 'center', paddingVertical: 10 }}>
           Select both batsmen and the bowler (✎) to start scoring
         </Text>
@@ -2035,89 +2046,97 @@ export default function LiveScoringScreen() {
       {/* Divider */}
       <View style={{ height: 1, backgroundColor: '#1e2d45', marginHorizontal: 16, marginBottom: 12 }} />
 
-      {/* Run buttons */}
-      <View pointerEvents={scoringReady ? 'auto' : 'none'} style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8, marginBottom: 10, opacity: scoringReady ? 1 : 0.4 }}>
-        {[0, 1, 2, 3, 4, 6].map((r) => (
-          <TouchableOpacity
-            key={r}
-            onPress={() =>
-              startBall({ batsmanId: innings.onStrikeId, bowlerId: innings.bowlerId, runs: r })
-            }
-            style={{
-              flex: 1, paddingVertical: 16, borderRadius: 10,
-              backgroundColor: r === 4 ? '#1e3a5f' : r === 6 ? '#2d1a5f' : '#1e2d45',
-              borderWidth: 1.5,
-              borderColor: r === 4 ? '#4ade80' : r === 6 ? '#a78bfa' : '#2d3f58',
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{
-              color: r === 4 ? '#4ade80' : r === 6 ? '#a78bfa' : '#ffffff',
-              fontSize: 20, fontWeight: '800',
-            }}>
-              {r}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Extras row */}
-      {enabledExtras.length > 0 && (
+      {isAdmin ? (
+        <>
+        {/* Run buttons */}
         <View pointerEvents={scoringReady ? 'auto' : 'none'} style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8, marginBottom: 10, opacity: scoringReady ? 1 : 0.4 }}>
-          {enabledExtras.map((type) => (
+          {[0, 1, 2, 3, 4, 6].map((r) => (
             <TouchableOpacity
-              key={type}
-              onPress={() => handleExtra(type)}
+              key={r}
+              onPress={() =>
+                startBall({ batsmanId: innings.onStrikeId, bowlerId: innings.bowlerId, runs: r })
+              }
               style={{
-                flex: 1, paddingVertical: 10, borderRadius: 8,
-                backgroundColor: '#1e2d45', borderWidth: 1, borderColor: '#2d3f58',
+                flex: 1, paddingVertical: 16, borderRadius: 10,
+                backgroundColor: r === 4 ? '#1e3a5f' : r === 6 ? '#2d1a5f' : '#1e2d45',
+                borderWidth: 1.5,
+                borderColor: r === 4 ? '#4ade80' : r === 6 ? '#a78bfa' : '#2d3f58',
                 alignItems: 'center',
               }}
             >
-              <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' }}>
-                {type === 'no-ball' ? 'NB' : type === 'leg-bye' ? 'LB' : type === 'wide' ? 'Wd' : 'Bye'}
+              <Text style={{
+                color: r === 4 ? '#4ade80' : r === 6 ? '#a78bfa' : '#ffffff',
+                fontSize: 20, fontWeight: '800',
+              }}>
+                {r}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* Extras row */}
+        {enabledExtras.length > 0 && (
+          <View pointerEvents={scoringReady ? 'auto' : 'none'} style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8, marginBottom: 10, opacity: scoringReady ? 1 : 0.4 }}>
+            {enabledExtras.map((type) => (
+              <TouchableOpacity
+                key={type}
+                onPress={() => handleExtra(type)}
+                style={{
+                  flex: 1, paddingVertical: 10, borderRadius: 8,
+                  backgroundColor: '#1e2d45', borderWidth: 1, borderColor: '#2d3f58',
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' }}>
+                  {type === 'no-ball' ? 'NB' : type === 'leg-bye' ? 'LB' : type === 'wide' ? 'Wd' : 'Bye'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Wicket + Undo */}
+        <View style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => scoringReady && setShowWicket(true)}
+            disabled={!scoringReady}
+            style={{
+              flex: 3, paddingVertical: 14, borderRadius: 10,
+              backgroundColor: '#2d1515', borderWidth: 1.5, borderColor: '#dc2626',
+              alignItems: 'center', opacity: scoringReady ? 1 : 0.4,
+            }}
+          >
+            <Text style={{ color: '#dc2626', fontSize: 16, fontWeight: '800' }}>Wicket ▼</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleUndo}
+            disabled={history.length === 0}
+            style={{
+              flex: 1, paddingVertical: 14, borderRadius: 10,
+              backgroundColor: '#1e2d45', borderWidth: 1, borderColor: '#2d3f58',
+              alignItems: 'center',
+              opacity: history.length === 0 ? 0.4 : 1,
+            }}
+          >
+            <Text style={{ color: '#9ca3af', fontSize: 15, fontWeight: '700' }}>↩ Undo</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Delete (before first ball) or Abandon (after) */}
+        <TouchableOpacity
+          onPress={firstBallBowled ? handleAbandon : handleDeleteMatch}
+          style={{ alignSelf: 'center', paddingVertical: 14, marginTop: 4 }}
+        >
+          <Text style={{ color: '#6b7280', fontSize: 13, fontWeight: '600' }}>
+            {firstBallBowled ? 'Abandon match' : 'Delete match'}
+          </Text>
+        </TouchableOpacity>
+        </>
+      ) : (
+        <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+          <Text style={{ color: '#4b5563', fontSize: 13 }}>Watching live</Text>
+        </View>
       )}
-
-      {/* Wicket + Undo */}
-      <View style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8 }}>
-        <TouchableOpacity
-          onPress={() => scoringReady && setShowWicket(true)}
-          disabled={!scoringReady}
-          style={{
-            flex: 3, paddingVertical: 14, borderRadius: 10,
-            backgroundColor: '#2d1515', borderWidth: 1.5, borderColor: '#dc2626',
-            alignItems: 'center', opacity: scoringReady ? 1 : 0.4,
-          }}
-        >
-          <Text style={{ color: '#dc2626', fontSize: 16, fontWeight: '800' }}>Wicket ▼</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={handleUndo}
-          disabled={history.length === 0}
-          style={{
-            flex: 1, paddingVertical: 14, borderRadius: 10,
-            backgroundColor: '#1e2d45', borderWidth: 1, borderColor: '#2d3f58',
-            alignItems: 'center',
-            opacity: history.length === 0 ? 0.4 : 1,
-          }}
-        >
-          <Text style={{ color: '#9ca3af', fontSize: 15, fontWeight: '700' }}>↩ Undo</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Delete (before first ball) or Abandon (after) */}
-      <TouchableOpacity
-        onPress={firstBallBowled ? handleAbandon : handleDeleteMatch}
-        style={{ alignSelf: 'center', paddingVertical: 14, marginTop: 4 }}
-      >
-        <Text style={{ color: '#6b7280', fontSize: 13, fontWeight: '600' }}>
-          {firstBallBowled ? 'Abandon match' : 'Delete match'}
-        </Text>
-      </TouchableOpacity>
       </>
       )}
 

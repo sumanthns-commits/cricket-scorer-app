@@ -5,8 +5,9 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useClubStore } from '../../store/clubStore';
+import { useAuthStore } from '../../store/authStore';
 import { getClubMatches, deleteMatch, getMatchOvers } from '../../services/matchService';
-import { getClub } from '../../services/clubService';
+import { getClub, getClubMember } from '../../services/clubService';
 import { seasonLabel, seasonSortValue, type Hemisphere } from '../../utils/seasons';
 import type { Match } from '../../types';
 
@@ -44,7 +45,7 @@ const STATUS_COLORS: Record<Match['status'], string> = {
   abandoned: '#ef4444',
 };
 
-function MatchCard({ match, onPress, onDelete }: { match: Match; onPress: () => void; onDelete?: () => void }) {
+function MatchCard({ match, onPress, onDelete, isAdmin }: { match: Match; onPress: () => void; onDelete?: () => void; isAdmin: boolean }) {
   const dateObj = match.date.toDate();
   const dateStr = dateObj.toLocaleDateString('en-GB', {
     day: 'numeric',
@@ -54,8 +55,9 @@ function MatchCard({ match, onPress, onDelete }: { match: Match; onPress: () => 
 
   const hasTeams = (match.teamA?.length ?? 0) > 0;
   const hasToss = !!match.toss;
+  const isFinished = match.status === 'completed' || match.status === 'abandoned';
 
-  const actionLabel =
+  const adminActionLabel =
     match.status === 'live'
       ? 'Live'
       : hasToss
@@ -63,6 +65,11 @@ function MatchCard({ match, onPress, onDelete }: { match: Match; onPress: () => 
       : hasTeams
       ? 'Toss'
       : 'Build Teams';
+
+  const memberActionLabel =
+    match.status === 'live' ? 'Live' : isFinished ? 'View' : null;
+
+  const actionLabel = isAdmin ? adminActionLabel : memberActionLabel;
 
   return (
     <TouchableOpacity
@@ -111,7 +118,9 @@ function MatchCard({ match, onPress, onDelete }: { match: Match; onPress: () => 
               {match.status}
             </Text>
           </View>
-          <Text style={{ color: '#4ade80', fontSize: 13, fontWeight: '600' }}>{actionLabel} →</Text>
+          {actionLabel && (
+            <Text style={{ color: '#4ade80', fontSize: 13, fontWeight: '600' }}>{actionLabel} →</Text>
+          )}
           {onDelete && (
             <TouchableOpacity onPress={onDelete} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text style={{ color: '#ef4444', fontSize: 12, fontWeight: '600' }}>Delete</Text>
@@ -126,6 +135,7 @@ function MatchCard({ match, onPress, onDelete }: { match: Match; onPress: () => 
 export default function MatchesScreen() {
   const navigation = useNavigation<Nav>();
   const activeClubId = useClubStore((s) => s.activeClubId);
+  const user = useAuthStore((s) => s.user);
 
   const { data: matches, isLoading, refetch } = useQuery({
     queryKey: ['matches', activeClubId],
@@ -138,6 +148,14 @@ export default function MatchesScreen() {
     queryFn: () => getClub(activeClubId!),
     enabled: !!activeClubId,
   });
+
+  const { data: member } = useQuery({
+    queryKey: ['clubMember', activeClubId, user?.uid],
+    queryFn: () => getClubMember(activeClubId!, user!.uid),
+    enabled: !!activeClubId && !!user,
+  });
+
+  const isAdmin = member?.role === 'admin';
 
   const hemisphere: Hemisphere = club?.hemisphere ?? 'N';
 
@@ -160,6 +178,7 @@ export default function MatchesScreen() {
       navigation.navigate('LiveScoring', { clubId, matchId });
       return;
     }
+    if (!isAdmin) return;
     if (hasTeams) {
       navigation.navigate('Toss', { clubId, matchId });
     } else {
@@ -231,17 +250,19 @@ export default function MatchesScreen() {
           >
             <Text style={{ color: '#4ade80', fontSize: 14, fontWeight: '700' }}>🏆 Leaders</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('ScheduleMatch', { clubId: activeClubId })}
-            style={{
-              backgroundColor: '#4ade80',
-              borderRadius: 8,
-              paddingVertical: 8,
-              paddingHorizontal: 14,
-            }}
-          >
-            <Text style={{ color: '#0a1628', fontSize: 14, fontWeight: '700' }}>+ Schedule</Text>
-          </TouchableOpacity>
+          {isAdmin && (
+            <TouchableOpacity
+              onPress={() => navigation.navigate('ScheduleMatch', { clubId: activeClubId })}
+              style={{
+                backgroundColor: '#4ade80',
+                borderRadius: 8,
+                paddingVertical: 8,
+                paddingHorizontal: 14,
+              }}
+            >
+              <Text style={{ color: '#0a1628', fontSize: 14, fontWeight: '700' }}>+ Schedule</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -270,9 +291,10 @@ export default function MatchesScreen() {
           renderItem={({ item }) => (
             <MatchCard
               match={item}
+              isAdmin={isAdmin}
               onPress={() => handleMatchPress(item)}
               onDelete={
-                item.status === 'scheduled' || item.status === 'live'
+                isAdmin && (item.status === 'scheduled' || item.status === 'live')
                   ? () => handleDelete(item)
                   : undefined
               }

@@ -129,6 +129,32 @@ export async function getUserClubs(uid: string): Promise<Club[]> {
     .map((snap) => snap.data() as Club);
 }
 
+export interface ClubWithRole {
+  club: Club;
+  isAdmin: boolean;
+}
+
+export async function getUserClubsWithRoles(uid: string): Promise<ClubWithRole[]> {
+  const membershipSnap = await getDoc(doc(db, 'userMemberships', uid));
+  if (!membershipSnap.exists()) return [];
+
+  const clubIds = (membershipSnap.data().clubIds as string[]) ?? [];
+  if (clubIds.length === 0) return [];
+
+  const [clubSnaps, memberSnaps] = await Promise.all([
+    Promise.all(clubIds.map((id) => getDoc(doc(db, 'clubs', id)))),
+    Promise.all(clubIds.map((id) => getDoc(doc(db, 'clubs', id, 'players', uid)))),
+  ]);
+
+  return clubSnaps
+    .map((snap, i) => ({ snap, memberSnap: memberSnaps[i] }))
+    .filter(({ snap }) => snap.exists())
+    .map(({ snap, memberSnap }) => ({
+      club: snap.data() as Club,
+      isAdmin: (memberSnap.data() as ClubMember | undefined)?.role === 'admin',
+    }));
+}
+
 export interface ClubSearchResult {
   clubId: string;
   name: string;
