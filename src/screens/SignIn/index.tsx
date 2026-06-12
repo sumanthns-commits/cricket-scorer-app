@@ -52,21 +52,21 @@ export default function SignInScreen() {
     <View
       style={{
         flex: 1,
-        backgroundColor: '#0a1628',
+        backgroundColor: '#ffffff',
         alignItems: 'center',
         justifyContent: 'center',
         padding: 24,
       }}
     >
-      <Text style={{ color: '#4ade80', fontSize: 48, fontWeight: '800', marginBottom: 6, letterSpacing: 2 }}>
+      <Text style={{ color: '#16a34a', fontSize: 48, fontWeight: '800', marginBottom: 6, letterSpacing: 2 }}>
         Crease
       </Text>
-      <Text style={{ color: '#64748b', fontSize: 15, marginBottom: 48, letterSpacing: 0.5 }}>
+      <Text style={{ color: '#94a3b8', fontSize: 15, marginBottom: 48, letterSpacing: 0.5 }}>
         Where every run tells a story.
       </Text>
 
       {loading ? (
-        <ActivityIndicator size="large" color="#4ade80" />
+        <ActivityIndicator size="large" color="#16a34a" />
       ) : (
         <TouchableOpacity
           disabled={!request}
@@ -79,31 +79,31 @@ export default function SignInScreen() {
             });
           }}
           style={{
-            backgroundColor: '#ffffff',
-            borderRadius: 8,
+            backgroundColor: '#16a34a',
+            borderRadius: 10,
             paddingVertical: 14,
-            paddingHorizontal: 24,
+            paddingHorizontal: 32,
             flexDirection: 'row',
             alignItems: 'center',
             gap: 12,
             opacity: request ? 1 : 0.5,
           }}
         >
-          <Text style={{ color: '#0a1628', fontSize: 16, fontWeight: '600' }}>
+          <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '700' }}>
             Sign in with Google
           </Text>
         </TouchableOpacity>
       )}
 
       {error && (
-        <Text style={{ color: '#ef4444', marginTop: 16, fontSize: 14 }}>
+        <Text style={{ color: '#dc2626', marginTop: 16, fontSize: 14 }}>
           {error}
         </Text>
       )}
 
       {USE_EMULATOR && !loading && (
         <View style={{ marginTop: 40, width: '100%', maxWidth: 320 }}>
-          <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 8, textAlign: 'center' }}>
+          <Text style={{ color: '#94a3b8', fontSize: 12, marginBottom: 8, textAlign: 'center' }}>
             EMULATOR DEV SIGN-IN
           </Text>
           <TextInput
@@ -112,14 +112,16 @@ export default function SignInScreen() {
             autoCapitalize="none"
             keyboardType="email-address"
             placeholder="email"
-            placeholderTextColor="#475569"
+            placeholderTextColor="#94a3b8"
             style={{
-              backgroundColor: '#1e293b',
-              color: '#e2e8f0',
+              backgroundColor: '#f1f5f9',
+              color: '#0f172a',
               borderRadius: 8,
               paddingHorizontal: 14,
               paddingVertical: 12,
               marginBottom: 8,
+              borderWidth: 1,
+              borderColor: '#e2e8f0',
             }}
           />
           <TextInput
@@ -127,26 +129,28 @@ export default function SignInScreen() {
             onChangeText={setPassword}
             secureTextEntry
             placeholder="password"
-            placeholderTextColor="#475569"
+            placeholderTextColor="#94a3b8"
             style={{
-              backgroundColor: '#1e293b',
-              color: '#e2e8f0',
+              backgroundColor: '#f1f5f9',
+              color: '#0f172a',
               borderRadius: 8,
               paddingHorizontal: 14,
               paddingVertical: 12,
               marginBottom: 12,
+              borderWidth: 1,
+              borderColor: '#e2e8f0',
             }}
           />
           <TouchableOpacity
             onPress={handleEmulatorSignIn}
             style={{
-              backgroundColor: '#334155',
+              backgroundColor: '#0f172a',
               borderRadius: 8,
               paddingVertical: 12,
               alignItems: 'center',
             }}
           >
-            <Text style={{ color: '#e2e8f0', fontSize: 14, fontWeight: '600' }}>
+            <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '600' }}>
               Sign in (emulator)
             </Text>
           </TouchableOpacity>

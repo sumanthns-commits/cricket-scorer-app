@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import type { TabParamList } from '../../navigation/TabNavigator';
 import { useClubStore } from '../../store/clubStore';
+import { useThemeStore } from '../../store/themeStore';
 import { getClubSquad, type SquadEntry } from '../../services/squadService';
 import { computeSkillRating } from '../../services/playerProfileService';
 import PlayerAvatar from '../../components/PlayerAvatar';
@@ -19,11 +20,12 @@ type Nav = CompositeNavigationProp<
 
 const TYPE_DOT: Record<PlayerType, string> = {
   ghost: '#a78bfa',
-  registered: '#4ade80',
-  linked: '#60a5fa',
+  registered: '#16a34a',
+  linked: '#2563eb',
 };
 
 function SquadRow({ entry, onPress }: { entry: SquadEntry; onPress: () => void }) {
+  const theme = useThemeStore((s) => s.theme);
   const { player, role } = entry;
   const rating = player.skillRating ?? computeSkillRating(player.careerStats);
 
@@ -33,12 +35,12 @@ function SquadRow({ entry, onPress }: { entry: SquadEntry; onPress: () => void }
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#1e2d45',
+        backgroundColor: theme.surface,
         borderRadius: 12,
         padding: 12,
         marginBottom: 10,
         borderWidth: 1,
-        borderColor: '#2d3f58',
+        borderColor: theme.border,
         gap: 12,
       }}
     >
@@ -46,11 +48,8 @@ function SquadRow({ entry, onPress }: { entry: SquadEntry; onPress: () => void }
 
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '700' }}>{player.displayName}</Text>
-          {/* playerType indicator */}
-          <View
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-          >
+          <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>{player.displayName}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: TYPE_DOT[player.type] }} />
             <Text style={{ color: TYPE_DOT[player.type], fontSize: 10, fontWeight: '700', textTransform: 'capitalize' }}>
               {player.type}
@@ -59,20 +58,19 @@ function SquadRow({ entry, onPress }: { entry: SquadEntry; onPress: () => void }
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
-          {/* role badge */}
           <View
             style={{
-              backgroundColor: role === 'admin' ? '#3b1d4a' : '#13314a',
+              backgroundColor: role === 'admin' ? '#ede9fe' : theme.surfaceAlt,
               borderRadius: 5,
               paddingHorizontal: 7,
               paddingVertical: 2,
               borderWidth: 1,
-              borderColor: role === 'admin' ? '#a78bfa' : '#2d3f58',
+              borderColor: role === 'admin' ? '#a78bfa' : theme.border,
             }}
           >
             <Text
               style={{
-                color: role === 'admin' ? '#c4b5fd' : '#9ca3af',
+                color: role === 'admin' ? '#7c3aed' : theme.textMuted,
                 fontSize: 10,
                 fontWeight: '700',
                 textTransform: 'uppercase',
@@ -81,16 +79,15 @@ function SquadRow({ entry, onPress }: { entry: SquadEntry; onPress: () => void }
               {role}
             </Text>
           </View>
-          <Text style={{ color: '#6b7280', fontSize: 12 }}>
+          <Text style={{ color: theme.textMuted, fontSize: 12 }}>
             {player.careerStats.matchesPlayed} matches
           </Text>
         </View>
       </View>
 
-      {/* skill rating */}
       <View style={{ alignItems: 'center', minWidth: 44 }}>
-        <Text style={{ color: '#4ade80', fontSize: 20, fontWeight: '800' }}>{rating}</Text>
-        <Text style={{ color: '#6b7280', fontSize: 9, fontWeight: '600' }}>RATING</Text>
+        <Text style={{ color: theme.accent, fontSize: 20, fontWeight: '800' }}>{rating}</Text>
+        <Text style={{ color: theme.textMuted, fontSize: 9, fontWeight: '600' }}>RATING</Text>
       </View>
     </TouchableOpacity>
   );
@@ -99,6 +96,7 @@ function SquadRow({ entry, onPress }: { entry: SquadEntry; onPress: () => void }
 export default function SquadScreen() {
   const navigation = useNavigation<Nav>();
   const activeClubId = useClubStore((s) => s.activeClubId);
+  const theme = useThemeStore((s) => s.theme);
 
   const { data: squad, isLoading, refetch } = useQuery({
     queryKey: ['clubSquad', activeClubId],
@@ -108,9 +106,9 @@ export default function SquadScreen() {
 
   if (!activeClubId) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0a1628', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-        <Text style={{ color: '#9ca3af', fontSize: 20, marginBottom: 8 }}>No club selected</Text>
-        <Text style={{ color: '#6b7280', fontSize: 14, textAlign: 'center' }}>
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+        <Text style={{ color: theme.textSecondary, fontSize: 20, marginBottom: 8 }}>No club selected</Text>
+        <Text style={{ color: theme.textMuted, fontSize: 14, textAlign: 'center' }}>
           Go to Home and tap a club to view its squad.
         </Text>
       </View>
@@ -118,13 +116,13 @@ export default function SquadScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#0a1628', padding: 16 }}>
-      <Text style={{ color: '#ffffff', fontSize: 22, fontWeight: '700', marginBottom: 16 }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg, padding: 16 }}>
+      <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700', marginBottom: 16 }}>
         Squad{squad ? ` · ${squad.length}` : ''}
       </Text>
 
       {isLoading ? (
-        <ActivityIndicator color="#4ade80" style={{ marginTop: 40 }} />
+        <ActivityIndicator color={theme.accent} style={{ marginTop: 40 }} />
       ) : squad && squad.length > 0 ? (
         <FlatList
           data={[...squad].sort((a, b) => a.player.displayName.localeCompare(b.player.displayName))}
@@ -142,7 +140,7 @@ export default function SquadScreen() {
         />
       ) : (
         <View style={{ alignItems: 'center', marginTop: 60 }}>
-          <Text style={{ color: '#6b7280', fontSize: 16, textAlign: 'center' }}>
+          <Text style={{ color: theme.textMuted, fontSize: 16, textAlign: 'center' }}>
             No players yet.
           </Text>
         </View>

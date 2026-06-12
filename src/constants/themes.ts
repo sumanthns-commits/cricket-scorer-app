@@ -14,6 +14,19 @@ export type Theme = {
 
 export const THEMES: Theme[] = [
   {
+    id: 'light',
+    name: 'Light',
+    bg: '#ffffff',
+    surface: '#f8fafc',
+    surfaceAlt: '#f1f5f9',
+    border: '#e2e8f0',
+    accent: '#16a34a',
+    accentDim: '#f0fdf4',
+    text: '#0f172a',
+    textSecondary: '#475569',
+    textMuted: '#94a3b8',
+  },
+  {
     id: 'dark',
     name: 'Dark',
     bg: '#0a1628',
@@ -51,19 +64,6 @@ export const THEMES: Theme[] = [
     text: '#f0fdf4',
     textSecondary: '#bbf7d0',
     textMuted: '#4ade80',
-  },
-  {
-    id: 'crimson',
-    name: 'Crimson',
-    bg: '#160a0a',
-    surface: '#2a1010',
-    surfaceAlt: '#1f0c0c',
-    border: '#3d1515',
-    accent: '#f97316',
-    accentDim: '#7c2d12',
-    text: '#fff7ed',
-    textSecondary: '#fed7aa',
-    textMuted: '#9a3412',
   },
   {
     id: 'violet',
