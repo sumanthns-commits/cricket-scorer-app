@@ -126,7 +126,7 @@ export async function getUserClubs(uid: string): Promise<Club[]> {
 
   return snapshots
     .filter((snap) => snap.exists())
-    .map((snap) => snap.data() as Club);
+    .map((snap) => ({ id: snap.id, ...snap.data() } as Club));
 }
 
 export interface ClubWithRole {
@@ -150,7 +150,7 @@ export async function getUserClubsWithRoles(uid: string): Promise<ClubWithRole[]
     .map((snap, i) => ({ snap, memberSnap: memberSnaps[i] }))
     .filter(({ snap }) => snap.exists())
     .map(({ snap, memberSnap }) => ({
-      club: snap.data() as Club,
+      club: { id: snap.id, ...snap.data() } as Club,
       isAdmin: (memberSnap.data() as ClubMember | undefined)?.role === 'admin',
     }));
 }

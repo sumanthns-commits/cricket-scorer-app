@@ -81,7 +81,7 @@ export default function HomeScreen() {
   const setActiveClubId = useClubStore((s) => s.setActiveClubId);
 
   const { data: clubsWithRoles, isLoading } = useQuery({
-    queryKey: ['clubs', user?.uid],
+    queryKey: ['clubsWithRoles', user?.uid],
     queryFn: () => getUserClubsWithRoles(user!.uid),
     enabled: !!user,
   });
