@@ -197,6 +197,15 @@ export interface LinkedGhost {
   linkedAt: Timestamp;
 }
 
+// Admin-set subjective strength ratings (0–100) per skill dimension.
+// Separate from careerStats — stored for AI team balancing context only.
+export interface StrengthOverride {
+  batting?: number;
+  fielding?: number;
+  bowling?: number;
+  keeping?: number;
+}
+
 export interface Player {
   id: string;
   displayName: string;
@@ -214,6 +223,9 @@ export interface Player {
   linkedGhost?: LinkedGhost;
   // Set on a ghost doc once linked into a member (type becomes 'linked').
   linkedTo?: string;
+  // Admin-set subjective strength overrides for AI team selection (0–100 each).
+  // Does not affect careerStats or any computed ratings.
+  strengthOverride?: StrengthOverride;
 }
 
 export type ExtrasType = 'wide' | 'no-ball' | 'bye' | 'leg-bye';

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
+import Slider from '@react-native-community/slider';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { resolvePlayerStats } from '../services/statsResolver';
 import { unlinkGhost } from '../services/joinRequestService';
@@ -11,11 +12,12 @@ import {
   getPlayer,
   getPlayerForm,
   updatePlayerAttributes,
+  updateStrengthOverride,
 } from '../services/playerProfileService';
 import PlayerAvatar from './PlayerAvatar';
 import FormChart from './FormChart';
 import WagonWheel from './WagonWheel';
-import type { BattingHand, BowlingStyle, PlayerType, WicketKeepingAbility } from '../types';
+import type { BattingHand, BowlingStyle, PlayerType, StrengthOverride, WicketKeepingAbility } from '../types';
 
 const BATTING_HANDS: { value: BattingHand; label: string }[] = [
   { value: 'RHB', label: 'Right hand' },
@@ -109,6 +111,53 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+function StrengthSlider({
+  label,
+  value,
+  onCommit,
+  editable = false,
+}: {
+  label: string;
+  value: number;
+  onCommit?: (v: number) => void;
+  editable?: boolean;
+}) {
+  const [displayValue, setDisplayValue] = useState(value);
+  useEffect(() => { setDisplayValue(value); }, [value]);
+
+  const barColor = displayValue >= 70 ? '#4ade80' : displayValue >= 40 ? '#facc15' : '#f87171';
+
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 }}>
+        <Text style={{ color: '#9ca3af', fontSize: 13, fontWeight: '600' }}>{label}</Text>
+        <Text style={{ color: barColor, fontSize: 13, fontWeight: '700' }}>{displayValue}</Text>
+      </View>
+      {editable ? (
+        <Slider
+          value={value}
+          minimumValue={0}
+          maximumValue={100}
+          step={1}
+          minimumTrackTintColor="#4ade80"
+          maximumTrackTintColor="#1e2d45"
+          thumbTintColor="#4ade80"
+          onValueChange={(v: number) => setDisplayValue(Math.round(v))}
+          onSlidingComplete={(v: number) => onCommit?.(Math.round(v))}
+          style={{ height: 36, marginHorizontal: -6 }}
+        />
+      ) : (
+        <View style={{ flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', marginTop: 6 }}>
+          <View style={{ flex: displayValue, backgroundColor: barColor }} />
+          <View style={{ flex: 100 - displayValue, backgroundColor: '#1e2d45' }} />
+        </View>
+      )}
+    </View>
+  );
+}
+
+type StrengthDraft = Required<StrengthOverride>;
+
 function formatCountdown(ms: number): string {
   if (ms <= 0) return 'Merging…';
   const totalSec = Math.floor(ms / 1000);
@@ -194,6 +243,34 @@ export default function PlayerProfileView({
 
   const [keepingDraft, setKeepingDraft] = useState<WicketKeepingAbility | undefined>(undefined);
   useEffect(() => { setKeepingDraft(player?.wicketKeeping); }, [player?.wicketKeeping]);
+
+  const defaultStrength: StrengthDraft = { batting: 50, fielding: 50, bowling: 50, keeping: 50 };
+  const [strengthDraft, setStrengthDraft] = useState<StrengthDraft>(defaultStrength);
+  // Ref so saveStrength always reads the latest value even when called in the same
+  // event loop tick as the last setStrengthDraft (onResponderRelease fires before
+  // the deferred state update flushes).
+  const strengthDraftRef = useRef<StrengthDraft>(defaultStrength);
+  useEffect(() => {
+    if (player?.strengthOverride) {
+      const next: StrengthDraft = {
+        batting: player.strengthOverride.batting ?? 50,
+        fielding: player.strengthOverride.fielding ?? 50,
+        bowling: player.strengthOverride.bowling ?? 50,
+        keeping: player.strengthOverride.keeping ?? 50,
+      };
+      strengthDraftRef.current = next;
+      setStrengthDraft(next);
+    }
+  }, [player?.strengthOverride]);
+
+  const commitStrength = (field: keyof StrengthDraft, v: number) => {
+    const next = { ...strengthDraftRef.current, [field]: v };
+    strengthDraftRef.current = next;
+    setStrengthDraft(next);
+    updateStrengthOverride(clubId, playerId, next)
+      .then(() => queryClient.invalidateQueries({ queryKey: ['player', clubId, playerId] }))
+      .catch(() => {});
+  };
 
   const { data: resolved, isLoading: loadingStats } = useQuery({
     queryKey: ['resolvedStats', clubId, playerId],
@@ -338,15 +415,82 @@ export default function PlayerProfileView({
               onSelect={(v) => { setKeepingDraft(v); saveAttr({ wicketKeeping: v }); }}
             />
           </Section>
+          <Section title="STRENGTH OVERRIDE">
+            <Text style={{ color: '#6b7280', fontSize: 12, marginBottom: 12 }}>
+              Drag bars to set subjective skill levels for AI team balancing. Does not affect recorded stats.
+            </Text>
+            <View
+              style={{
+                backgroundColor: '#0d1d35',
+                borderRadius: 10,
+                padding: 14,
+                borderWidth: 1,
+                borderColor: '#2d3f58',
+              }}
+            >
+              <StrengthSlider
+                label="Batting"
+                value={strengthDraft.batting}
+                onCommit={(v) => commitStrength('batting', v)}
+                editable
+              />
+              <StrengthSlider
+                label="Bowling"
+                value={strengthDraft.bowling}
+                onCommit={(v) => commitStrength('bowling', v)}
+                editable
+              />
+              <StrengthSlider
+                label="Fielding"
+                value={strengthDraft.fielding}
+                onCommit={(v) => commitStrength('fielding', v)}
+                editable
+              />
+              <StrengthSlider
+                label="Wicket keeping"
+                value={strengthDraft.keeping}
+                onCommit={(v) => commitStrength('keeping', v)}
+                editable
+              />
+            </View>
+          </Section>
         </>
       ) : (
-        <Section title="PLAYER INFO">
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <StatBox label="Batting" value={BATTING_HANDS.find((h) => h.value === player.battingHand)?.label ?? '—'} />
-            <StatBox label="Bowling" value={BOWLING_STYLES.find((s) => s.value === player.bowlingStyle)?.label ?? '—'} />
-            <StatBox label="Keeping" value={WICKET_KEEPING_OPTIONS.find((k) => k.value === player.wicketKeeping)?.label ?? '—'} />
-          </View>
-        </Section>
+        <>
+          <Section title="PLAYER INFO">
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <StatBox label="Batting" value={BATTING_HANDS.find((h) => h.value === player.battingHand)?.label ?? '—'} />
+              <StatBox label="Bowling" value={BOWLING_STYLES.find((s) => s.value === player.bowlingStyle)?.label ?? '—'} />
+              <StatBox label="Keeping" value={WICKET_KEEPING_OPTIONS.find((k) => k.value === player.wicketKeeping)?.label ?? '—'} />
+            </View>
+          </Section>
+          {player.strengthOverride && (
+            <Section title="STRENGTHS">
+              <View
+                style={{
+                  backgroundColor: '#0d1d35',
+                  borderRadius: 10,
+                  padding: 14,
+                  borderWidth: 1,
+                  borderColor: '#2d3f58',
+                }}
+              >
+                {player.strengthOverride.batting !== undefined && (
+                  <StrengthSlider label="Batting" value={player.strengthOverride.batting} />
+                )}
+                {player.strengthOverride.bowling !== undefined && (
+                  <StrengthSlider label="Bowling" value={player.strengthOverride.bowling} />
+                )}
+                {player.strengthOverride.fielding !== undefined && (
+                  <StrengthSlider label="Fielding" value={player.strengthOverride.fielding} />
+                )}
+                {player.strengthOverride.keeping !== undefined && (
+                  <StrengthSlider label="Wicket keeping" value={player.strengthOverride.keeping} />
+                )}
+              </View>
+            </Section>
+          )}
+        </>
       )}
 
       {/* Batting */}
