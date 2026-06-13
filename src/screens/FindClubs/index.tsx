@@ -1,32 +1,15 @@
 import { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  FlatList,
-  ActivityIndicator,
-} from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
+import { useThemeStore } from '../../store/themeStore';
 import { searchClubsByName, getUserClubs, type ClubSearchResult } from '../../services/clubService';
-import {
-  requestToJoin,
-  getMyJoinRequest,
-  cancelJoinRequest,
-} from '../../services/joinRequestService';
+import { requestToJoin, getMyJoinRequest, cancelJoinRequest } from '../../services/joinRequestService';
 
-function ResultRow({
-  result,
-  isMember,
-  uid,
-}: {
-  result: ClubSearchResult;
-  isMember: boolean;
-  uid: string;
-}) {
+function ResultRow({ result, isMember, uid }: { result: ClubSearchResult; isMember: boolean; uid: string }) {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const theme = useThemeStore((s) => s.theme);
   const [busy, setBusy] = useState(false);
 
   const { data: request, isLoading } = useQuery({
@@ -44,11 +27,7 @@ function ResultRow({
       if (pending) {
         await cancelJoinRequest(result.clubId, uid);
       } else {
-        await requestToJoin(result.clubId, {
-          uid,
-          displayName: user.displayName ?? user.email ?? 'Player',
-          photoURL: user.photoURL,
-        });
+        await requestToJoin(result.clubId, { uid, displayName: user.displayName ?? user.email ?? 'Player', photoURL: user.photoURL });
       }
       await queryClient.invalidateQueries({ queryKey: ['joinRequest', result.clubId, uid] });
     } finally {
@@ -57,50 +36,20 @@ function ResultRow({
   }
 
   return (
-    <View
-      style={{
-        backgroundColor: '#1e2d45',
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 12,
-        borderWidth: 1,
-        borderColor: '#2d3f58',
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-      }}
-    >
-      <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '600', flex: 1, marginRight: 12 }}>
-        {result.name}
-      </Text>
-
+    <View style={{ backgroundColor: theme.surface, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: theme.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+      <Text style={{ color: theme.text, fontSize: 16, fontWeight: '600', flex: 1, marginRight: 12 }}>{result.name}</Text>
       {isMember ? (
         <View style={{ paddingVertical: 8, paddingHorizontal: 14 }}>
-          <Text style={{ color: '#6b7280', fontSize: 13, fontWeight: '600' }}>Member</Text>
+          <Text style={{ color: theme.textMuted, fontSize: 13, fontWeight: '600' }}>Member</Text>
         </View>
       ) : isLoading ? (
-        <ActivityIndicator color="#4ade80" />
+        <ActivityIndicator color={theme.accent} />
       ) : (
         <TouchableOpacity
-          onPress={toggle}
-          disabled={busy}
-          style={{
-            backgroundColor: pending ? '#1e2d45' : '#4ade80',
-            borderWidth: 1,
-            borderColor: pending ? '#2d3f58' : '#4ade80',
-            borderRadius: 8,
-            paddingVertical: 8,
-            paddingHorizontal: 14,
-            opacity: busy ? 0.6 : 1,
-          }}
+          onPress={toggle} disabled={busy}
+          style={{ backgroundColor: pending ? theme.surface : theme.accent, borderWidth: 1, borderColor: pending ? theme.border : theme.accent, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 14, opacity: busy ? 0.6 : 1 }}
         >
-          <Text
-            style={{
-              color: pending ? '#9ca3af' : '#0a1628',
-              fontSize: 13,
-              fontWeight: '700',
-            }}
-          >
+          <Text style={{ color: pending ? theme.textMuted : '#ffffff', fontSize: 13, fontWeight: '700' }}>
             {pending ? 'Requested ✕' : 'Request to join'}
           </Text>
         </TouchableOpacity>
@@ -111,6 +60,7 @@ function ResultRow({
 
 export default function FindClubsScreen() {
   const user = useAuthStore((s) => s.user);
+  const theme = useThemeStore((s) => s.theme);
   const [term, setTerm] = useState('');
   const [submitted, setSubmitted] = useState('');
 
@@ -128,61 +78,30 @@ export default function FindClubsScreen() {
   });
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#0a1628', padding: 16 }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg, padding: 16 }}>
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
         <TextInput
-          value={term}
-          onChangeText={setTerm}
+          value={term} onChangeText={setTerm}
           onSubmitEditing={() => setSubmitted(term)}
-          returnKeyType="search"
-          placeholder="Search clubs by name"
-          placeholderTextColor="#4b5563"
-          autoCapitalize="none"
-          style={{
-            flex: 1,
-            backgroundColor: '#1e2d45',
-            color: '#ffffff',
-            borderRadius: 8,
-            paddingVertical: 12,
-            paddingHorizontal: 16,
-            fontSize: 16,
-            borderWidth: 1,
-            borderColor: '#2d3f58',
-          }}
+          returnKeyType="search" placeholder="Search clubs by name"
+          placeholderTextColor={theme.textMuted} autoCapitalize="none"
+          style={{ flex: 1, backgroundColor: theme.surface, color: theme.text, borderRadius: 8, paddingVertical: 12, paddingHorizontal: 16, fontSize: 16, borderWidth: 1, borderColor: theme.border }}
         />
-        <TouchableOpacity
-          onPress={() => setSubmitted(term)}
-          style={{
-            backgroundColor: '#4ade80',
-            borderRadius: 8,
-            paddingHorizontal: 16,
-            justifyContent: 'center',
-          }}
-        >
-          <Text style={{ color: '#0a1628', fontSize: 14, fontWeight: '700' }}>Search</Text>
+        <TouchableOpacity onPress={() => setSubmitted(term)} style={{ backgroundColor: theme.accent, borderRadius: 8, paddingHorizontal: 16, justifyContent: 'center' }}>
+          <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '700' }}>Search</Text>
         </TouchableOpacity>
       </View>
 
       {isFetching ? (
-        <ActivityIndicator color="#4ade80" style={{ marginTop: 40 }} />
+        <ActivityIndicator color={theme.accent} style={{ marginTop: 40 }} />
       ) : submitted && results && results.length === 0 ? (
-        <Text style={{ color: '#6b7280', fontSize: 15, textAlign: 'center', marginTop: 40 }}>
-          No clubs found matching “{submitted}”.
-        </Text>
+        <Text style={{ color: theme.textMuted, fontSize: 15, textAlign: 'center', marginTop: 40 }}>No clubs found matching "{submitted}".</Text>
       ) : (
         <FlatList
           data={results ?? []}
           keyExtractor={(item) => item.clubId}
-          renderItem={({ item }) => (
-            <ResultRow result={item} isMember={memberIds.has(item.clubId)} uid={user!.uid} />
-          )}
-          ListEmptyComponent={
-            submitted ? null : (
-              <Text style={{ color: '#6b7280', fontSize: 15, textAlign: 'center', marginTop: 40 }}>
-                Search for a club to request to join.
-              </Text>
-            )
-          }
+          renderItem={({ item }) => <ResultRow result={item} isMember={memberIds.has(item.clubId)} uid={user!.uid} />}
+          ListEmptyComponent={submitted ? null : <Text style={{ color: theme.textMuted, fontSize: 15, textAlign: 'center', marginTop: 40 }}>Search for a club to request to join.</Text>}
         />
       )}
     </View>

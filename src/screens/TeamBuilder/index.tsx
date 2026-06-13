@@ -1,11 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
-} from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -14,6 +8,7 @@ import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { getMatch, getClubPlayers, setMatchTeams } from '../../services/matchService';
 import { askCricketAssistant } from '../../ai/cricketAssistant';
 import { TEAM_SELECTION_SYSTEM_PROMPT } from '../../constants/teamSelectionPrompt';
+import { useThemeStore } from '../../store/themeStore';
 import type { TeamSelectionResult } from '../../types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -25,132 +20,47 @@ function parseTeamSelection(text: string): TeamSelectionResult | null {
     if (!match) return null;
     const parsed = JSON.parse(match[0]) as Partial<TeamSelectionResult>;
     if (!Array.isArray(parsed.team_a) || !Array.isArray(parsed.team_b)) return null;
-    return {
-      team_a: parsed.team_a,
-      team_b: parsed.team_b,
-      rationale: parsed.rationale ?? '',
-      keyDecisions: parsed.keyDecisions ?? [],
-    };
-  } catch {
-    return null;
-  }
+    return { team_a: parsed.team_a, team_b: parsed.team_b, rationale: parsed.rationale ?? '', keyDecisions: parsed.keyDecisions ?? [] };
+  } catch { return null; }
 }
 
-function PlayerRow({
-  name,
-  badge,
-  shared,
-  isCaptain,
-  onSetCaptain,
-  onMoveA,
-  onMoveB,
-  onRemove,
-}: {
-  name: string;
-  badge: 'A' | 'B' | null;
-  shared?: boolean;
-  isCaptain?: boolean;
-  onSetCaptain?: () => void;
-  onMoveA: () => void;
-  onMoveB: () => void;
-  onRemove?: () => void;
+function PlayerRow({ name, badge, shared, isCaptain, onSetCaptain, onMoveA, onMoveB, onRemove }: {
+  name: string; badge: 'A' | 'B' | null; shared?: boolean; isCaptain?: boolean;
+  onSetCaptain?: () => void; onMoveA: () => void; onMoveB: () => void; onRemove?: () => void;
 }) {
+  const theme = useThemeStore((s) => s.theme);
   return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#1e2d45',
-        borderRadius: 8,
-        padding: 10,
-        marginBottom: 6,
-        borderWidth: 1,
-        borderColor: badge === 'A' ? '#60a5fa' : badge === 'B' ? '#f97316' : '#2d3f58',
-      }}
-    >
-      {badge && (
-        <View
-          style={{
-            width: 24,
-            height: 24,
-            borderRadius: 12,
-            backgroundColor: badge === 'A' ? '#60a5fa' : '#f97316',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginRight: 10,
-          }}
-        >
-          <Text style={{ color: '#0a1628', fontWeight: '800', fontSize: 12 }}>{badge}</Text>
+    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.surface, borderRadius: 8, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: badge === 'A' ? '#60a5fa' : badge === 'B' ? '#f97316' : theme.border }}>
+      {badge ? (
+        <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: badge === 'A' ? '#60a5fa' : '#f97316', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+          <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 12 }}>{badge}</Text>
         </View>
+      ) : (
+        <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: theme.border, marginRight: 10 }} />
       )}
-      {!badge && (
-        <View
-          style={{
-            width: 24,
-            height: 24,
-            borderRadius: 12,
-            backgroundColor: '#2d3f58',
-            marginRight: 10,
-          }}
-        />
-      )}
-      <Text numberOfLines={1} style={{ color: '#ffffff', fontSize: 14, flex: 1 }}>{name}</Text>
+      <Text numberOfLines={1} style={{ color: theme.text, fontSize: 14, flex: 1 }}>{name}</Text>
       {shared && (
-        <View style={{ backgroundColor: '#3b2f0a', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, marginRight: 6, borderWidth: 1, borderColor: '#fbbf24' }}>
-          <Text style={{ color: '#fbbf24', fontSize: 9, fontWeight: '700' }}>SH</Text>
+        <View style={{ backgroundColor: theme.id === 'light' ? '#fef9c3' : '#3b2f0a', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, marginRight: 6, borderWidth: 1, borderColor: '#fbbf24' }}>
+          <Text style={{ color: '#d97706', fontSize: 9, fontWeight: '700' }}>SH</Text>
         </View>
       )}
       {onSetCaptain && (
         <TouchableOpacity
           onPress={onSetCaptain}
-          style={{
-            paddingHorizontal: 10,
-            paddingVertical: 4,
-            borderRadius: 6,
-            backgroundColor: isCaptain ? '#3b2f0a' : '#1a1605',
-            borderWidth: 1,
-            borderColor: isCaptain ? '#fbbf24' : '#4b421a',
-            marginRight: 6,
-          }}
+          style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: isCaptain ? (theme.id === 'light' ? '#fef9c3' : '#3b2f0a') : theme.surfaceAlt, borderWidth: 1, borderColor: isCaptain ? '#fbbf24' : theme.border, marginRight: 6 }}
         >
-          <Text style={{ color: isCaptain ? '#fbbf24' : '#8a7a3a', fontSize: 12, fontWeight: '700' }}>C</Text>
+          <Text style={{ color: isCaptain ? '#d97706' : theme.textMuted, fontSize: 12, fontWeight: '700' }}>C</Text>
         </TouchableOpacity>
       )}
-      <TouchableOpacity
-        onPress={onMoveA}
-        style={{
-          paddingHorizontal: 10,
-          paddingVertical: 4,
-          borderRadius: 6,
-          backgroundColor: badge === 'A' ? '#1e3a5f' : '#0d2040',
-          marginRight: 6,
-        }}
-      >
-        <Text style={{ color: '#60a5fa', fontSize: 12, fontWeight: '700' }}>A</Text>
+      <TouchableOpacity onPress={onMoveA} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: badge === 'A' ? '#dbeafe' : theme.surfaceAlt, marginRight: 6 }}>
+        <Text style={{ color: '#2563eb', fontSize: 12, fontWeight: '700' }}>A</Text>
       </TouchableOpacity>
-      <TouchableOpacity
-        onPress={onMoveB}
-        style={{
-          paddingHorizontal: 10,
-          paddingVertical: 4,
-          borderRadius: 6,
-          backgroundColor: badge === 'B' ? '#4a1f0a' : '#2d1a00',
-        }}
-      >
+      <TouchableOpacity onPress={onMoveB} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: badge === 'B' ? '#ffedd5' : theme.surfaceAlt }}>
         <Text style={{ color: '#f97316', fontSize: 12, fontWeight: '700' }}>B</Text>
       </TouchableOpacity>
       {onRemove && (
-        <TouchableOpacity
-          onPress={onRemove}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={{
-            paddingHorizontal: 8,
-            paddingVertical: 4,
-            borderRadius: 6,
-            marginLeft: 6,
-          }}
-        >
-          <Text style={{ color: '#6b7280', fontSize: 16, fontWeight: '700' }}>✕</Text>
+        <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginLeft: 6 }}>
+          <Text style={{ color: theme.textMuted, fontSize: 16, fontWeight: '700' }}>✕</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -161,6 +71,7 @@ export default function TeamBuilderScreen() {
   const navigation = useNavigation<Nav>();
   const { params } = useRoute<Route>();
   const { clubId, matchId } = params;
+  const theme = useThemeStore((s) => s.theme);
 
   const [teamA, setTeamA] = useState<string[]>([]);
   const [teamB, setTeamB] = useState<string[]>([]);
@@ -171,15 +82,8 @@ export default function TeamBuilderScreen() {
   const [rationale, setRationale] = useState('');
   const [keyDecisions, setKeyDecisions] = useState<string[]>([]);
 
-  const { data: match, isLoading: loadingMatch } = useQuery({
-    queryKey: ['match', clubId, matchId],
-    queryFn: () => getMatch(clubId, matchId),
-  });
-
-  const { data: players = [], isLoading: loadingPlayers } = useQuery({
-    queryKey: ['clubPlayers', clubId],
-    queryFn: () => getClubPlayers(clubId),
-  });
+  const { data: match, isLoading: loadingMatch } = useQuery({ queryKey: ['match', clubId, matchId], queryFn: () => getMatch(clubId, matchId) });
+  const { data: players = [], isLoading: loadingPlayers } = useQuery({ queryKey: ['clubPlayers', clubId], queryFn: () => getClubPlayers(clubId) });
 
   useEffect(() => {
     if (match?.teamA?.length) setTeamA(match.teamA);
@@ -188,315 +92,110 @@ export default function TeamBuilderScreen() {
     if (match?.captainB) setCaptainB(match.captainB);
   }, [match]);
 
-  const playerMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const p of players) map.set(p.id, p.displayName);
-    return map;
-  }, [players]);
+  const playerMap = useMemo(() => { const m = new Map<string, string>(); for (const p of players) m.set(p.id, p.displayName); return m; }, [players]);
 
   const squad = match?.squad ?? [];
   const unassigned = squad.filter((id) => !teamA.includes(id) && !teamB.includes(id));
-  // With an odd squad a player may be shared across both teams to even them up.
   const allowShared = squad.length % 2 === 1;
 
-  const moveToA = (id: string) => {
-    setTeamA((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
-    if (!allowShared) setTeamB((prev) => prev.filter((p) => p !== id));
-  };
+  const moveToA = (id: string) => { setTeamA((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]); if (!allowShared) setTeamB((p) => p.filter((x) => x !== id)); };
+  const moveToB = (id: string) => { setTeamB((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]); if (!allowShared) setTeamA((p) => p.filter((x) => x !== id)); };
+  const unassign = (id: string) => { setTeamA((p) => p.filter((x) => x !== id)); setTeamB((p) => p.filter((x) => x !== id)); };
+  const toggleCaptainA = (id: string) => setCaptainA((c) => c === id ? null : id);
+  const toggleCaptainB = (id: string) => setCaptainB((c) => c === id ? null : id);
 
-  const moveToB = (id: string) => {
-    setTeamB((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
-    if (!allowShared) setTeamA((prev) => prev.filter((p) => p !== id));
-  };
-
-  const unassign = (id: string) => {
-    setTeamA((prev) => prev.filter((p) => p !== id));
-    setTeamB((prev) => prev.filter((p) => p !== id));
-  };
-
-  // Tapping the star toggles that team's captain (one per team).
-  const toggleCaptainA = (id: string) => setCaptainA((c) => (c === id ? null : id));
-  const toggleCaptainB = (id: string) => setCaptainB((c) => (c === id ? null : id));
-
-  // Drop captaincy if the captain is no longer in their team.
-  useEffect(() => {
-    if (captainA && !teamA.includes(captainA)) setCaptainA(null);
-  }, [teamA, captainA]);
-  useEffect(() => {
-    if (captainB && !teamB.includes(captainB)) setCaptainB(null);
-  }, [teamB, captainB]);
+  useEffect(() => { if (captainA && !teamA.includes(captainA)) setCaptainA(null); }, [teamA, captainA]);
+  useEffect(() => { if (captainB && !teamB.includes(captainB)) setCaptainB(null); }, [teamB, captainB]);
 
   const runAI = async () => {
-    setAiThinking(true);
-    setAiError('');
+    setAiThinking(true); setAiError('');
     try {
-      const { text } = await askCricketAssistant(
-        `Select balanced teams for match ID: ${matchId}`,
-        clubId,
-        TEAM_SELECTION_SYSTEM_PROMPT
-      );
+      const { text } = await askCricketAssistant(`Select balanced teams for match ID: ${matchId}`, clubId, TEAM_SELECTION_SYSTEM_PROMPT);
       const parsed = parseTeamSelection(text);
       if (!parsed) throw new Error('Could not parse team selection from AI response');
-      setTeamA(parsed.team_a);
-      setTeamB(parsed.team_b);
-      setRationale(parsed.rationale);
-      setKeyDecisions(parsed.keyDecisions);
-    } catch (e) {
-      setAiError(e instanceof Error ? e.message : 'AI selection failed');
-    } finally {
-      setAiThinking(false);
-    }
+      setTeamA(parsed.team_a); setTeamB(parsed.team_b);
+      setRationale(parsed.rationale); setKeyDecisions(parsed.keyDecisions);
+    } catch (e) { setAiError(e instanceof Error ? e.message : 'AI selection failed'); }
+    finally { setAiThinking(false); }
   };
 
   const { mutate: confirm, isPending } = useMutation({
-    mutationFn: () =>
-      setMatchTeams({
-        clubId,
-        matchId,
-        teamA,
-        teamB,
-        captainA: captainA ?? undefined,
-        captainB: captainB ?? undefined,
-      }),
+    mutationFn: () => setMatchTeams({ clubId, matchId, teamA, teamB, captainA: captainA ?? undefined, captainB: captainB ?? undefined }),
     onSuccess: () => navigation.replace('Toss', { clubId, matchId }),
   });
 
   const canConfirm = teamA.length > 0 && teamB.length > 0 && !isPending;
 
   if (loadingMatch || loadingPlayers) {
-    return (
-      <View style={{ flex: 1, backgroundColor: '#0a1628', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#4ade80" />
-      </View>
-    );
+    return <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator size="large" color={theme.accent} /></View>;
   }
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: '#0a1628' }}
-      contentContainerStyle={{ padding: 16 }}
-    >
-      {/* Header */}
+    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
         <View style={{ flex: 1, marginRight: 12 }}>
-          <Text style={{ color: '#ffffff', fontSize: 18, fontWeight: '700' }}>
-            {match?.homeTeam ?? 'Home'} vs {match?.awayTeam ?? 'Away'}
-          </Text>
-          <Text style={{ color: '#6b7280', fontSize: 13, marginTop: 2 }}>
-            {squad.length} players · {teamA.length}A / {teamB.length}B / {unassigned.length} unassigned
-          </Text>
-          {allowShared && (
-            <Text style={{ color: '#fbbf24', fontSize: 11, marginTop: 2 }}>
-              Odd squad — tap A and B on one player to share them across both teams
-            </Text>
-          )}
-          {(!captainA || !captainB) && (teamA.length > 0 || teamB.length > 0) && (
-            <Text style={{ color: '#9ca3af', fontSize: 11, marginTop: 2 }}>
-              Tap the gold C on a player to set each team's captain (optional)
-            </Text>
-          )}
+          <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700' }}>{match?.homeTeam ?? 'Home'} vs {match?.awayTeam ?? 'Away'}</Text>
+          <Text style={{ color: theme.textMuted, fontSize: 13, marginTop: 2 }}>{squad.length} players · {teamA.length}A / {teamB.length}B / {unassigned.length} unassigned</Text>
+          {allowShared && <Text style={{ color: '#d97706', fontSize: 11, marginTop: 2 }}>Odd squad — tap A and B on one player to share them across both teams</Text>}
+          {(!captainA || !captainB) && (teamA.length > 0 || teamB.length > 0) && <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 2 }}>Tap the gold C on a player to set each team's captain (optional)</Text>}
         </View>
-        <TouchableOpacity
-          onPress={runAI}
-          disabled={aiThinking}
-          style={{
-            backgroundColor: aiThinking ? '#2d3f58' : '#7c3aed',
-            borderRadius: 8,
-            paddingVertical: 8,
-            paddingHorizontal: 14,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-          }}
-        >
-          {aiThinking ? (
-            <ActivityIndicator size="small" color="#a78bfa" />
-          ) : (
-            <Text style={{ color: '#a78bfa', fontSize: 14, fontWeight: '700' }}>AI Balance</Text>
-          )}
+        <TouchableOpacity onPress={runAI} disabled={aiThinking} style={{ backgroundColor: aiThinking ? theme.surface : '#7c3aed', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {aiThinking ? <ActivityIndicator size="small" color="#a78bfa" /> : <Text style={{ color: '#a78bfa', fontSize: 14, fontWeight: '700' }}>AI Balance</Text>}
         </TouchableOpacity>
       </View>
 
-      {/* AI Error */}
       {aiError !== '' && (
-        <View
-          style={{
-            backgroundColor: '#2d1515',
-            borderRadius: 8,
-            padding: 12,
-            marginBottom: 12,
-            borderWidth: 1,
-            borderColor: '#7f1d1d',
-          }}
-        >
-          <Text style={{ color: '#f87171', fontSize: 13 }}>{aiError}</Text>
+        <View style={{ backgroundColor: theme.id === 'light' ? '#fef2f2' : '#2d1515', borderRadius: 8, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#dc2626' }}>
+          <Text style={{ color: '#dc2626', fontSize: 13 }}>{aiError}</Text>
         </View>
       )}
 
-      {/* Rationale */}
       {rationale !== '' && (
-        <View
-          style={{
-            backgroundColor: '#1a1a2e',
-            borderRadius: 8,
-            padding: 12,
-            marginBottom: 12,
-            borderWidth: 1,
-            borderColor: '#7c3aed',
-          }}
-        >
-          <Text style={{ color: '#a78bfa', fontSize: 13, fontWeight: '600', marginBottom: 4 }}>
-            AI Rationale
-          </Text>
-          <Text style={{ color: '#c4b5fd', fontSize: 13, lineHeight: 18 }}>{rationale}</Text>
-          {keyDecisions.length > 0 && (
-            <View style={{ marginTop: 8 }}>
-              {keyDecisions.map((kd, i) => (
-                <Text key={i} style={{ color: '#8b5cf6', fontSize: 12, marginTop: 2 }}>
-                  • {kd}
-                </Text>
-              ))}
-            </View>
-          )}
+        <View style={{ backgroundColor: theme.id === 'light' ? '#f5f3ff' : '#1a1a2e', borderRadius: 8, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#7c3aed' }}>
+          <Text style={{ color: '#7c3aed', fontSize: 13, fontWeight: '600', marginBottom: 4 }}>AI Rationale</Text>
+          <Text style={{ color: '#a78bfa', fontSize: 13, lineHeight: 18 }}>{rationale}</Text>
+          {keyDecisions.length > 0 && <View style={{ marginTop: 8 }}>{keyDecisions.map((kd, i) => <Text key={i} style={{ color: '#8b5cf6', fontSize: 12, marginTop: 2 }}>• {kd}</Text>)}</View>}
         </View>
       )}
 
-      {/* Team A */}
       {teamA.length > 0 && (
         <View style={{ marginBottom: 12 }}>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              marginBottom: 6,
-              gap: 8,
-            }}
-          >
-            <View
-              style={{
-                width: 20,
-                height: 20,
-                borderRadius: 10,
-                backgroundColor: '#60a5fa',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Text style={{ color: '#0a1628', fontWeight: '800', fontSize: 11 }}>A</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 8 }}>
+            <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#60a5fa', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 11 }}>A</Text>
             </View>
-            <Text style={{ color: '#60a5fa', fontSize: 14, fontWeight: '600' }}>
-              Team A ({teamA.length})
-            </Text>
+            <Text style={{ color: '#2563eb', fontSize: 14, fontWeight: '600' }}>Team A ({teamA.length})</Text>
           </View>
-          {teamA.map((id) => (
-            <PlayerRow
-              key={id}
-              name={playerMap.get(id) ?? id}
-              badge="A"
-              shared={teamB.includes(id)}
-              isCaptain={captainA === id}
-              onSetCaptain={() => toggleCaptainA(id)}
-              onMoveA={() => moveToA(id)}
-              onMoveB={() => moveToB(id)}
-              onRemove={() => unassign(id)}
-            />
-          ))}
+          {teamA.map((id) => <PlayerRow key={id} name={playerMap.get(id) ?? id} badge="A" shared={teamB.includes(id)} isCaptain={captainA === id} onSetCaptain={() => toggleCaptainA(id)} onMoveA={() => moveToA(id)} onMoveB={() => moveToB(id)} onRemove={() => unassign(id)} />)}
         </View>
       )}
 
-      {/* Team B */}
       {teamB.length > 0 && (
         <View style={{ marginBottom: 12 }}>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              marginBottom: 6,
-              gap: 8,
-            }}
-          >
-            <View
-              style={{
-                width: 20,
-                height: 20,
-                borderRadius: 10,
-                backgroundColor: '#f97316',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Text style={{ color: '#0a1628', fontWeight: '800', fontSize: 11 }}>B</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 8 }}>
+            <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#f97316', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 11 }}>B</Text>
             </View>
-            <Text style={{ color: '#f97316', fontSize: 14, fontWeight: '600' }}>
-              Team B ({teamB.length})
-            </Text>
+            <Text style={{ color: '#f97316', fontSize: 14, fontWeight: '600' }}>Team B ({teamB.length})</Text>
           </View>
-          {teamB.map((id) => (
-            <PlayerRow
-              key={id}
-              name={playerMap.get(id) ?? id}
-              badge="B"
-              shared={teamA.includes(id)}
-              isCaptain={captainB === id}
-              onSetCaptain={() => toggleCaptainB(id)}
-              onMoveA={() => moveToA(id)}
-              onMoveB={() => moveToB(id)}
-              onRemove={() => unassign(id)}
-            />
-          ))}
+          {teamB.map((id) => <PlayerRow key={id} name={playerMap.get(id) ?? id} badge="B" shared={teamA.includes(id)} isCaptain={captainB === id} onSetCaptain={() => toggleCaptainB(id)} onMoveA={() => moveToA(id)} onMoveB={() => moveToB(id)} onRemove={() => unassign(id)} />)}
         </View>
       )}
 
-      {/* Unassigned */}
       {unassigned.length > 0 && (
         <View style={{ marginBottom: 12 }}>
-          <Text style={{ color: '#9ca3af', fontSize: 13, fontWeight: '600', marginBottom: 6 }}>
-            UNASSIGNED ({unassigned.length})
-          </Text>
-          {unassigned.map((id) => (
-            <PlayerRow
-              key={id}
-              name={playerMap.get(id) ?? id}
-              badge={null}
-              onMoveA={() => moveToA(id)}
-              onMoveB={() => moveToB(id)}
-            />
-          ))}
+          <Text style={{ color: theme.textMuted, fontSize: 13, fontWeight: '600', marginBottom: 6 }}>UNASSIGNED ({unassigned.length})</Text>
+          {unassigned.map((id) => <PlayerRow key={id} name={playerMap.get(id) ?? id} badge={null} onMoveA={() => moveToA(id)} onMoveB={() => moveToB(id)} />)}
         </View>
       )}
 
-      {squad.length === 0 && (
-        <Text style={{ color: '#6b7280', textAlign: 'center', marginTop: 32 }}>
-          No squad selected for this match
-        </Text>
-      )}
+      {squad.length === 0 && <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 32 }}>No squad selected for this match</Text>}
 
-      {/* Confirm */}
       <TouchableOpacity
-        onPress={() => confirm()}
-        disabled={!canConfirm}
-        style={{
-          backgroundColor: canConfirm ? '#4ade80' : '#2d3f58',
-          borderRadius: 10,
-          padding: 16,
-          alignItems: 'center',
-          marginTop: 8,
-          marginBottom: 40,
-        }}
+        onPress={() => confirm()} disabled={!canConfirm}
+        style={{ backgroundColor: canConfirm ? theme.accent : theme.surface, borderRadius: 10, padding: 16, alignItems: 'center', marginTop: 8, marginBottom: 40, borderWidth: canConfirm ? 0 : 1, borderColor: theme.border }}
       >
-        {isPending ? (
-          <ActivityIndicator color="#0a1628" />
-        ) : (
-          <Text
-            style={{
-              color: canConfirm ? '#0a1628' : '#6b7280',
-              fontSize: 16,
-              fontWeight: '700',
-            }}
-          >
-            Confirm Teams
-          </Text>
-        )}
+        {isPending ? <ActivityIndicator color="#ffffff" /> : <Text style={{ color: canConfirm ? '#ffffff' : theme.textMuted, fontSize: 16, fontWeight: '700' }}>Confirm Teams</Text>}
       </TouchableOpacity>
     </ScrollView>
   );

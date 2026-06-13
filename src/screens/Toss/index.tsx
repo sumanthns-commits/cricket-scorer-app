@@ -1,18 +1,12 @@
 import { useState, useRef } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Animated,
-  Easing,
-  ActivityIndicator,
-} from 'react-native';
+import { View, Text, TouchableOpacity, Animated, Easing, ActivityIndicator } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { getMatch, setMatchToss } from '../../services/matchService';
+import { useThemeStore } from '../../store/themeStore';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'Toss'>;
@@ -21,6 +15,7 @@ export default function TossScreen() {
   const navigation = useNavigation<Nav>();
   const { params } = useRoute<Route>();
   const { clubId, matchId } = params;
+  const theme = useThemeStore((s) => s.theme);
 
   const [winnerId, setWinnerId] = useState<'homeTeam' | 'awayTeam' | null>(null);
   const [choice, setChoice] = useState<'bat' | 'field' | null>(null);
@@ -40,15 +35,9 @@ export default function TossScreen() {
     setFlipped(false);
     setCoin(null);
     setFlipping(true);
-    // Fair 50/50 outcome, revealed when the 5s spin lands.
     const result: 'Heads' | 'Tails' = Math.random() < 0.5 ? 'Heads' : 'Tails';
     flipAnim.setValue(0);
-    Animated.timing(flipAnim, {
-      toValue: 1,
-      duration: 5000,
-      easing: Easing.out(Easing.cubic), // spins fast, decelerates into the result
-      useNativeDriver: true,
-    }).start(({ finished }) => {
+    Animated.timing(flipAnim, { toValue: 1, duration: 5000, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(({ finished }) => {
       if (!finished) return;
       setCoin(result);
       setFlipped(true);
@@ -56,11 +45,7 @@ export default function TossScreen() {
     });
   };
 
-  // ~9 full rotations across the 5 seconds.
-  const rotateY = flipAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '3240deg'],
-  });
+  const rotateY = flipAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '3240deg'] });
 
   const { mutate: confirm, isPending, error } = useMutation({
     mutationFn: () => {
@@ -68,45 +53,28 @@ export default function TossScreen() {
       const winnerName = winnerId === 'homeTeam' ? match.homeTeam : match.awayTeam;
       return setMatchToss(clubId, matchId, { winnerId, winnerName, choice });
     },
-    onSuccess: () => {
-      // Land directly on this match's Live scoring screen — it drives opening
-      // batsman/bowler selection (setup-batsmen → setup-bowler) once it loads.
-      navigation.replace('LiveScoring', { clubId, matchId });
-    },
+    onSuccess: () => navigation.replace('LiveScoring', { clubId, matchId }),
   });
 
   const canConfirm = !!winnerId && !!choice && !isPending;
-
   const homeTeam = match?.homeTeam ?? 'Team A';
   const awayTeam = match?.awayTeam ?? 'Team B';
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0a1628', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#4ade80" />
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color={theme.accent} />
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#0a1628', padding: 16 }}>
-      {/* Match title */}
-      <Text
-        style={{
-          color: '#ffffff',
-          fontSize: 20,
-          fontWeight: '700',
-          textAlign: 'center',
-          marginTop: 12,
-          marginBottom: 4,
-        }}
-      >
+    <View style={{ flex: 1, backgroundColor: theme.bg, padding: 16 }}>
+      <Text style={{ color: theme.text, fontSize: 20, fontWeight: '700', textAlign: 'center', marginTop: 12, marginBottom: 4 }}>
         {homeTeam} vs {awayTeam}
       </Text>
       {match?.venue ? (
-        <Text style={{ color: '#6b7280', fontSize: 14, textAlign: 'center', marginBottom: 28 }}>
-          {match.venue}
-        </Text>
+        <Text style={{ color: theme.textMuted, fontSize: 14, textAlign: 'center', marginBottom: 28 }}>{match.venue}</Text>
       ) : (
         <View style={{ marginBottom: 28 }} />
       )}
@@ -114,101 +82,51 @@ export default function TossScreen() {
       {/* Coin */}
       <View style={{ alignItems: 'center', marginBottom: 32 }}>
         <TouchableOpacity onPress={flipCoin} disabled={flipping} activeOpacity={0.8}>
-          <Animated.View
-            style={{
-              width: 100,
-              height: 100,
-              borderRadius: 50,
-              backgroundColor: flipped ? '#fbbf24' : '#1e2d45',
-              borderWidth: 3,
-              borderColor: '#fbbf24',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transform: [{ rotateY }],
-            }}
-          >
-            <Text style={{ fontSize: flipped ? 30 : 36, fontWeight: '800', color: flipped ? '#0a1628' : '#ffffff' }}>
+          <Animated.View style={{ width: 100, height: 100, borderRadius: 50, backgroundColor: flipped ? '#fbbf24' : theme.surface, borderWidth: 3, borderColor: '#fbbf24', alignItems: 'center', justifyContent: 'center', transform: [{ rotateY }] }}>
+            <Text style={{ fontSize: flipped ? 30 : 36, fontWeight: '800', color: flipped ? '#0a1628' : theme.textMuted }}>
               {flipped ? (coin === 'Heads' ? 'H' : 'T') : '🪙'}
             </Text>
           </Animated.View>
         </TouchableOpacity>
-        <Text style={{ color: '#fbbf24', marginTop: 10, fontSize: 14, fontWeight: '600' }}>
+        <Text style={{ color: '#d97706', marginTop: 10, fontSize: 14, fontWeight: '600' }}>
           {flipping ? 'Flipping…' : flipped && coin ? `${coin}!` : 'Tap to flip coin'}
         </Text>
         {flipped && !flipping && (
-          <TouchableOpacity onPress={flipCoin} style={{ marginTop: 8, paddingVertical: 6, paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderColor: '#2d3f58' }}>
-            <Text style={{ color: '#9ca3af', fontSize: 13, fontWeight: '600' }}>↻ Flip again</Text>
+          <TouchableOpacity onPress={flipCoin} style={{ marginTop: 8, paddingVertical: 6, paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderColor: theme.border }}>
+            <Text style={{ color: theme.textMuted, fontSize: 13, fontWeight: '600' }}>↻ Flip again</Text>
           </TouchableOpacity>
         )}
       </View>
 
       {/* Toss winner */}
-      <Text style={{ color: '#9ca3af', fontSize: 12, marginBottom: 8 }}>TOSS WON BY</Text>
+      <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 8 }}>TOSS WON BY</Text>
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 24 }}>
         {(['homeTeam', 'awayTeam'] as const).map((teamKey) => {
           const name = teamKey === 'homeTeam' ? homeTeam : awayTeam;
           const selected = winnerId === teamKey;
           return (
             <TouchableOpacity
-              key={teamKey}
-              onPress={() => setWinnerId(teamKey)}
-              style={{
-                flex: 1,
-                padding: 14,
-                borderRadius: 8,
-                backgroundColor: selected ? '#0d2e1a' : '#1e2d45',
-                borderWidth: 2,
-                borderColor: selected ? '#4ade80' : '#2d3f58',
-                alignItems: 'center',
-              }}
+              key={teamKey} onPress={() => setWinnerId(teamKey)}
+              style={{ flex: 1, padding: 14, borderRadius: 8, backgroundColor: selected ? theme.accentDim : theme.surface, borderWidth: 2, borderColor: selected ? theme.accent : theme.border, alignItems: 'center' }}
             >
-              <Text
-                style={{
-                  color: selected ? '#4ade80' : '#ffffff',
-                  fontWeight: '600',
-                  fontSize: 15,
-                }}
-              >
-                {name}
-              </Text>
+              <Text style={{ color: selected ? theme.accent : theme.text, fontWeight: '600', fontSize: 15 }}>{name}</Text>
             </TouchableOpacity>
           );
         })}
       </View>
 
       {/* Choice */}
-      <Text style={{ color: '#9ca3af', fontSize: 12, marginBottom: 8 }}>ELECTED TO</Text>
+      <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 8 }}>ELECTED TO</Text>
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 32 }}>
         {(['bat', 'field'] as const).map((c) => {
           const selected = choice === c;
           return (
             <TouchableOpacity
-              key={c}
-              onPress={() => setChoice(c)}
-              style={{
-                flex: 1,
-                padding: 14,
-                borderRadius: 8,
-                backgroundColor: selected ? '#0d2e1a' : '#1e2d45',
-                borderWidth: 2,
-                borderColor: selected ? '#4ade80' : '#2d3f58',
-                alignItems: 'center',
-                flexDirection: 'row',
-                justifyContent: 'center',
-                gap: 6,
-              }}
+              key={c} onPress={() => setChoice(c)}
+              style={{ flex: 1, padding: 14, borderRadius: 8, backgroundColor: selected ? theme.accentDim : theme.surface, borderWidth: 2, borderColor: selected ? theme.accent : theme.border, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
             >
               <Text style={{ fontSize: 20 }}>{c === 'bat' ? '🏏' : '🧤'}</Text>
-              <Text
-                style={{
-                  color: selected ? '#4ade80' : '#ffffff',
-                  fontWeight: '600',
-                  fontSize: 15,
-                  textTransform: 'capitalize',
-                }}
-              >
-                {c}
-              </Text>
+              <Text style={{ color: selected ? theme.accent : theme.text, fontWeight: '600', fontSize: 15, textTransform: 'capitalize' }}>{c}</Text>
             </TouchableOpacity>
           );
         })}
@@ -216,55 +134,28 @@ export default function TossScreen() {
 
       {/* Summary */}
       {winnerId && choice && (
-        <View
-          style={{
-            backgroundColor: '#1e2d45',
-            borderRadius: 8,
-            padding: 12,
-            marginBottom: 20,
-            borderWidth: 1,
-            borderColor: '#2d3f58',
-          }}
-        >
-          <Text style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center' }}>
-            <Text style={{ color: '#4ade80', fontWeight: '700' }}>
-              {winnerId === 'homeTeam' ? homeTeam : awayTeam}
-            </Text>
+        <View style={{ backgroundColor: theme.surface, borderRadius: 8, padding: 12, marginBottom: 20, borderWidth: 1, borderColor: theme.border }}>
+          <Text style={{ color: theme.textSecondary, fontSize: 13, textAlign: 'center' }}>
+            <Text style={{ color: theme.accent, fontWeight: '700' }}>{winnerId === 'homeTeam' ? homeTeam : awayTeam}</Text>
             {' '}won the toss and elected to{' '}
-            <Text style={{ color: '#4ade80', fontWeight: '700' }}>{choice}</Text>
+            <Text style={{ color: theme.accent, fontWeight: '700' }}>{choice}</Text>
             {' '}first
           </Text>
         </View>
       )}
 
       {error instanceof Error && (
-        <Text style={{ color: '#f87171', textAlign: 'center', marginBottom: 12 }}>
-          {error.message}
-        </Text>
+        <Text style={{ color: '#dc2626', textAlign: 'center', marginBottom: 12 }}>{error.message}</Text>
       )}
 
       <TouchableOpacity
-        onPress={() => confirm()}
-        disabled={!canConfirm}
-        style={{
-          backgroundColor: canConfirm ? '#4ade80' : '#2d3f58',
-          borderRadius: 10,
-          padding: 16,
-          alignItems: 'center',
-        }}
+        onPress={() => confirm()} disabled={!canConfirm}
+        style={{ backgroundColor: canConfirm ? theme.accent : theme.surface, borderRadius: 10, padding: 16, alignItems: 'center', borderWidth: canConfirm ? 0 : 1, borderColor: theme.border }}
       >
         {isPending ? (
-          <ActivityIndicator color="#0a1628" />
+          <ActivityIndicator color="#ffffff" />
         ) : (
-          <Text
-            style={{
-              color: canConfirm ? '#0a1628' : '#6b7280',
-              fontSize: 16,
-              fontWeight: '700',
-            }}
-          >
-            Start Match
-          </Text>
+          <Text style={{ color: canConfirm ? '#ffffff' : theme.textMuted, fontSize: 16, fontWeight: '700' }}>Start Match</Text>
         )}
       </TouchableOpacity>
     </View>

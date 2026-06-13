@@ -119,17 +119,8 @@ function tapToSel(x: number, y: number): WheelSel | null {
   return { sector, depth, x, y };
 }
 
-function WagonWheelModal({
-  visible,
-  isLHB,
-  runs,
-  onDone,
-}: {
-  visible: boolean;
-  isLHB: boolean;
-  runs: number;
-  onDone: (shot: WagonShot | null) => void;
-}) {
+function WagonWheelModal({ visible, isLHB, runs, onDone }: { visible: boolean; isLHB: boolean; runs: number; onDone: (shot: WagonShot | null) => void }) {
+  const theme = useThemeStore((s) => s.theme);
   const [sel, setSel] = useState<WheelSel | null>(null);
   const labels = isLHB ? LHB_LABELS : RHB_LABELS;
 
@@ -145,54 +136,28 @@ function WagonWheelModal({
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={{ flex: 1, backgroundColor: '#000000cc', justifyContent: 'center', alignItems: 'center' }}>
-        <View style={{ backgroundColor: '#0a1628', borderRadius: 16, padding: 20, alignItems: 'center', width: 340 }}>
-          <Text style={{ color: '#ffffff', fontSize: 20, fontWeight: '700', marginBottom: 2 }}>
+        <View style={{ backgroundColor: theme.surface, borderRadius: 16, padding: 20, alignItems: 'center', width: 340 }}>
+          <Text style={{ color: theme.text, fontSize: 20, fontWeight: '700', marginBottom: 2 }}>
             {runs === 4 ? 'FOUR!' : runs === 6 ? 'SIX!' : `${runs} run${runs !== 1 ? 's' : ''}`}
           </Text>
-          <Text style={{ color: '#6b7280', fontSize: 13, marginBottom: 4 }}>
+          <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 4 }}>
             Tap where the ball went — closer to the edge = deeper
           </Text>
-          <Text style={{ color: sel ? '#4ade80' : '#374151', fontSize: 12, fontWeight: '600', marginBottom: 12, height: 16 }}>
+          <Text style={{ color: sel ? theme.accent : theme.border, fontSize: 12, fontWeight: '600', marginBottom: 12, height: 16 }}>
             {sel ? `${labels[sel.sector]} · ${DEPTH_LABELS[sel.depth]}` : ' '}
           </Text>
 
-          {/* One tappable surface — sector from angle, depth from radius */}
           <Pressable onPress={onWheelPress} style={{ width: WHEEL, height: WHEEL }}>
-            {/* Background */}
-            <View pointerEvents="none" style={{ position: 'absolute', width: WHEEL, height: WHEEL, borderRadius: WC, backgroundColor: '#0f1e35' }} />
+            <View pointerEvents="none" style={{ position: 'absolute', width: WHEEL, height: WHEEL, borderRadius: WC, backgroundColor: theme.surfaceAlt }} />
 
-            {/* Rings — highlight the selected depth band */}
             {RINGS.map((r, di) => (
-              <View
-                key={r}
-                pointerEvents="none"
-                style={{
-                  position: 'absolute',
-                  width: r * 2, height: r * 2,
-                  borderRadius: r,
-                  borderWidth: sel?.depth === di ? 2 : 1,
-                  borderColor: sel?.depth === di ? '#4ade80' : '#1e3a5f',
-                  left: WC - r, top: WC - r,
-                }}
-              />
+              <View key={r} pointerEvents="none" style={{ position: 'absolute', width: r * 2, height: r * 2, borderRadius: r, borderWidth: sel?.depth === di ? 2 : 1, borderColor: sel?.depth === di ? theme.accent : theme.border, left: WC - r, top: WC - r }} />
             ))}
 
-            {/* 6 radial lines through center = 12 sectors */}
             {Array.from({ length: 6 }, (_, i) => (
-              <View
-                key={i}
-                pointerEvents="none"
-                style={{
-                  position: 'absolute',
-                  width: OUTER_R * 2, height: 1,
-                  backgroundColor: '#1e3a5f',
-                  left: WC - OUTER_R, top: WC - 0.5,
-                  transform: [{ rotate: `${i * 30}deg` }],
-                }}
-              />
+              <View key={i} pointerEvents="none" style={{ position: 'absolute', width: OUTER_R * 2, height: 1, backgroundColor: theme.border, left: WC - OUTER_R, top: WC - 0.5, transform: [{ rotate: `${i * 30}deg` }] }} />
             ))}
 
-            {/* Non-interactive sector labels (guides) at a fixed radius */}
             {labels.map((label, i) => {
               const rad = ((i * 30 - 90) * Math.PI) / 180;
               const r = OUTER_R - 16;
@@ -200,49 +165,28 @@ function WagonWheelModal({
               const y = WC + r * Math.sin(rad) - 11;
               const active = sel?.sector === i;
               return (
-                <View
-                  key={i}
-                  pointerEvents="none"
-                  style={{ position: 'absolute', left: x, top: y, width: 52, height: 22, alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <Text style={{ color: active ? '#4ade80' : '#6b7280', fontSize: 9, textAlign: 'center', fontWeight: active ? '700' : '400' }}>
-                    {label}
-                  </Text>
+                <View key={i} pointerEvents="none" style={{ position: 'absolute', left: x, top: y, width: 52, height: 22, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ color: active ? theme.accent : theme.textMuted, fontSize: 9, textAlign: 'center', fontWeight: active ? '700' : '400' }}>{label}</Text>
                 </View>
               );
             })}
 
-            {/* Marker at the tapped point */}
             {sel && (
-              <View pointerEvents="none" style={{
-                position: 'absolute', width: 14, height: 14, borderRadius: 7,
-                backgroundColor: '#4ade80', borderWidth: 2, borderColor: '#0a1628',
-                left: sel.x - 7, top: sel.y - 7,
-              }} />
+              <View pointerEvents="none" style={{ position: 'absolute', width: 14, height: 14, borderRadius: 7, backgroundColor: theme.accent, borderWidth: 2, borderColor: theme.surface, left: sel.x - 7, top: sel.y - 7 }} />
             )}
 
-            {/* Center dot */}
-            <View pointerEvents="none" style={{
-              position: 'absolute', width: 8, height: 8, borderRadius: 4,
-              backgroundColor: '#64748b', left: WC - 4, top: WC - 4,
-            }} />
+            <View pointerEvents="none" style={{ position: 'absolute', width: 8, height: 8, borderRadius: 4, backgroundColor: theme.textMuted, left: WC - 4, top: WC - 4 }} />
 
-            {/* Batsman label at bottom */}
-            <Text pointerEvents="none" style={{ position: 'absolute', bottom: 6, alignSelf: 'center', color: '#4b5563', fontSize: 10 }}>
+            <Text pointerEvents="none" style={{ position: 'absolute', bottom: 6, alignSelf: 'center', color: theme.textMuted, fontSize: 10 }}>
               {isLHB ? 'LHB' : 'RHB'} ▲
             </Text>
           </Pressable>
 
-          {/* Single action: confirms the shot, or skips if nothing tapped */}
           <TouchableOpacity
             onPress={() => onDone(sel ? { sector: sel.sector, depth: sel.depth } : null)}
-            style={{
-              width: '100%', padding: 14, borderRadius: 10, marginTop: 18, alignItems: 'center',
-              backgroundColor: canConfirm ? '#4ade80' : '#1e2d45',
-              borderWidth: canConfirm ? 0 : 1, borderColor: '#2d3f58',
-            }}
+            style={{ width: '100%', padding: 14, borderRadius: 10, marginTop: 18, alignItems: 'center', backgroundColor: canConfirm ? theme.accent : theme.surface, borderWidth: canConfirm ? 0 : 1, borderColor: theme.border }}
           >
-            <Text style={{ color: canConfirm ? '#0a1628' : '#9ca3af', fontWeight: '700' }}>
+            <Text style={{ color: canConfirm ? '#ffffff' : theme.textMuted, fontWeight: '700' }}>
               {canConfirm ? 'Confirm' : 'Skip'}
             </Text>
           </TouchableOpacity>
@@ -271,6 +215,7 @@ function FieldingPanel({
   hideFielders: boolean;
   onDone: (eventId: string | null, fielderId: string | null) => void;
 }) {
+  const theme = useThemeStore((s) => s.theme);
   const slideY = useRef(new Animated.Value(400)).current;
   const progress = useRef(new Animated.Value(1)).current;
   const [eventId, setEventId] = useState<string | null>(null);
@@ -324,49 +269,26 @@ function FieldingPanel({
         activeOpacity={1}
         onPress={finish}
       />
-      <Animated.View
-        style={{
-          backgroundColor: '#0f1e35',
-          borderTopLeftRadius: 20,
-          borderTopRightRadius: 20,
-          padding: 20,
-          paddingBottom: 36,
-          transform: [{ translateY: slideY }],
-          maxHeight: 420,
-        }}
-      >
-        <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#2d3f58', alignSelf: 'center', marginBottom: 14 }} />
+      <Animated.View style={{ backgroundColor: theme.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 36, transform: [{ translateY: slideY }], maxHeight: 420 }}>
+        <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: theme.border, alignSelf: 'center', marginBottom: 14 }} />
 
-        {/* Auto-dismiss progress */}
-        <View style={{ height: 3, backgroundColor: '#1e2d45', borderRadius: 2, overflow: 'hidden', marginBottom: 16 }}>
-          <Animated.View style={{ height: 3, width: barWidth, backgroundColor: '#4ade80' }} />
+        <View style={{ height: 3, backgroundColor: theme.surfaceAlt, borderRadius: 2, overflow: 'hidden', marginBottom: 16 }}>
+          <Animated.View style={{ height: 3, width: barWidth, backgroundColor: theme.accent }} />
         </View>
 
-        {/* Celebrate the boundary, but still offer fielding-event chips below
-            so a misfield/drop that leaked to the rope can be credited. */}
         {isBoundary && (
-          <Text style={{ color: '#fbbf24', fontSize: 22, fontWeight: '800', textAlign: 'center', marginBottom: 14 }}>
+          <Text style={{ color: '#d97706', fontSize: 22, fontWeight: '800', textAlign: 'center', marginBottom: 14 }}>
             {runs === 4 ? '⚡ FOUR!' : '💥 SIX!'}
           </Text>
         )}
 
         {fieldingEvents.length > 0 && (
           <>
-            <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700', marginBottom: 10 }}>FIELDING EVENT</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '700', marginBottom: 10 }}>FIELDING EVENT</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
               {fieldingEvents.map((ev) => (
-                <TouchableOpacity
-                  key={ev.id}
-                  onPress={() => pickEvent(ev.id)}
-                  style={{
-                    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-                    backgroundColor: eventId === ev.id ? '#4ade80' : '#1e2d45',
-                    borderWidth: 1, borderColor: eventId === ev.id ? '#4ade80' : '#2d3f58',
-                  }}
-                >
-                  <Text style={{ color: eventId === ev.id ? '#0a1628' : '#d1d5db', fontSize: 13, fontWeight: '600' }}>
-                    {ev.label}
-                  </Text>
+                <TouchableOpacity key={ev.id} onPress={() => pickEvent(ev.id)} style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: eventId === ev.id ? theme.accent : theme.surfaceAlt, borderWidth: 1, borderColor: eventId === ev.id ? theme.accent : theme.border }}>
+                  <Text style={{ color: eventId === ev.id ? '#ffffff' : theme.textSecondary, fontSize: 13, fontWeight: '600' }}>{ev.label}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -375,22 +297,12 @@ function FieldingPanel({
 
         {!hideFielders && (
           <>
-            <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700', marginBottom: 10 }}>FIELDER (optional)</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '700', marginBottom: 10 }}>FIELDER (optional)</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 {players.map((p) => (
-                  <TouchableOpacity
-                    key={p.id}
-                    onPress={() => pickFielder(p.id)}
-                    style={{
-                      paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8,
-                      backgroundColor: fielderId === p.id ? '#1e3a5f' : '#1e2d45',
-                      borderWidth: 1, borderColor: fielderId === p.id ? '#4ade80' : '#2d3f58',
-                    }}
-                  >
-                    <Text style={{ color: fielderId === p.id ? '#4ade80' : '#d1d5db', fontSize: 13 }}>
-                      {p.displayName.split(' ')[0]}
-                    </Text>
+                  <TouchableOpacity key={p.id} onPress={() => pickFielder(p.id)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: fielderId === p.id ? theme.accentDim : theme.surfaceAlt, borderWidth: 1, borderColor: fielderId === p.id ? theme.accent : theme.border }}>
+                    <Text style={{ color: fielderId === p.id ? theme.accent : theme.textSecondary, fontSize: 13 }}>{p.displayName.split(' ')[0]}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -398,11 +310,8 @@ function FieldingPanel({
           </>
         )}
 
-        <TouchableOpacity
-          onPress={finish}
-          style={{ backgroundColor: '#4ade80', borderRadius: 10, padding: 14, alignItems: 'center', marginTop: isBoundary ? 8 : 0 }}
-        >
-          <Text style={{ color: '#0a1628', fontWeight: '700', fontSize: 15 }}>Done</Text>
+        <TouchableOpacity onPress={finish} style={{ backgroundColor: theme.accent, borderRadius: 10, padding: 14, alignItems: 'center', marginTop: isBoundary ? 8 : 0 }}>
+          <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 15 }}>Done</Text>
         </TouchableOpacity>
       </Animated.View>
     </View>

@@ -1,18 +1,10 @@
 import { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-} from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useAuthStore } from '../../store/authStore';
+import { useThemeStore } from '../../store/themeStore';
 import { getUserProfile, updateUserProfile } from '../../services/userProfileService';
 import type { BattingHand, BowlingStyle, WicketKeepingAbility } from '../../types';
 
@@ -33,16 +25,14 @@ const WICKET_KEEPING_OPTIONS: { value: WicketKeepingAbility; label: string }[] =
 ];
 
 function ChipRow<T extends string>({
-  options,
-  selected,
-  onSelect,
-  onDeselect,
+  options, selected, onSelect, onDeselect,
 }: {
   options: { value: T; label: string }[];
   selected: T | undefined;
   onSelect: (v: T) => void;
   onDeselect?: () => void;
 }) {
+  const theme = useThemeStore((s) => s.theme);
   return (
     <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
       {options.map((o) => {
@@ -51,18 +41,9 @@ function ChipRow<T extends string>({
           <TouchableOpacity
             key={o.value}
             onPress={() => (active && onDeselect ? onDeselect() : onSelect(o.value))}
-            style={{
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-              borderRadius: 20,
-              backgroundColor: active ? '#4ade80' : '#1e2d45',
-              borderWidth: 1,
-              borderColor: active ? '#4ade80' : '#2d3f58',
-            }}
+            style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: active ? theme.accent : theme.surface, borderWidth: 1, borderColor: active ? theme.accent : theme.border }}
           >
-            <Text style={{ color: active ? '#0a1628' : '#d1d5db', fontSize: 13, fontWeight: '600' }}>
-              {o.label}
-            </Text>
+            <Text style={{ color: active ? '#ffffff' : theme.textSecondary, fontSize: 13, fontWeight: '600' }}>{o.label}</Text>
           </TouchableOpacity>
         );
       })}
@@ -73,6 +54,7 @@ function ChipRow<T extends string>({
 export default function EditProfileScreen({ navigation }: Props) {
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
+  const theme = useThemeStore((s) => s.theme);
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['userProfile', user?.uid],
@@ -87,7 +69,6 @@ export default function EditProfileScreen({ navigation }: Props) {
   const [bio, setBio] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Seed local edit state from the loaded profile once.
   const [seeded, setSeeded] = useState(false);
   if (profile && !seeded) {
     setDisplayName(profile.displayName ?? '');
@@ -104,9 +85,7 @@ export default function EditProfileScreen({ navigation }: Props) {
     try {
       await updateUserProfile(user.uid, {
         displayName: (displayName ?? '').trim() || (user.displayName ?? 'Player'),
-        battingHand,
-        bowlingStyle,
-        wicketKeeping: wicketKeeping ?? null,
+        battingHand, bowlingStyle, wicketKeeping: wicketKeeping ?? null,
         bio: (bio ?? '').trim(),
       });
       await queryClient.invalidateQueries({ queryKey: ['userProfile', user.uid] });
@@ -119,90 +98,49 @@ export default function EditProfileScreen({ navigation }: Props) {
 
   if (isLoading || !seeded) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0a1628', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color="#4ade80" />
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={theme.accent} />
       </View>
     );
   }
 
-  return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: '#0a1628' }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView contentContainerStyle={{ padding: 24 }}>
-        <Text style={{ color: '#9ca3af', fontSize: 13, marginBottom: 6 }}>DISPLAY NAME</Text>
-        <TextInput
-          value={displayName ?? ''}
-          onChangeText={setDisplayName}
-          placeholder="Your name"
-          placeholderTextColor="#4b5563"
-          style={{
-            backgroundColor: '#1e2d45',
-            color: '#ffffff',
-            borderRadius: 8,
-            paddingVertical: 12,
-            paddingHorizontal: 16,
-            fontSize: 16,
-            marginBottom: 24,
-            borderWidth: 1,
-            borderColor: '#2d3f58',
-          }}
-        />
+  const inputStyle = {
+    backgroundColor: theme.surface, color: theme.text, borderRadius: 8,
+    paddingVertical: 12, paddingHorizontal: 16, fontSize: 16,
+    marginBottom: 24, borderWidth: 1, borderColor: theme.border,
+  };
 
-        <Text style={{ color: '#9ca3af', fontSize: 13, marginBottom: 10 }}>BATTING</Text>
+  return (
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={{ padding: 24 }}>
+        <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 6 }}>DISPLAY NAME</Text>
+        <TextInput value={displayName ?? ''} onChangeText={setDisplayName} placeholder="Your name" placeholderTextColor={theme.textMuted} style={inputStyle} />
+
+        <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 10 }}>BATTING</Text>
         <View style={{ marginBottom: 24 }}>
           <ChipRow options={BATTING_HANDS} selected={battingHand} onSelect={setBattingHand} />
         </View>
 
-        <Text style={{ color: '#9ca3af', fontSize: 13, marginBottom: 10 }}>BOWLING</Text>
+        <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 10 }}>BOWLING</Text>
         <View style={{ marginBottom: 24 }}>
           <ChipRow options={BOWLING_STYLES} selected={bowlingStyle} onSelect={setBowlingStyle} />
         </View>
 
-        <Text style={{ color: '#9ca3af', fontSize: 13, marginBottom: 10 }}>WICKET KEEPING</Text>
+        <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 10 }}>WICKET KEEPING</Text>
         <View style={{ marginBottom: 24 }}>
           <ChipRow options={WICKET_KEEPING_OPTIONS} selected={wicketKeeping} onSelect={setWicketKeeping} onDeselect={() => setWicketKeeping(undefined)} />
         </View>
 
-        <Text style={{ color: '#9ca3af', fontSize: 13, marginBottom: 6 }}>BIO</Text>
+        <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 6 }}>BIO</Text>
         <TextInput
-          value={bio ?? ''}
-          onChangeText={setBio}
-          placeholder="A short bio (optional)"
-          placeholderTextColor="#4b5563"
+          value={bio ?? ''} onChangeText={setBio}
+          placeholder="A short bio (optional)" placeholderTextColor={theme.textMuted}
           multiline
-          style={{
-            backgroundColor: '#1e2d45',
-            color: '#ffffff',
-            borderRadius: 8,
-            paddingVertical: 12,
-            paddingHorizontal: 16,
-            fontSize: 16,
-            marginBottom: 32,
-            borderWidth: 1,
-            borderColor: '#2d3f58',
-            textAlignVertical: 'top',
-            minHeight: 80,
-          }}
+          style={{ ...inputStyle, marginBottom: 32, textAlignVertical: 'top', minHeight: 80 }}
         />
 
-        <TouchableOpacity
-          onPress={handleSave}
-          disabled={saving}
-          style={{
-            backgroundColor: '#4ade80',
-            borderRadius: 8,
-            paddingVertical: 14,
-            alignItems: 'center',
-            opacity: saving ? 0.6 : 1,
-          }}
-        >
-          {saving ? (
-            <ActivityIndicator color="#0a1628" />
-          ) : (
-            <Text style={{ color: '#0a1628', fontSize: 16, fontWeight: '700' }}>Save Profile</Text>
-          )}
+        <TouchableOpacity onPress={handleSave} disabled={saving} style={{ backgroundColor: theme.accent, borderRadius: 8, paddingVertical: 14, alignItems: 'center', opacity: saving ? 0.6 : 1 }}>
+          {saving ? <ActivityIndicator color="#ffffff" /> : <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '700' }}>Save Profile</Text>}
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>

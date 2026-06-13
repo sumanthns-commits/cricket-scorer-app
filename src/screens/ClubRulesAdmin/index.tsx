@@ -17,6 +17,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useAuthStore } from '../../store/authStore';
+import { useThemeStore } from '../../store/themeStore';
 import type {
   ClubRules,
   CustomDismissal,
@@ -94,349 +95,101 @@ const POLARITY_CYCLE: FieldingPolarity[] = ['positive', 'negative', 'neutral'];
 // ─── Sub-components ───────────────────────────────────────────────
 
 function SectionHeader({ title }: { title: string }) {
+  const theme = useThemeStore((s) => s.theme);
   return (
-    <View
-      style={{
-        borderBottomWidth: 1,
-        borderBottomColor: '#2d3f58',
-        marginTop: 28,
-        marginBottom: 14,
-        paddingBottom: 6,
-      }}
-    >
-      <Text style={{ color: '#4ade80', fontSize: 12, fontWeight: '700', letterSpacing: 1 }}>
-        {title}
-      </Text>
+    <View style={{ borderBottomWidth: 1, borderBottomColor: theme.border, marginTop: 28, marginBottom: 14, paddingBottom: 6 }}>
+      <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '700', letterSpacing: 1 }}>{title}</Text>
     </View>
   );
 }
 
-function CheckRow({
-  label,
-  checked,
-  onToggle,
-  disabled,
-}: {
-  label: string;
-  checked: boolean;
-  onToggle: () => void;
-  disabled: boolean;
-}) {
+function CheckRow({ label, checked, onToggle, disabled }: { label: string; checked: boolean; onToggle: () => void; disabled: boolean }) {
+  const theme = useThemeStore((s) => s.theme);
   return (
-    <TouchableOpacity
-      onPress={onToggle}
-      disabled={disabled}
-      style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}
-    >
-      <View
-        style={{
-          width: 20,
-          height: 20,
-          borderRadius: 4,
-          borderWidth: 1.5,
-          borderColor: checked ? '#4ade80' : '#4b5563',
-          backgroundColor: checked ? '#4ade80' : 'transparent',
-          marginRight: 10,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        {checked && (
-          <Text style={{ color: '#0a1628', fontSize: 13, fontWeight: '900', lineHeight: 16 }}>
-            ✓
-          </Text>
-        )}
+    <TouchableOpacity onPress={onToggle} disabled={disabled} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+      <View style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 1.5, borderColor: checked ? theme.accent : theme.textMuted, backgroundColor: checked ? theme.accent : 'transparent', marginRight: 10, alignItems: 'center', justifyContent: 'center' }}>
+        {checked && <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '900', lineHeight: 16 }}>✓</Text>}
       </View>
-      <Text style={{ color: disabled ? '#4b5563' : '#d1d5db', fontSize: 15 }}>{label}</Text>
+      <Text style={{ color: disabled ? theme.textMuted : theme.textSecondary, fontSize: 15 }}>{label}</Text>
     </TouchableOpacity>
   );
 }
 
-function NumberRow({
-  label,
-  value,
-  onChange,
-  placeholder,
-  disabled,
-  min,
-  onFocus,
-}: {
-  label: string;
-  value: number | undefined;
-  onChange: (v: number | undefined) => void;
-  placeholder?: string;
-  disabled: boolean;
-  min?: number;
-  onFocus?: () => void;
-}) {
+function NumberRow({ label, value, onChange, placeholder, disabled, min, onFocus }: { label: string; value: number | undefined; onChange: (v: number | undefined) => void; placeholder?: string; disabled: boolean; min?: number; onFocus?: () => void }) {
+  const theme = useThemeStore((s) => s.theme);
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
-      <Text style={{ color: '#d1d5db', flex: 1, fontSize: 15 }}>{label}</Text>
+      <Text style={{ color: theme.textSecondary, flex: 1, fontSize: 15 }}>{label}</Text>
       <TextInput
         value={value !== undefined ? String(value) : ''}
-        onChangeText={(t) => {
-          if (t === '') { onChange(undefined); return; }
-          const n = parseInt(t, 10);
-          if (!isNaN(n) && (min === undefined || n >= min)) onChange(n);
-        }}
-        onFocus={onFocus}
-        keyboardType="numeric"
-        editable={!disabled}
-        placeholder={placeholder ?? '–'}
-        placeholderTextColor="#4b5563"
-        style={{
-          backgroundColor: disabled ? '#0f1e35' : '#1e2d45',
-          color: disabled ? '#4b5563' : '#ffffff',
-          borderRadius: 8,
-          paddingVertical: 8,
-          paddingHorizontal: 12,
-          width: 80,
-          textAlign: 'center',
-          borderWidth: 1,
-          borderColor: '#2d3f58',
-          fontSize: 16,
-        }}
+        onChangeText={(t) => { if (t === '') { onChange(undefined); return; } const n = parseInt(t, 10); if (!isNaN(n) && (min === undefined || n >= min)) onChange(n); }}
+        onFocus={onFocus} keyboardType="numeric" editable={!disabled}
+        placeholder={placeholder ?? '–'} placeholderTextColor={theme.textMuted}
+        style={{ backgroundColor: disabled ? theme.surfaceAlt : theme.surface, color: disabled ? theme.textMuted : theme.text, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, width: 80, textAlign: 'center', borderWidth: 1, borderColor: theme.border, fontSize: 16 }}
       />
     </View>
   );
 }
 
-function CustomDismissalCard({
-  item,
-  onChange,
-  onRemove,
-  onFocus,
-  disabled,
-}: {
-  item: CustomDismissal;
-  onChange: (patch: Partial<CustomDismissal>) => void;
-  onRemove: () => void;
-  onFocus?: () => void;
-  disabled: boolean;
-}) {
+function CustomDismissalCard({ item, onChange, onRemove, onFocus, disabled }: { item: CustomDismissal; onChange: (patch: Partial<CustomDismissal>) => void; onRemove: () => void; onFocus?: () => void; disabled: boolean }) {
+  const theme = useThemeStore((s) => s.theme);
   return (
-    <View
-      style={{
-        backgroundColor: '#0f1e35',
-        borderRadius: 10,
-        padding: 14,
-        marginBottom: 12,
-        borderWidth: 1,
-        borderColor: '#2d3f58',
-      }}
-    >
-      <Text style={{ color: '#9ca3af', fontSize: 12, marginBottom: 6, fontWeight: '600' }}>
-        LABEL
-      </Text>
+    <View style={{ backgroundColor: theme.surfaceAlt, borderRadius: 10, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: theme.border }}>
+      <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 6, fontWeight: '600' }}>LABEL</Text>
       <TextInput
-        value={item.label}
-        onChangeText={(t) => onChange({ label: t })}
-        onFocus={onFocus}
-        placeholder="e.g. Mankad"
-        placeholderTextColor="#4b5563"
-        editable={!disabled}
-        style={{
-          backgroundColor: disabled ? '#0a1628' : '#1e2d45',
-          color: disabled ? '#4b5563' : '#ffffff',
-          borderRadius: 8,
-          paddingVertical: 8,
-          paddingHorizontal: 12,
-          fontSize: 15,
-          marginBottom: 12,
-          borderWidth: 1,
-          borderColor: '#2d3f58',
-        }}
+        value={item.label} onChangeText={(t) => onChange({ label: t })} onFocus={onFocus}
+        placeholder="e.g. Mankad" placeholderTextColor={theme.textMuted} editable={!disabled}
+        style={{ backgroundColor: disabled ? theme.bg : theme.surface, color: disabled ? theme.textMuted : theme.text, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, fontSize: 15, marginBottom: 12, borderWidth: 1, borderColor: theme.border }}
       />
-
-      <CheckRow
-        label="Batter is out"
-        checked={item.batterIsOut}
-        onToggle={() => onChange({ batterIsOut: !item.batterIsOut })}
-        disabled={disabled}
-      />
-      <CheckRow
-        label="Legal delivery (counts toward over)"
-        checked={item.isLegalDelivery}
-        onToggle={() => onChange({ isLegalDelivery: !item.isLegalDelivery })}
-        disabled={disabled}
-      />
-      <CheckRow
-        label="Bowler gets wicket"
-        checked={item.bowlerGetsWicket}
-        onToggle={() => onChange({ bowlerGetsWicket: !item.bowlerGetsWicket })}
-        disabled={disabled}
-      />
-
+      <CheckRow label="Batter is out" checked={item.batterIsOut} onToggle={() => onChange({ batterIsOut: !item.batterIsOut })} disabled={disabled} />
+      <CheckRow label="Legal delivery (counts toward over)" checked={item.isLegalDelivery} onToggle={() => onChange({ isLegalDelivery: !item.isLegalDelivery })} disabled={disabled} />
+      <CheckRow label="Bowler gets wicket" checked={item.bowlerGetsWicket} onToggle={() => onChange({ bowlerGetsWicket: !item.bowlerGetsWicket })} disabled={disabled} />
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-        <Text style={{ color: '#d1d5db', flex: 1, fontSize: 15 }}>Runs scored</Text>
+        <Text style={{ color: theme.textSecondary, flex: 1, fontSize: 15 }}>Runs scored</Text>
         <TextInput
           value={item.runsScored !== undefined ? String(item.runsScored) : ''}
-          onChangeText={(t) => {
-            if (t === '') { onChange({ runsScored: undefined }); return; }
-            const n = parseInt(t, 10);
-            if (!isNaN(n) && n >= 0) onChange({ runsScored: n });
-          }}
-          onFocus={onFocus}
-          keyboardType="numeric"
-          editable={!disabled}
-          placeholder="0"
-          placeholderTextColor="#4b5563"
-          style={{
-            backgroundColor: disabled ? '#0a1628' : '#1e2d45',
-            color: disabled ? '#4b5563' : '#ffffff',
-            borderRadius: 8,
-            paddingVertical: 8,
-            paddingHorizontal: 12,
-            width: 80,
-            textAlign: 'center',
-            borderWidth: 1,
-            borderColor: '#2d3f58',
-            fontSize: 16,
-          }}
+          onChangeText={(t) => { if (t === '') { onChange({ runsScored: undefined }); return; } const n = parseInt(t, 10); if (!isNaN(n) && n >= 0) onChange({ runsScored: n }); }}
+          onFocus={onFocus} keyboardType="numeric" editable={!disabled} placeholder="0" placeholderTextColor={theme.textMuted}
+          style={{ backgroundColor: disabled ? theme.bg : theme.surface, color: disabled ? theme.textMuted : theme.text, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, width: 80, textAlign: 'center', borderWidth: 1, borderColor: theme.border, fontSize: 16 }}
         />
       </View>
-
-      {!disabled && (
-        <TouchableOpacity
-          onPress={onRemove}
-          style={{ alignSelf: 'flex-end', marginTop: 12 }}
-        >
-          <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '600' }}>Remove</Text>
-        </TouchableOpacity>
-      )}
+      {!disabled && <TouchableOpacity onPress={onRemove} style={{ alignSelf: 'flex-end', marginTop: 12 }}><Text style={{ color: '#dc2626', fontSize: 13, fontWeight: '600' }}>Remove</Text></TouchableOpacity>}
     </View>
   );
 }
 
-function FieldingEventRow({
-  item,
-  index,
-  total,
-  onChange,
-  onRemove,
-  onMoveUp,
-  onMoveDown,
-  onFocus,
-  disabled,
-}: {
-  item: FieldingEventConfig;
-  index: number;
-  total: number;
-  onChange: (patch: Partial<FieldingEventConfig>) => void;
-  onRemove: () => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  onFocus?: () => void;
-  disabled: boolean;
-}) {
+function FieldingEventRow({ item, index, total, onChange, onRemove, onMoveUp, onMoveDown, onFocus, disabled }: { item: FieldingEventConfig; index: number; total: number; onChange: (patch: Partial<FieldingEventConfig>) => void; onRemove: () => void; onMoveUp: () => void; onMoveDown: () => void; onFocus?: () => void; disabled: boolean }) {
+  const theme = useThemeStore((s) => s.theme);
   return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#0f1e35',
-        borderRadius: 10,
-        padding: 10,
-        marginBottom: 8,
-        borderWidth: 1,
-        borderColor: '#2d3f58',
-        gap: 8,
-      }}
-    >
+    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.surfaceAlt, borderRadius: 10, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: theme.border, gap: 8 }}>
       <TouchableOpacity
         onPress={() => onChange({ enabled: !item.enabled })}
         disabled={disabled}
-        style={{
-          width: 20,
-          height: 20,
-          borderRadius: 4,
-          borderWidth: 1.5,
-          borderColor: item.enabled ? '#4ade80' : '#4b5563',
-          backgroundColor: item.enabled ? '#4ade80' : 'transparent',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
+        style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 1.5, borderColor: item.enabled ? theme.accent : theme.textMuted, backgroundColor: item.enabled ? theme.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}
       >
-        {item.enabled && (
-          <Text style={{ color: '#0a1628', fontSize: 13, fontWeight: '900', lineHeight: 16 }}>
-            ✓
-          </Text>
-        )}
+        {item.enabled && <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '900', lineHeight: 16 }}>✓</Text>}
       </TouchableOpacity>
 
       <TextInput
-        value={item.label}
-        onChangeText={(t) => onChange({ label: t })}
-        onFocus={onFocus}
-        placeholder="Event label"
-        placeholderTextColor="#4b5563"
-        editable={!disabled}
-        style={{
-          flex: 1,
-          backgroundColor: disabled ? '#0a1628' : '#1e2d45',
-          color: disabled ? '#4b5563' : '#ffffff',
-          borderRadius: 6,
-          paddingVertical: 6,
-          paddingHorizontal: 10,
-          fontSize: 14,
-          borderWidth: 1,
-          borderColor: '#2d3f58',
-        }}
+        value={item.label} onChangeText={(t) => onChange({ label: t })} onFocus={onFocus}
+        placeholder="Event label" placeholderTextColor={theme.textMuted} editable={!disabled}
+        style={{ flex: 1, backgroundColor: disabled ? theme.bg : theme.surface, color: disabled ? theme.textMuted : theme.text, borderRadius: 6, paddingVertical: 6, paddingHorizontal: 10, fontSize: 14, borderWidth: 1, borderColor: theme.border }}
       />
 
       {(() => {
         const meta = POLARITY_META[item.polarity ?? 'neutral'];
         return (
-          <TouchableOpacity
-            onPress={() => {
-              const i = POLARITY_CYCLE.indexOf(item.polarity ?? 'neutral');
-              onChange({ polarity: POLARITY_CYCLE[(i + 1) % POLARITY_CYCLE.length] });
-            }}
-            disabled={disabled}
-            style={{
-              paddingHorizontal: 8,
-              paddingVertical: 6,
-              borderRadius: 6,
-              borderWidth: 1,
-              borderColor: meta.color,
-              backgroundColor: meta.bg,
-              minWidth: 78,
-              alignItems: 'center',
-              opacity: disabled ? 0.5 : 1,
-            }}
-          >
-            <Text style={{ color: meta.color, fontSize: 12, fontWeight: '700' }}>
-              {meta.label}
-            </Text>
+          <TouchableOpacity onPress={() => { const i = POLARITY_CYCLE.indexOf(item.polarity ?? 'neutral'); onChange({ polarity: POLARITY_CYCLE[(i + 1) % POLARITY_CYCLE.length] }); }} disabled={disabled} style={{ paddingHorizontal: 8, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: meta.color, backgroundColor: meta.bg, minWidth: 78, alignItems: 'center', opacity: disabled ? 0.5 : 1 }}>
+            <Text style={{ color: meta.color, fontSize: 12, fontWeight: '700' }}>{meta.label}</Text>
           </TouchableOpacity>
         );
       })()}
 
       {!disabled && (
         <View style={{ flexDirection: 'row', gap: 4 }}>
-          <TouchableOpacity
-            onPress={onMoveUp}
-            disabled={index === 0}
-            style={{
-              padding: 6,
-              opacity: index === 0 ? 0.3 : 1,
-            }}
-          >
-            <Text style={{ color: '#9ca3af', fontSize: 14 }}>↑</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={onMoveDown}
-            disabled={index === total - 1}
-            style={{
-              padding: 6,
-              opacity: index === total - 1 ? 0.3 : 1,
-            }}
-          >
-            <Text style={{ color: '#9ca3af', fontSize: 14 }}>↓</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={onRemove} style={{ padding: 6 }}>
-            <Text style={{ color: '#ef4444', fontSize: 14, fontWeight: '700' }}>✕</Text>
-          </TouchableOpacity>
+          <TouchableOpacity onPress={onMoveUp} disabled={index === 0} style={{ padding: 6, opacity: index === 0 ? 0.3 : 1 }}><Text style={{ color: theme.textMuted, fontSize: 14 }}>↑</Text></TouchableOpacity>
+          <TouchableOpacity onPress={onMoveDown} disabled={index === total - 1} style={{ padding: 6, opacity: index === total - 1 ? 0.3 : 1 }}><Text style={{ color: theme.textMuted, fontSize: 14 }}>↓</Text></TouchableOpacity>
+          <TouchableOpacity onPress={onRemove} style={{ padding: 6 }}><Text style={{ color: '#dc2626', fontSize: 14, fontWeight: '700' }}>✕</Text></TouchableOpacity>
         </View>
       )}
     </View>
@@ -463,22 +216,12 @@ function Toast({ message, toastKey }: { message: string; toastKey: number }) {
     <Animated.View
       pointerEvents="none"
       style={{
-        position: 'absolute',
-        bottom: 100,
-        left: 16,
-        right: 16,
-        backgroundColor: '#1e2d45',
-        borderRadius: 10,
-        padding: 14,
-        opacity,
-        borderWidth: 1,
-        borderColor: '#4ade80',
-        zIndex: 100,
+        position: 'absolute', bottom: 100, left: 16, right: 16,
+        backgroundColor: '#f0fdf4', borderRadius: 10, padding: 14,
+        opacity, borderWidth: 1, borderColor: '#16a34a', zIndex: 100,
       }}
     >
-      <Text style={{ color: '#4ade80', textAlign: 'center', fontWeight: '600', fontSize: 14 }}>
-        {message}
-      </Text>
+      <Text style={{ color: '#16a34a', textAlign: 'center', fontWeight: '600', fontSize: 14 }}>{message}</Text>
     </Animated.View>
   );
 }
@@ -489,6 +232,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
   const { clubId } = route.params;
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
+  const theme = useThemeStore((s) => s.theme);
 
   const [draft, setDraft] = useState<ClubRules | null>(null);
   const [saving, setSaving] = useState(false);
@@ -694,16 +438,16 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
 
   if (isLoading || (data && !draft)) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0a1628', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#4ade80" />
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color={theme.accent} />
       </View>
     );
   }
 
   if (error || !data) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0a1628', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <Text style={{ color: '#ef4444', textAlign: 'center' }}>Failed to load club rules.</Text>
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <Text style={{ color: '#dc2626', textAlign: 'center' }}>Failed to load club rules.</Text>
       </View>
     );
   }
@@ -711,7 +455,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
   if (!draft) return null;
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#0a1628' }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
         <ScrollView
           ref={scrollRef}
           contentContainerStyle={{ padding: 20, paddingBottom: 60 + kbHeight }}
@@ -723,43 +467,15 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
         >
 
           {!data.isAdmin && (
-            <View
-              style={{
-                backgroundColor: '#12233a',
-                borderWidth: 1,
-                borderColor: '#3b82f6',
-                borderRadius: 10,
-                padding: 14,
-                marginBottom: 4,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 10,
-              }}
-            >
+            <View style={{ backgroundColor: theme.id === 'light' ? '#eff6ff' : '#12233a', borderWidth: 1, borderColor: '#3b82f6', borderRadius: 10, padding: 14, marginBottom: 4, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <Text style={{ fontSize: 18 }}>👁</Text>
-              <Text style={{ color: '#93c5fd', fontSize: 13, flex: 1, lineHeight: 18 }}>
-                View only. Only club admins can edit rules.
-              </Text>
+              <Text style={{ color: '#2563eb', fontSize: 13, flex: 1, lineHeight: 18 }}>View only. Only club admins can edit rules.</Text>
             </View>
           )}
           {locked && (
-            <View
-              style={{
-                backgroundColor: '#1c1a10',
-                borderWidth: 1,
-                borderColor: '#ca8a04',
-                borderRadius: 10,
-                padding: 14,
-                marginBottom: 4,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 10,
-              }}
-            >
+            <View style={{ backgroundColor: theme.id === 'light' ? '#fefce8' : '#1c1a10', borderWidth: 1, borderColor: '#d97706', borderRadius: 10, padding: 14, marginBottom: 4, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <Text style={{ fontSize: 18 }}>🔒</Text>
-              <Text style={{ color: '#fbbf24', fontSize: 13, flex: 1, lineHeight: 18 }}>
-                A match is currently live. Rules are read-only until the match ends.
-              </Text>
+              <Text style={{ color: '#d97706', fontSize: 13, flex: 1, lineHeight: 18 }}>A match is currently live. Rules are read-only until the match ends.</Text>
             </View>
           )}
 
@@ -786,7 +502,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
 
           {/* ── DISMISSALS ── */}
           <SectionHeader title="DISMISSALS" />
-          <Text style={{ color: '#6b7280', fontSize: 12, marginBottom: 10 }}>Standard</Text>
+          <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 10 }}>Standard</Text>
           {STANDARD_DISMISSALS.map(({ type, label }) => (
             <CheckRow
               key={type}
@@ -797,9 +513,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
             />
           ))}
 
-          <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 14, marginBottom: 10 }}>
-            Custom
-          </Text>
+          <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 14, marginBottom: 10 }}>Custom</Text>
           {draft.customDismissals.map((item) => (
             <CustomDismissalCard
               key={item.id}
@@ -811,20 +525,8 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
             />
           ))}
           {!readOnly && (
-            <TouchableOpacity
-              onPress={addCustomDismissal}
-              style={{
-                borderWidth: 1,
-                borderColor: '#2d3f58',
-                borderRadius: 8,
-                paddingVertical: 10,
-                alignItems: 'center',
-                marginBottom: 4,
-              }}
-            >
-              <Text style={{ color: '#4ade80', fontSize: 14, fontWeight: '600' }}>
-                + Add Custom Dismissal
-              </Text>
+            <TouchableOpacity onPress={addCustomDismissal} style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 8, paddingVertical: 10, alignItems: 'center', marginBottom: 4 }}>
+              <Text style={{ color: theme.accent, fontSize: 14, fontWeight: '600' }}>+ Add Custom Dismissal</Text>
             </TouchableOpacity>
           )}
 
@@ -855,13 +557,13 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
           {/* ── BATTING ── */}
           <SectionHeader title="BATTING" />
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
-            <Text style={{ color: '#d1d5db', flex: 1, fontSize: 15 }}>Last man stands</Text>
+            <Text style={{ color: theme.textSecondary, flex: 1, fontSize: 15 }}>Last man stands</Text>
             <Switch
               value={draft.lastManStands}
               onValueChange={(v) => setField('lastManStands', v)}
               disabled={readOnly}
-              trackColor={{ false: '#2d3f58', true: '#166534' }}
-              thumbColor={draft.lastManStands ? '#4ade80' : '#6b7280'}
+              trackColor={{ false: theme.border, true: theme.accentDim }}
+              thumbColor={draft.lastManStands ? theme.accent : theme.textMuted}
             />
           </View>
           <NumberRow
@@ -888,11 +590,11 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
 
           {/* ── FIELDING EVENTS ── */}
           <SectionHeader title="FIELDING EVENTS" />
-          <Text style={{ color: '#6b7280', fontSize: 12, marginBottom: 10, lineHeight: 17 }}>
+          <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 10, lineHeight: 17 }}>
             Tap the tag to set how each event affects a fielder&apos;s rating:{' '}
-            <Text style={{ color: '#4ade80', fontWeight: '700' }}>Good</Text> adds,{' '}
-            <Text style={{ color: '#ef4444', fontWeight: '700' }}>Bad</Text> subtracts,{' '}
-            <Text style={{ color: '#9ca3af', fontWeight: '700' }}>Neutral</Text> is just tracked.
+            <Text style={{ color: theme.accent, fontWeight: '700' }}>Good</Text> adds,{' '}
+            <Text style={{ color: '#dc2626', fontWeight: '700' }}>Bad</Text> subtracts,{' '}
+            <Text style={{ color: theme.textMuted, fontWeight: '700' }}>Neutral</Text> is just tracked.
           </Text>
           {draft.fieldingEvents.map((item, index) => (
             <FieldingEventRow
@@ -909,49 +611,17 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
             />
           ))}
           {!readOnly && (
-            <TouchableOpacity
-              onPress={addFieldingEvent}
-              style={{
-                borderWidth: 1,
-                borderColor: '#2d3f58',
-                borderRadius: 8,
-                paddingVertical: 10,
-                alignItems: 'center',
-                marginBottom: 4,
-              }}
-            >
-              <Text style={{ color: '#4ade80', fontSize: 14, fontWeight: '600' }}>
-                + Add Fielding Event
-              </Text>
+            <TouchableOpacity onPress={addFieldingEvent} style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 8, paddingVertical: 10, alignItems: 'center', marginBottom: 4 }}>
+              <Text style={{ color: theme.accent, fontSize: 14, fontWeight: '600' }}>+ Add Fielding Event</Text>
             </TouchableOpacity>
           )}
 
           {/* ── SAVE ── */}
           {!readOnly && (
             <View style={{ marginTop: 32 }}>
-              {saveError && (
-                <Text style={{ color: '#ef4444', fontSize: 13, marginBottom: 12, textAlign: 'center' }}>
-                  {saveError}
-                </Text>
-              )}
-              <TouchableOpacity
-                onPress={handleSave}
-                disabled={saving}
-                style={{
-                  backgroundColor: '#4ade80',
-                  borderRadius: 10,
-                  paddingVertical: 14,
-                  alignItems: 'center',
-                  opacity: saving ? 0.6 : 1,
-                }}
-              >
-                {saving ? (
-                  <ActivityIndicator color="#0a1628" />
-                ) : (
-                  <Text style={{ color: '#0a1628', fontSize: 16, fontWeight: '700' }}>
-                    Save Rules
-                  </Text>
-                )}
+              {saveError && <Text style={{ color: '#dc2626', fontSize: 13, marginBottom: 12, textAlign: 'center' }}>{saveError}</Text>}
+              <TouchableOpacity onPress={handleSave} disabled={saving} style={{ backgroundColor: theme.accent, borderRadius: 10, paddingVertical: 14, alignItems: 'center', opacity: saving ? 0.6 : 1 }}>
+                {saving ? <ActivityIndicator color="#ffffff" /> : <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '700' }}>Save Rules</Text>}
               </TouchableOpacity>
             </View>
           )}

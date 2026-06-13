@@ -1,17 +1,12 @@
 import { useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
+  View, Text, TextInput, TouchableOpacity, ActivityIndicator,
+  KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useAuthStore } from '../../store/authStore';
+import { useThemeStore } from '../../store/themeStore';
 import { createClub, ClubNameTakenError } from '../../services/clubService';
 import { detectHemisphere, type Hemisphere } from '../../utils/seasons';
 import { useQueryClient } from '@tanstack/react-query';
@@ -21,6 +16,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'CreateClub'>;
 export default function CreateClubScreen({ navigation }: Props) {
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
+  const theme = useThemeStore((s) => s.theme);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -31,29 +27,18 @@ export default function CreateClubScreen({ navigation }: Props) {
   async function handleCreate() {
     if (!user) return;
     const trimmedName = name.trim();
-    if (!trimmedName) {
-      setError('Club name is required.');
-      return;
-    }
-
+    if (!trimmedName) { setError('Club name is required.'); return; }
     setLoading(true);
     setError(null);
     try {
       await createClub(
-        user.uid,
-        trimmedName,
-        description.trim(),
-        {
-          displayName: user.displayName ?? user.email ?? 'Me',
-          email: user.email ?? undefined,
-          photoURL: user.photoURL ?? undefined,
-        },
+        user.uid, trimmedName, description.trim(),
+        { displayName: user.displayName ?? user.email ?? 'Me', email: user.email ?? undefined, photoURL: user.photoURL ?? undefined },
         hemisphere
       );
       await queryClient.invalidateQueries({ queryKey: ['clubs', user.uid] });
       navigation.goBack();
     } catch (err) {
-      console.error('createClub failed', err);
       setError(
         err instanceof ClubNameTakenError
           ? `A club named "${trimmedName}" already exists. Please choose another name.`
@@ -63,66 +48,30 @@ export default function CreateClubScreen({ navigation }: Props) {
     }
   }
 
+  const inputStyle = {
+    backgroundColor: theme.surface, color: theme.text, borderRadius: 8,
+    paddingVertical: 12, paddingHorizontal: 16, fontSize: 16,
+    marginBottom: 20, borderWidth: 1, borderColor: theme.border,
+  };
+
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: '#0a1628' }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={{ padding: 24 }}>
-        <Text style={{ color: '#ffffff', fontSize: 22, fontWeight: '700', marginBottom: 24 }}>
-          Create Club
-        </Text>
+        <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700', marginBottom: 24 }}>Create Club</Text>
 
-        <Text style={{ color: '#9ca3af', fontSize: 13, marginBottom: 6 }}>
-          CLUB NAME *
-        </Text>
+        <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 6 }}>CLUB NAME *</Text>
+        <TextInput value={name} onChangeText={setName} placeholder="e.g. Wanderers CC" placeholderTextColor={theme.textMuted} style={inputStyle} />
+
+        <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 6 }}>DESCRIPTION</Text>
         <TextInput
-          value={name}
-          onChangeText={setName}
-          placeholder="e.g. Wanderers CC"
-          placeholderTextColor="#4b5563"
-          style={{
-            backgroundColor: '#1e2d45',
-            color: '#ffffff',
-            borderRadius: 8,
-            paddingVertical: 12,
-            paddingHorizontal: 16,
-            fontSize: 16,
-            marginBottom: 20,
-            borderWidth: 1,
-            borderColor: '#2d3f58',
-          }}
+          value={description} onChangeText={setDescription}
+          placeholder="A short description of your club" placeholderTextColor={theme.textMuted}
+          multiline numberOfLines={3}
+          style={{ ...inputStyle, marginBottom: 32, textAlignVertical: 'top', minHeight: 80 }}
         />
 
-        <Text style={{ color: '#9ca3af', fontSize: 13, marginBottom: 6 }}>
-          DESCRIPTION
-        </Text>
-        <TextInput
-          value={description}
-          onChangeText={setDescription}
-          placeholder="A short description of your club"
-          placeholderTextColor="#4b5563"
-          multiline
-          numberOfLines={3}
-          style={{
-            backgroundColor: '#1e2d45',
-            color: '#ffffff',
-            borderRadius: 8,
-            paddingVertical: 12,
-            paddingHorizontal: 16,
-            fontSize: 16,
-            marginBottom: 32,
-            borderWidth: 1,
-            borderColor: '#2d3f58',
-            textAlignVertical: 'top',
-            minHeight: 80,
-          }}
-        />
-
-        <Text style={{ color: '#9ca3af', fontSize: 13, marginBottom: 6 }}>
-          HEMISPHERE
-        </Text>
-        <Text style={{ color: '#6b7280', fontSize: 12, marginBottom: 8 }}>
+        <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 6 }}>HEMISPHERE</Text>
+        <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 8 }}>
           Sets how seasons are named (Summer / Winter). Auto-detected — change if it's wrong.
         </Text>
         <View style={{ flexDirection: 'row', gap: 10, marginBottom: 32 }}>
@@ -130,25 +79,10 @@ export default function CreateClubScreen({ navigation }: Props) {
             const selected = hemisphere === h;
             return (
               <TouchableOpacity
-                key={h}
-                onPress={() => setHemisphere(h)}
-                style={{
-                  flex: 1,
-                  backgroundColor: selected ? '#4ade80' : '#1e2d45',
-                  borderRadius: 8,
-                  paddingVertical: 12,
-                  alignItems: 'center',
-                  borderWidth: 1,
-                  borderColor: selected ? '#4ade80' : '#2d3f58',
-                }}
+                key={h} onPress={() => setHemisphere(h)}
+                style={{ flex: 1, backgroundColor: selected ? theme.accent : theme.surface, borderRadius: 8, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: selected ? theme.accent : theme.border }}
               >
-                <Text
-                  style={{
-                    color: selected ? '#0a1628' : '#ffffff',
-                    fontSize: 15,
-                    fontWeight: '700',
-                  }}
-                >
+                <Text style={{ color: selected ? '#ffffff' : theme.text, fontSize: 15, fontWeight: '700' }}>
                   {h === 'N' ? 'Northern' : 'Southern'}
                 </Text>
               </TouchableOpacity>
@@ -156,30 +90,10 @@ export default function CreateClubScreen({ navigation }: Props) {
           })}
         </View>
 
-        {error && (
-          <Text style={{ color: '#ef4444', marginBottom: 16, fontSize: 14 }}>
-            {error}
-          </Text>
-        )}
+        {error && <Text style={{ color: '#dc2626', marginBottom: 16, fontSize: 14 }}>{error}</Text>}
 
-        <TouchableOpacity
-          onPress={handleCreate}
-          disabled={loading}
-          style={{
-            backgroundColor: '#4ade80',
-            borderRadius: 8,
-            paddingVertical: 14,
-            alignItems: 'center',
-            opacity: loading ? 0.6 : 1,
-          }}
-        >
-          {loading ? (
-            <ActivityIndicator color="#0a1628" />
-          ) : (
-            <Text style={{ color: '#0a1628', fontSize: 16, fontWeight: '700' }}>
-              Create Club
-            </Text>
-          )}
+        <TouchableOpacity onPress={handleCreate} disabled={loading} style={{ backgroundColor: theme.accent, borderRadius: 8, paddingVertical: 14, alignItems: 'center', opacity: loading ? 0.6 : 1 }}>
+          {loading ? <ActivityIndicator color="#ffffff" /> : <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '700' }}>Create Club</Text>}
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
