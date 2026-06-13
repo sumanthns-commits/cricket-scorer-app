@@ -115,7 +115,17 @@ export default function TeamBuilderScreen() {
       if (!parsed) throw new Error('Could not parse team selection from AI response');
       setTeamA(parsed.team_a); setTeamB(parsed.team_b);
       setRationale(parsed.rationale); setKeyDecisions(parsed.keyDecisions);
-    } catch (e) { setAiError(e instanceof Error ? e.message : 'AI selection failed'); }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const lower = msg.toLowerCase();
+      if (lower.includes('429') || lower.includes('quota') || lower.includes('rate') || lower.includes('resource_exhausted')) {
+        setAiError('Too many requests — please wait a moment and try again.');
+      } else if (lower.includes('network') || lower.includes('fetch') || lower.includes('econnrefused')) {
+        setAiError('Network error — check your connection and try again.');
+      } else {
+        setAiError('AI selection failed. Please try again.');
+      }
+    }
     finally { setAiThinking(false); }
   };
 
@@ -124,7 +134,7 @@ export default function TeamBuilderScreen() {
     onSuccess: () => navigation.replace('Toss', { clubId, matchId }),
   });
 
-  const canConfirm = teamA.length > 0 && teamB.length > 0 && !isPending;
+  const canConfirm = teamA.length > 0 && teamB.length > 0 && !!captainA && !!captainB && !isPending;
 
   if (loadingMatch || loadingPlayers) {
     return <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator size="large" color={theme.accent} /></View>;
@@ -137,7 +147,11 @@ export default function TeamBuilderScreen() {
           <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700' }}>{match?.homeTeam ?? 'Home'} vs {match?.awayTeam ?? 'Away'}</Text>
           <Text style={{ color: theme.textMuted, fontSize: 13, marginTop: 2 }}>{squad.length} players · {teamA.length}A / {teamB.length}B / {unassigned.length} unassigned</Text>
           {allowShared && <Text style={{ color: '#d97706', fontSize: 11, marginTop: 2 }}>Odd squad — tap A and B on one player to share them across both teams</Text>}
-          {(!captainA || !captainB) && (teamA.length > 0 || teamB.length > 0) && <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 2 }}>Tap the gold C on a player to set each team's captain (optional)</Text>}
+          {(!captainA || !captainB) && (teamA.length > 0 || teamB.length > 0) && (
+            <Text style={{ color: '#d97706', fontSize: 11, marginTop: 2 }}>
+              {!captainA && !captainB ? 'Set a captain for both teams to confirm' : !captainA ? 'Set a captain for Team A to confirm' : 'Set a captain for Team B to confirm'}
+            </Text>
+          )}
         </View>
         <TouchableOpacity onPress={runAI} disabled={aiThinking} style={{ backgroundColor: aiThinking ? theme.surface : '#7c3aed', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           {aiThinking ? <ActivityIndicator size="small" color="#a78bfa" /> : <Text style={{ color: '#a78bfa', fontSize: 14, fontWeight: '700' }}>AI Balance</Text>}

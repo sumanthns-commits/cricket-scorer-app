@@ -26,6 +26,21 @@ interface ChatMessage {
   teams: TeamSelectionResult | null;
 }
 
+function friendlyError(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  const lower = msg.toLowerCase();
+  if (lower.includes('429') || lower.includes('quota') || lower.includes('rate') || lower.includes('resource_exhausted')) {
+    return 'Too many requests — please wait a moment and try again.';
+  }
+  if (lower.includes('network') || lower.includes('fetch') || lower.includes('econnrefused')) {
+    return 'Network error — check your connection and try again.';
+  }
+  if (lower.includes('401') || lower.includes('403') || lower.includes('permission') || lower.includes('api key')) {
+    return 'Assistant is not available right now. Please try again later.';
+  }
+  return 'The assistant failed to respond. Please try again.';
+}
+
 function parseTeams(text: string): TeamSelectionResult | null {
   try {
     const match = text.match(/\{[\s\S]*\}/);
@@ -128,7 +143,7 @@ export default function AIAssistantScreen() {
       const body = teams ? stripJson(result.text) : result.text;
       setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', text: body || (teams ? 'Here are balanced teams:' : ''), teams }]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'The assistant failed to respond.');
+      setError(friendlyError(e));
     } finally {
       setBusy(false); setToolLabel('');
       requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
