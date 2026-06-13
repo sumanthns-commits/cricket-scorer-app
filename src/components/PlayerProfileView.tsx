@@ -17,6 +17,7 @@ import {
 import PlayerAvatar from './PlayerAvatar';
 import FormChart from './FormChart';
 import WagonWheel from './WagonWheel';
+import { useThemeStore } from '../store/themeStore';
 import type { BattingHand, BowlingStyle, PlayerType, StrengthOverride, WicketKeepingAbility } from '../types';
 
 const BATTING_HANDS: { value: BattingHand; label: string }[] = [
@@ -44,6 +45,7 @@ function ChipRow<T extends string>({
   onSelect: (v: T) => void;
   onDeselect?: () => void;
 }) {
+  const theme = useThemeStore((s) => s.theme);
   return (
     <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
       {options.map((o) => {
@@ -54,11 +56,13 @@ function ChipRow<T extends string>({
             onPress={() => (active && onDeselect ? onDeselect() : onSelect(o.value))}
             style={{
               paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-              backgroundColor: active ? '#4ade80' : '#1e2d45',
-              borderWidth: 1, borderColor: active ? '#4ade80' : '#2d3f58',
+              backgroundColor: active ? theme.accent : theme.surface,
+              borderWidth: 1, borderColor: active ? theme.accent : theme.border,
             }}
           >
-            <Text style={{ color: active ? '#0a1628' : '#d1d5db', fontSize: 13, fontWeight: '600' }}>{o.label}</Text>
+            <Text style={{ color: active ? '#ffffff' : theme.textSecondary, fontSize: 13, fontWeight: '600' }}>
+              {o.label}
+            </Text>
           </TouchableOpacity>
         );
       })}
@@ -68,8 +72,8 @@ function ChipRow<T extends string>({
 
 const TYPE_BADGE: Record<PlayerType, { label: string; color: string }> = {
   ghost: { label: 'GHOST', color: '#a78bfa' },
-  registered: { label: 'REGISTERED', color: '#4ade80' },
-  linked: { label: 'LINKED', color: '#60a5fa' },
+  registered: { label: 'REGISTERED', color: '#16a34a' },
+  linked: { label: 'LINKED', color: '#2563eb' },
 };
 
 function fmt(value: number | null, digits = 1): string {
@@ -79,33 +83,35 @@ function fmt(value: number | null, digits = 1): string {
 function StatBox({
   label,
   value,
-  valueColor = '#ffffff',
+  valueColor,
 }: {
   label: string;
   value: string;
   valueColor?: string;
 }) {
+  const theme = useThemeStore((s) => s.theme);
   return (
     <View
       style={{
         flex: 1,
-        backgroundColor: '#1e2d45',
+        backgroundColor: theme.surface,
         borderRadius: 10,
         padding: 12,
         borderWidth: 1,
-        borderColor: '#2d3f58',
+        borderColor: theme.border,
       }}
     >
-      <Text style={{ color: valueColor, fontSize: 20, fontWeight: '800' }}>{value}</Text>
-      <Text style={{ color: '#9ca3af', fontSize: 11, marginTop: 2 }}>{label}</Text>
+      <Text style={{ color: valueColor ?? theme.text, fontSize: 20, fontWeight: '800' }}>{value}</Text>
+      <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 2 }}>{label}</Text>
     </View>
   );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const theme = useThemeStore((s) => s.theme);
   return (
     <View style={{ marginTop: 20 }}>
-      <Text style={{ color: '#9ca3af', fontSize: 13, fontWeight: '700', marginBottom: 10 }}>
+      <Text style={{ color: theme.textMuted, fontSize: 13, fontWeight: '700', marginBottom: 10 }}>
         {title}
       </Text>
       {children}
@@ -124,15 +130,16 @@ function StrengthSlider({
   onCommit?: (v: number) => void;
   editable?: boolean;
 }) {
+  const theme = useThemeStore((s) => s.theme);
   const [displayValue, setDisplayValue] = useState(value);
   useEffect(() => { setDisplayValue(value); }, [value]);
 
-  const barColor = displayValue >= 70 ? '#4ade80' : displayValue >= 40 ? '#facc15' : '#f87171';
+  const barColor = displayValue >= 70 ? theme.accent : displayValue >= 40 ? '#d97706' : '#dc2626';
 
   return (
     <View style={{ marginBottom: 14 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 }}>
-        <Text style={{ color: '#9ca3af', fontSize: 13, fontWeight: '600' }}>{label}</Text>
+        <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '600' }}>{label}</Text>
         <Text style={{ color: barColor, fontSize: 13, fontWeight: '700' }}>{displayValue}</Text>
       </View>
       {editable ? (
@@ -141,9 +148,9 @@ function StrengthSlider({
           minimumValue={0}
           maximumValue={100}
           step={1}
-          minimumTrackTintColor="#4ade80"
-          maximumTrackTintColor="#1e2d45"
-          thumbTintColor="#4ade80"
+          minimumTrackTintColor={theme.accent}
+          maximumTrackTintColor={theme.border}
+          thumbTintColor={theme.accent}
           onValueChange={(v: number) => setDisplayValue(Math.round(v))}
           onSlidingComplete={(v: number) => onCommit?.(Math.round(v))}
           style={{ height: 36, marginHorizontal: -6 }}
@@ -151,7 +158,7 @@ function StrengthSlider({
       ) : (
         <View style={{ flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', marginTop: 6 }}>
           <View style={{ flex: displayValue, backgroundColor: barColor }} />
-          <View style={{ flex: 100 - displayValue, backgroundColor: '#1e2d45' }} />
+          <View style={{ flex: 100 - displayValue, backgroundColor: theme.border }} />
         </View>
       )}
     </View>
@@ -174,7 +181,6 @@ function formatCountdown(ms: number): string {
 
 function CooldownBanner({ mergeAtMs }: { mergeAtMs: number | null }) {
   const [now, setNow] = useState(Date.now());
-
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
@@ -183,16 +189,16 @@ function CooldownBanner({ mergeAtMs }: { mergeAtMs: number | null }) {
   return (
     <View
       style={{
-        backgroundColor: '#2d1f0a',
+        backgroundColor: '#fefce8',
         borderRadius: 10,
         padding: 12,
         marginTop: 16,
         borderWidth: 1,
-        borderColor: '#b45309',
+        borderColor: '#d97706',
       }}
     >
-      <Text style={{ color: '#fbbf24', fontSize: 13, fontWeight: '700' }}>Provisional stats</Text>
-      <Text style={{ color: '#fcd34d', fontSize: 12, marginTop: 4, lineHeight: 17 }}>
+      <Text style={{ color: '#92400e', fontSize: 13, fontWeight: '700' }}>Provisional stats</Text>
+      <Text style={{ color: '#78350f', fontSize: 12, marginTop: 4, lineHeight: 17 }}>
         A claim is in cooldown — these figures preview the pending merge and may change.
         {mergeAtMs !== null ? ` Merges in ${formatCountdown(mergeAtMs - now)}.` : ''}
       </Text>
@@ -211,6 +217,7 @@ export default function PlayerProfileView({
   canEdit?: boolean;
   isAdmin?: boolean;
 }) {
+  const theme = useThemeStore((s) => s.theme);
   const queryClient = useQueryClient();
   const [unlinking, setUnlinking] = useState(false);
   const handleUnlink = () => {
@@ -225,6 +232,7 @@ export default function PlayerProfileView({
       .catch((e) => console.error('unlinkGhost failed', e))
       .finally(() => setUnlinking(false));
   };
+
   const { data: player, isLoading: loadingPlayer } = useQuery({
     queryKey: ['player', clubId, playerId],
     queryFn: () => getPlayer(clubId, playerId),
@@ -233,7 +241,7 @@ export default function PlayerProfileView({
   const saveAttr = (attrs: { displayName?: string; battingHand?: BattingHand; bowlingStyle?: BowlingStyle; wicketKeeping?: WicketKeepingAbility | null }) => {
     updatePlayerAttributes(clubId, playerId, attrs)
       .then(() => queryClient.invalidateQueries({ queryKey: ['player', clubId, playerId] }))
-      .catch(() => {/* keep last value on failure */});
+      .catch(() => {});
   };
 
   const [nameDraft, setNameDraft] = useState('');
@@ -248,9 +256,6 @@ export default function PlayerProfileView({
 
   const defaultStrength: StrengthDraft = { batting: 50, fielding: 50, bowling: 50, keeping: 50 };
   const [strengthDraft, setStrengthDraft] = useState<StrengthDraft>(defaultStrength);
-  // Ref so saveStrength always reads the latest value even when called in the same
-  // event loop tick as the last setStrengthDraft (onResponderRelease fires before
-  // the deferred state update flushes).
   const strengthDraftRef = useRef<StrengthDraft>(defaultStrength);
   useEffect(() => {
     if (player?.strengthOverride) {
@@ -299,16 +304,16 @@ export default function PlayerProfileView({
 
   if (loadingPlayer || loadingStats) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0a1628', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#4ade80" />
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color={theme.accent} />
       </View>
     );
   }
 
   if (!player || !resolved) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0a1628', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-        <Text style={{ color: '#9ca3af', fontSize: 16 }}>Player not found</Text>
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+        <Text style={{ color: theme.textSecondary, fontSize: 16 }}>Player not found</Text>
       </View>
     );
   }
@@ -320,12 +325,12 @@ export default function PlayerProfileView({
   const mergeAtMs = claim?.mergeScheduledAt ? claim.mergeScheduledAt.toMillis() : null;
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: '#0a1628' }} contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
         <PlayerAvatar name={player.displayName} photoURL={player.photoURL} seed={player.id} size={64} />
         <View style={{ flex: 1 }}>
-          <Text style={{ color: '#ffffff', fontSize: 22, fontWeight: '800' }}>{player.displayName}</Text>
+          <Text style={{ color: theme.text, fontSize: 22, fontWeight: '800' }}>{player.displayName}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
             <View
               style={{
@@ -339,7 +344,7 @@ export default function PlayerProfileView({
             >
               <Text style={{ color: badge.color, fontSize: 10, fontWeight: '800' }}>{badge.label}</Text>
             </View>
-            <Text style={{ color: '#9ca3af', fontSize: 12 }}>Rating {rating}</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 12 }}>Rating {rating}</Text>
           </View>
         </View>
       </View>
@@ -349,28 +354,28 @@ export default function PlayerProfileView({
       {isAdmin && player.linkedGhost ? (
         <View
           style={{
-            backgroundColor: '#0e2436',
+            backgroundColor: theme.surface,
             borderRadius: 10,
             padding: 12,
             marginTop: 16,
             borderWidth: 1,
-            borderColor: '#2d3f58',
+            borderColor: theme.border,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 12,
           }}
         >
-          <Text style={{ color: '#9ca3af', fontSize: 12, flex: 1 }}>
-            Linked from ghost <Text style={{ color: '#ffffff', fontWeight: '700' }}>{player.linkedGhost.displayName}</Text>. Its stats are merged in.
+          <Text style={{ color: theme.textSecondary, fontSize: 12, flex: 1 }}>
+            Linked from ghost <Text style={{ color: theme.text, fontWeight: '700' }}>{player.linkedGhost.displayName}</Text>. Its stats are merged in.
           </Text>
           <TouchableOpacity
             onPress={handleUnlink}
             disabled={unlinking}
             style={{
-              backgroundColor: '#1e2d45',
+              backgroundColor: theme.surfaceAlt,
               borderWidth: 1,
-              borderColor: '#7f1d1d',
+              borderColor: '#dc2626',
               borderRadius: 8,
               paddingVertical: 8,
               paddingHorizontal: 12,
@@ -378,15 +383,14 @@ export default function PlayerProfileView({
             }}
           >
             {unlinking ? (
-              <ActivityIndicator color="#fca5a5" />
+              <ActivityIndicator color="#dc2626" />
             ) : (
-              <Text style={{ color: '#fca5a5', fontSize: 13, fontWeight: '700' }}>Unlink</Text>
+              <Text style={{ color: '#dc2626', fontSize: 13, fontWeight: '700' }}>Unlink</Text>
             )}
           </TouchableOpacity>
         </View>
       ) : null}
 
-      {/* Player info — editable for admins (any player) or for your own profile */}
       {canEdit ? (
         <>
           <Section title="NAME">
@@ -396,11 +400,11 @@ export default function PlayerProfileView({
               onBlur={saveName}
               onSubmitEditing={saveName}
               placeholder="Player name"
-              placeholderTextColor="#4b5563"
+              placeholderTextColor={theme.textMuted}
               style={{
-                backgroundColor: '#1e2d45', color: '#ffffff', borderRadius: 8,
+                backgroundColor: theme.surface, color: theme.text, borderRadius: 8,
                 paddingHorizontal: 12, paddingVertical: 10, fontSize: 15,
-                borderWidth: 1, borderColor: '#2d3f58',
+                borderWidth: 1, borderColor: theme.border,
               }}
             />
           </Section>
@@ -419,42 +423,22 @@ export default function PlayerProfileView({
             />
           </Section>
           <Section title="STRENGTH OVERRIDE">
-            <Text style={{ color: '#6b7280', fontSize: 12, marginBottom: 12 }}>
+            <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 12 }}>
               Drag bars to set subjective skill levels for AI team balancing. Does not affect recorded stats.
             </Text>
             <View
               style={{
-                backgroundColor: '#0d1d35',
+                backgroundColor: theme.surfaceAlt,
                 borderRadius: 10,
                 padding: 14,
                 borderWidth: 1,
-                borderColor: '#2d3f58',
+                borderColor: theme.border,
               }}
             >
-              <StrengthSlider
-                label="Batting"
-                value={strengthDraft.batting}
-                onCommit={(v) => commitStrength('batting', v)}
-                editable
-              />
-              <StrengthSlider
-                label="Bowling"
-                value={strengthDraft.bowling}
-                onCommit={(v) => commitStrength('bowling', v)}
-                editable
-              />
-              <StrengthSlider
-                label="Fielding"
-                value={strengthDraft.fielding}
-                onCommit={(v) => commitStrength('fielding', v)}
-                editable
-              />
-              <StrengthSlider
-                label="Wicket keeping"
-                value={strengthDraft.keeping}
-                onCommit={(v) => commitStrength('keeping', v)}
-                editable
-              />
+              <StrengthSlider label="Batting" value={strengthDraft.batting} onCommit={(v) => commitStrength('batting', v)} editable />
+              <StrengthSlider label="Bowling" value={strengthDraft.bowling} onCommit={(v) => commitStrength('bowling', v)} editable />
+              <StrengthSlider label="Fielding" value={strengthDraft.fielding} onCommit={(v) => commitStrength('fielding', v)} editable />
+              <StrengthSlider label="Wicket keeping" value={strengthDraft.keeping} onCommit={(v) => commitStrength('keeping', v)} editable />
             </View>
           </Section>
         </>
@@ -471,11 +455,11 @@ export default function PlayerProfileView({
             <Section title="STRENGTHS">
               <View
                 style={{
-                  backgroundColor: '#0d1d35',
+                  backgroundColor: theme.surfaceAlt,
                   borderRadius: 10,
                   padding: 14,
                   borderWidth: 1,
-                  borderColor: '#2d3f58',
+                  borderColor: theme.border,
                 }}
               >
                 {player.strengthOverride.batting !== undefined && (
@@ -530,15 +514,9 @@ export default function PlayerProfileView({
         const runOuts = resolved.stats.totalRunOuts;
         const stumpings = resolved.stats.totalStumpings ?? 0;
         const netPoints = resolved.stats.fieldingPoints ?? 0;
-        if (
-          catches === 0 &&
-          runOuts === 0 &&
-          stumpings === 0 &&
-          netPoints === 0 &&
-          events.length === 0
-        )
+        if (catches === 0 && runOuts === 0 && stumpings === 0 && netPoints === 0 && events.length === 0)
           return null;
-        const netColor = netPoints > 0 ? '#4ade80' : netPoints < 0 ? '#ef4444' : '#ffffff';
+        const netColor = netPoints > 0 ? theme.accent : netPoints < 0 ? '#dc2626' : theme.text;
         return (
           <Section title="FIELDING">
             <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -600,11 +578,11 @@ export default function PlayerProfileView({
       <Section title="FORM · LAST 5">
         <View
           style={{
-            backgroundColor: '#0d1d35',
+            backgroundColor: theme.surfaceAlt,
             borderRadius: 12,
             padding: 12,
             borderWidth: 1,
-            borderColor: '#2d3f58',
+            borderColor: theme.border,
           }}
         >
           <FormChart form={form} />
@@ -615,11 +593,11 @@ export default function PlayerProfileView({
       <Section title="SHOT DISTRIBUTION">
         <View
           style={{
-            backgroundColor: '#0d1d35',
+            backgroundColor: theme.surfaceAlt,
             borderRadius: 12,
             padding: 12,
             borderWidth: 1,
-            borderColor: '#2d3f58',
+            borderColor: theme.border,
             alignItems: 'center',
           }}
         >

@@ -8,14 +8,14 @@ import { getClubMatches, getClubPlayers } from '../../services/matchService';
 import { getClub } from '../../services/clubService';
 import { buildSeasonLeaderboard } from '../../services/seasonLeaderboard';
 import { seasonLabel, seasonSortValue, type Hemisphere } from '../../utils/seasons';
+import { useThemeStore } from '../../store/themeStore';
 import PlayerAvatar from '../../components/PlayerAvatar';
 import type { Match } from '../../types';
 
 type Route = RouteProp<RootStackParamList, 'Leaderboard'>;
-
 type Discipline = 'batting' | 'bowling' | 'fielding';
 
-const RANK_COLORS = ['#facc15', '#cbd5e1', '#f59e0b']; // gold, silver, bronze
+const RANK_COLORS = ['#f59e0b', '#94a3b8', '#b45309']; // gold, silver, bronze
 
 interface SeasonOption {
   label: string;
@@ -37,12 +37,13 @@ function seasonsFrom(matches: Match[], hemisphere: Hemisphere): SeasonOption[] {
 }
 
 function StatCol({ value, header }: { value: string | number; header?: boolean }) {
+  const theme = useThemeStore((s) => s.theme);
   return (
     <Text
       style={{
         width: 46,
         textAlign: 'right',
-        color: header ? '#4b5563' : '#d1d5db',
+        color: header ? theme.textMuted : theme.textSecondary,
         fontSize: header ? 11 : 13,
         fontWeight: header ? '600' : '400',
       }}
@@ -53,8 +54,9 @@ function StatCol({ value, header }: { value: string | number; header?: boolean }
 }
 
 function PrimaryCol({ value }: { value: string | number }) {
+  const theme = useThemeStore((s) => s.theme);
   return (
-    <Text style={{ width: 46, textAlign: 'right', color: '#4ade80', fontSize: 14, fontWeight: '800' }}>
+    <Text style={{ width: 46, textAlign: 'right', color: theme.accent, fontSize: 14, fontWeight: '800' }}>
       {value}
     </Text>
   );
@@ -73,7 +75,8 @@ function LeaderRow({
   primary: string | number;
   cols: (string | number)[];
 }) {
-  const rankColor = rank <= 3 ? RANK_COLORS[rank - 1] : '#4b5563';
+  const theme = useThemeStore((s) => s.theme);
+  const rankColor = rank <= 3 ? RANK_COLORS[rank - 1] : theme.textMuted;
   return (
     <View
       style={{
@@ -81,12 +84,12 @@ function LeaderRow({
         alignItems: 'center',
         paddingVertical: 8,
         borderTopWidth: 1,
-        borderTopColor: '#1e2d45',
+        borderTopColor: theme.border,
       }}
     >
       <Text style={{ width: 24, color: rankColor, fontSize: 13, fontWeight: '800' }}>{rank}</Text>
       <PlayerAvatar name={name} photoURL={photoURL} seed={name} size={30} />
-      <Text style={{ flex: 1, color: '#ffffff', fontSize: 14, marginLeft: 10 }} numberOfLines={1}>
+      <Text style={{ flex: 1, color: theme.text, fontSize: 14, marginLeft: 10 }} numberOfLines={1}>
         {name}
       </Text>
       <PrimaryCol value={primary} />
@@ -98,10 +101,11 @@ function LeaderRow({
 }
 
 function HeaderRow({ labels }: { labels: string[] }) {
+  const theme = useThemeStore((s) => s.theme);
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingBottom: 4 }}>
-      <Text style={{ width: 24, color: '#4b5563', fontSize: 11 }}>#</Text>
-      <Text style={{ flex: 1, color: '#4b5563', fontSize: 11, marginLeft: 40 }}>Player</Text>
+      <Text style={{ width: 24, color: theme.textMuted, fontSize: 11 }}>#</Text>
+      <Text style={{ flex: 1, color: theme.textMuted, fontSize: 11, marginLeft: 40 }}>Player</Text>
       {labels.map((l, i) => (
         <StatCol key={i} value={l} header />
       ))}
@@ -120,6 +124,7 @@ export default function LeaderboardScreen() {
   const { clubId } = params;
   const [discipline, setDiscipline] = useState<Discipline>('batting');
   const [seasonIdx, setSeasonIdx] = useState(0);
+  const theme = useThemeStore((s) => s.theme);
 
   const { data: club } = useQuery({
     queryKey: ['club', clubId],
@@ -159,17 +164,17 @@ export default function LeaderboardScreen() {
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0a1628', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#4ade80" />
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color={theme.accent} />
       </View>
     );
   }
 
   if (seasons.length === 0) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0a1628', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-        <Text style={{ color: '#9ca3af', fontSize: 18, marginBottom: 8 }}>No completed matches</Text>
-        <Text style={{ color: '#6b7280', fontSize: 14, textAlign: 'center' }}>
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+        <Text style={{ color: theme.textSecondary, fontSize: 18, marginBottom: 8 }}>No completed matches</Text>
+        <Text style={{ color: theme.textMuted, fontSize: 14, textAlign: 'center' }}>
           Leaders appear once a match has been played and scored.
         </Text>
       </View>
@@ -177,7 +182,7 @@ export default function LeaderboardScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#0a1628' }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
       {/* Season selector */}
       <ScrollView
         horizontal
@@ -193,12 +198,12 @@ export default function LeaderboardScreen() {
               paddingVertical: 6,
               paddingHorizontal: 12,
               borderRadius: 16,
-              backgroundColor: i === seasonIdx ? '#1e3a5f' : '#11203a',
+              backgroundColor: i === seasonIdx ? theme.accentDim : theme.surface,
               borderWidth: 1,
-              borderColor: i === seasonIdx ? '#4ade80' : '#2d3f58',
+              borderColor: i === seasonIdx ? theme.accent : theme.border,
             }}
           >
-            <Text style={{ color: i === seasonIdx ? '#4ade80' : '#9ca3af', fontSize: 13, fontWeight: '600' }}>
+            <Text style={{ color: i === seasonIdx ? theme.accent : theme.textMuted, fontSize: 13, fontWeight: '600' }}>
               {s.label}
             </Text>
           </TouchableOpacity>
@@ -208,33 +213,31 @@ export default function LeaderboardScreen() {
       {/* Discipline tabs */}
       <View style={{ flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginTop: 12, marginBottom: 4 }}>
         {TABS.map((t) => (
-          <Text
+          <TouchableOpacity
             key={t.key}
             onPress={() => setDiscipline(t.key)}
             style={{
               flex: 1,
-              textAlign: 'center',
+              alignItems: 'center',
               paddingVertical: 8,
               borderRadius: 8,
-              overflow: 'hidden',
-              backgroundColor: discipline === t.key ? '#1e3a5f' : '#11203a',
-              color: discipline === t.key ? '#4ade80' : '#9ca3af',
-              fontWeight: '700',
-              fontSize: 13,
+              backgroundColor: discipline === t.key ? theme.accentDim : theme.surface,
               borderWidth: 1,
-              borderColor: discipline === t.key ? '#4ade80' : '#2d3f58',
+              borderColor: discipline === t.key ? theme.accent : theme.border,
             }}
           >
-            {t.label}
-          </Text>
+            <Text style={{ color: discipline === t.key ? theme.accent : theme.textMuted, fontWeight: '700', fontSize: 13 }}>
+              {t.label}
+            </Text>
+          </TouchableOpacity>
         ))}
       </View>
 
       {isFetching || !board ? (
-        <ActivityIndicator color="#4ade80" style={{ marginTop: 40 }} />
+        <ActivityIndicator color={theme.accent} style={{ marginTop: 40 }} />
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
-          <Text style={{ color: '#6b7280', fontSize: 12, marginBottom: 10 }}>
+          <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 10 }}>
             {board.matchesCounted} match{board.matchesCounted === 1 ? '' : 'es'} · {activeSeason.label}
           </Text>
 
@@ -242,7 +245,7 @@ export default function LeaderboardScreen() {
             <>
               <HeaderRow labels={['R', 'I', 'HS', 'Avg', 'SR']} />
               {board.batting.length === 0 ? (
-                <Text style={{ color: '#6b7280', marginTop: 16 }}>No batting data.</Text>
+                <Text style={{ color: theme.textMuted, marginTop: 16 }}>No batting data.</Text>
               ) : (
                 board.batting.map((b, i) => (
                   <LeaderRow
@@ -267,7 +270,7 @@ export default function LeaderboardScreen() {
             <>
               <HeaderRow labels={['W', 'R', 'Econ', 'Best']} />
               {board.bowling.length === 0 ? (
-                <Text style={{ color: '#6b7280', marginTop: 16 }}>No bowling data.</Text>
+                <Text style={{ color: theme.textMuted, marginTop: 16 }}>No bowling data.</Text>
               ) : (
                 board.bowling.map((b, i) => (
                   <LeaderRow
@@ -291,7 +294,7 @@ export default function LeaderboardScreen() {
             <>
               <HeaderRow labels={['Scr', 'Ct', 'St', 'RO', 'Pts']} />
               {board.fielding.length === 0 ? (
-                <Text style={{ color: '#6b7280', marginTop: 16 }}>No fielding recorded.</Text>
+                <Text style={{ color: theme.textMuted, marginTop: 16 }}>No fielding recorded.</Text>
               ) : (
                 board.fielding.map((f, i) => (
                   <LeaderRow
