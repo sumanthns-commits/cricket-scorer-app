@@ -67,10 +67,12 @@ export function computeDerivedStats(stats: CareerStats): DerivedStats {
 /** A computed 0–100 rating used when a player has no stored skillRating. */
 export function computeSkillRating(stats: CareerStats): number {
   const derived = computeDerivedStats(stats);
-  const battingScore = Math.min((derived.strikeRate ?? 0) / 2, 60); // ~120 SR → 60
+  const battingScore = Math.min((derived.strikeRate ?? 0) / 2, 50); // ~100 SR → 50
   const wicketScore = Math.min(stats.totalWickets * 2, 30);
   const experience = Math.min(stats.matchesPlayed, 10);
-  return Math.round(Math.min(battingScore + wicketScore + experience, 100));
+  const dismissals = (stats.totalCatches ?? 0) + (stats.totalRunOuts ?? 0) + (stats.totalStumpings ?? 0);
+  const fieldingScore = Math.min(dismissals * 2 + (stats.fieldingPoints ?? 0), 10);
+  return Math.round(Math.min(battingScore + wicketScore + experience + fieldingScore, 100));
 }
 
 export async function getPlayer(clubId: string, playerId: string): Promise<Player | null> {
