@@ -1,4 +1,4 @@
-import { View, ActivityIndicator } from 'react-native';
+import { View, Text, ActivityIndicator } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import { useAuthStore } from '../store/authStore';
@@ -48,8 +48,9 @@ export default function RootNavigator() {
 
   if (!initialized) {
     return (
-      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color={theme.accent} />
+      <View style={{ flex: 1, backgroundColor: '#16a34a', alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ color: '#ffffff', fontSize: 48, fontWeight: '800', letterSpacing: 2 }}>Crease</Text>
+        <ActivityIndicator color="rgba(255,255,255,0.6)" style={{ marginTop: 24 }} />
       </View>
     );
   }
