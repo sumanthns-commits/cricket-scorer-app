@@ -81,6 +81,10 @@ export async function getClubGhosts(clubId: string): Promise<Player[]> {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Player);
 }
 
+export async function linkGhost(clubId: string, memberUid: string, ghostId: string): Promise<void> {
+  await callCallableFunction('linkGhost', { clubId, memberUid, ghostId });
+}
+
 export async function unlinkGhost(clubId: string, memberUid: string): Promise<void> {
   await callCallableFunction('unlinkGhost', { clubId, memberUid });
 }

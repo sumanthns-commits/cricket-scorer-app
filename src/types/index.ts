@@ -282,6 +282,30 @@ export interface TeamSelectionResult {
   keyDecisions: string[];
 }
 
+export interface ImportedBatterEntry {
+  id: string;
+  runs: number;
+  balls: number;
+  fours: number;
+  sixes: number;
+  out: boolean;
+}
+
+export interface ImportedBowlerEntry {
+  id: string;
+  balls: number;
+  runs: number;
+  wickets: number;
+}
+
+export interface InningsSummary {
+  batting: ImportedBatterEntry[];
+  bowling: ImportedBowlerEntry[];
+  totalRuns: number;
+  totalWickets: number;
+  overs: string;
+}
+
 export interface Match {
   id: string;
   clubId: string;
@@ -300,4 +324,5 @@ export interface Match {
   winnerTeam?: 'A' | 'B' | 'tie';
   toss?: MatchToss;
   result?: string;
+  inningsSummary?: Record<string, InningsSummary>;
 }

@@ -86,12 +86,12 @@ export async function createMatch(params: {
 
 export async function getMatch(clubId: string, matchId: string): Promise<Match | null> {
   const snap = await getDoc(doc(db, 'clubs', clubId, 'matches', matchId));
-  return snap.exists() ? (snap.data() as Match) : null;
+  return snap.exists() ? ({ id: snap.id, ...snap.data() } as Match) : null;
 }
 
 export async function getClubMatches(clubId: string): Promise<Match[]> {
   const snap = await getDocs(collection(db, 'clubs', clubId, 'matches'));
-  return snap.docs.map((d) => d.data() as Match);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Match);
 }
 
 export async function setMatchTeams(params: {

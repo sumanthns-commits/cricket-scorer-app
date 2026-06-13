@@ -436,6 +436,35 @@ function computeStats(matchData, nameToId) {
 // ─── Match import ─────────────────────────────────────────────────────────────
 
 /**
+ * Convert one parsed innings into the inningsSummary shape the scorecard
+ * screen can render when no ball-by-ball overs exist.
+ */
+function buildInningsSummary(inn, nameToId) {
+  const batting = inn.batting
+    .map((b) => {
+      const id = nameToId.get(b.name);
+      if (!id) return null;
+      return { id, runs: b.runs, balls: b.balls, fours: b.fours, sixes: b.sixes, out: !b.notOut };
+    })
+    .filter(Boolean);
+
+  const bowling = inn.bowling
+    .map((b) => {
+      const id = nameToId.get(b.name);
+      if (!id) return null;
+      return { id, balls: b.balls, runs: b.runs, wickets: b.wickets };
+    })
+    .filter(Boolean);
+
+  const totalRuns = batting.reduce((s, b) => s + b.runs, 0);
+  const totalWickets = batting.filter((b) => b.out).length;
+  const totalBalls = bowling.reduce((s, b) => s + b.balls, 0);
+  const overs = `${Math.floor(totalBalls / 6)}.${totalBalls % 6}`;
+
+  return { batting, bowling, totalRuns, totalWickets, overs };
+}
+
+/**
  * Create the match document and update player stats.
  * Returns the new matchId, or null if skipped (duplicate) or dry run.
  */
@@ -448,7 +477,19 @@ async function importMatch(clubId, club, matchData, nameToId, dryRun) {
     .limit(1)
     .get();
   if (!dupSnap.empty) {
-    console.log(`  skip  ${matchData.externalId}  (already imported as ${dupSnap.docs[0].id})`);
+    const existing = dupSnap.docs[0];
+    // Backfill inningsSummary on old imports that predate this field.
+    if (!existing.data().inningsSummary && !dryRun) {
+      await existing.ref.update({
+        inningsSummary: {
+          '1': buildInningsSummary(matchData.innings1, nameToId),
+          '2': buildInningsSummary(matchData.innings2, nameToId),
+        },
+      });
+      console.log(`  backfilled inningsSummary on ${existing.id}  (external: ${matchData.externalId})`);
+    } else {
+      console.log(`  skip  ${matchData.externalId}  (already imported as ${existing.id})`);
+    }
     return null;
   }
 
@@ -513,6 +554,11 @@ async function importMatch(clubId, club, matchData, nameToId, dryRun) {
     externalMatchId: matchData.externalId,
     // Tells onMatchCompleted Cloud Function to skip re-aggregation.
     statsAggregated: true,
+    // Pre-built scorecard for the app (no ball-by-ball overs stored for imports).
+    inningsSummary: {
+      '1': buildInningsSummary(inn1, nameToId),
+      '2': buildInningsSummary(inn2, nameToId),
+    },
   };
 
   if (dryRun) {

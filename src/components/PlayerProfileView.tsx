@@ -3,7 +3,7 @@ import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, TextInput 
 import Slider from '@react-native-community/slider';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { resolvePlayerStats } from '../services/statsResolver';
-import { unlinkGhost } from '../services/joinRequestService';
+import { linkGhost, unlinkGhost, getClubGhosts } from '../services/joinRequestService';
 import {
   computeDerivedStats,
   computeSkillRating,
@@ -18,7 +18,7 @@ import PlayerAvatar from './PlayerAvatar';
 import FormChart from './FormChart';
 import WagonWheel from './WagonWheel';
 import { useThemeStore } from '../store/themeStore';
-import type { BattingHand, BowlingStyle, PlayerType, StrengthOverride, WicketKeepingAbility } from '../types';
+import type { BattingHand, BowlingStyle, Player, PlayerType, StrengthOverride, WicketKeepingAbility } from '../types';
 
 const BATTING_HANDS: { value: BattingHand; label: string }[] = [
   { value: 'RHB', label: 'Right hand' },
@@ -219,7 +219,35 @@ export default function PlayerProfileView({
 }) {
   const theme = useThemeStore((s) => s.theme);
   const queryClient = useQueryClient();
+
   const [unlinking, setUnlinking] = useState(false);
+  const [showLinkPicker, setShowLinkPicker] = useState(false);
+  const [selectedGhostId, setSelectedGhostId] = useState<string | null>(null);
+  const [linking, setLinking] = useState(false);
+
+  const { data: ghosts } = useQuery({
+    queryKey: ['clubGhosts', clubId],
+    queryFn: () => getClubGhosts(clubId),
+    enabled: showLinkPicker,
+  });
+
+  const handleLink = () => {
+    if (!selectedGhostId) return;
+    setLinking(true);
+    linkGhost(clubId, playerId, selectedGhostId)
+      .then(() =>
+        Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['player', clubId, playerId] }),
+          queryClient.invalidateQueries({ queryKey: ['resolvedStats', clubId, playerId] }),
+          queryClient.invalidateQueries({ queryKey: ['squad', clubId] }),
+          queryClient.invalidateQueries({ queryKey: ['clubGhosts', clubId] }),
+        ])
+      )
+      .then(() => { setShowLinkPicker(false); setSelectedGhostId(null); })
+      .catch((e) => console.error('linkGhost failed', e))
+      .finally(() => setLinking(false));
+  };
+
   const handleUnlink = () => {
     setUnlinking(true);
     unlinkGhost(clubId, playerId)
@@ -388,6 +416,87 @@ export default function PlayerProfileView({
               <Text style={{ color: '#dc2626', fontSize: 13, fontWeight: '700' }}>Unlink</Text>
             )}
           </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {isAdmin && player.type === 'registered' && !player.linkedGhost ? (
+        <View
+          style={{
+            backgroundColor: theme.surface,
+            borderRadius: 10,
+            marginTop: 16,
+            borderWidth: 1,
+            borderColor: theme.border,
+            overflow: 'hidden',
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => { setShowLinkPicker((v) => !v); setSelectedGhostId(null); }}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12 }}
+          >
+            <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '600' }}>Link to ghost player</Text>
+            <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>{showLinkPicker ? 'Cancel' : 'Choose'}</Text>
+          </TouchableOpacity>
+          {showLinkPicker ? (
+            <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
+              <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 10 }}>
+                Select an imported ghost player to merge their historical stats into this member's record.
+              </Text>
+              {!ghosts ? (
+                <ActivityIndicator color={theme.accent} style={{ marginVertical: 12 }} />
+              ) : ghosts.length === 0 ? (
+                <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 8 }}>No unlinked ghost players in this club.</Text>
+              ) : (
+                ghosts.map((g: Player) => {
+                  const sel = selectedGhostId === g.id;
+                  return (
+                    <TouchableOpacity
+                      key={g.id}
+                      onPress={() => setSelectedGhostId(sel ? null : g.id)}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 10,
+                        backgroundColor: sel ? theme.accentDim : theme.surfaceAlt,
+                        borderRadius: 8, padding: 10, marginBottom: 6,
+                        borderWidth: 1, borderColor: sel ? theme.accent : theme.border,
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 18, height: 18, borderRadius: 9,
+                          borderWidth: 2, borderColor: sel ? theme.accent : theme.textMuted,
+                          backgroundColor: sel ? theme.accent : 'transparent',
+                        }}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>{g.displayName}</Text>
+                        <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 1 }}>
+                          {g.careerStats.matchesPlayed} matches · {g.careerStats.totalRuns} runs · {g.careerStats.totalWickets} wkts
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+              <TouchableOpacity
+                onPress={handleLink}
+                disabled={!selectedGhostId || linking}
+                style={{
+                  marginTop: 6,
+                  backgroundColor: selectedGhostId ? theme.accent : theme.border,
+                  borderRadius: 8, paddingVertical: 11, alignItems: 'center',
+                  opacity: linking ? 0.6 : 1,
+                }}
+              >
+                {linking ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '700' }}>
+                    {selectedGhostId ? 'Link ghost' : 'Select a ghost to link'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
       ) : null}
 
