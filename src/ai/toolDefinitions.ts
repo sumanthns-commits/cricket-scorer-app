@@ -5,15 +5,18 @@ import { Schema, type FunctionDeclaration } from 'firebase/ai';
 export const functionDeclarations: FunctionDeclaration[] = [
   {
     name: 'get_available_players',
-    description: 'List all players available for selection in this club.',
+    description: 'List players available for selection. When a matchId is provided, returns only players in that match\'s squad; otherwise returns all club players.',
     parameters: Schema.object({
       properties: {
         matchFormat: Schema.enumString({
           enum: ['T20', 'ODI', '50over', '40over', 'club'],
           description: 'Format of the upcoming match.',
         }),
+        matchId: Schema.string({
+          description: 'Match ID to restrict results to that match\'s squad.',
+        }),
       },
-      optionalProperties: ['matchFormat'],
+      optionalProperties: ['matchFormat', 'matchId'],
     }),
   },
   {
