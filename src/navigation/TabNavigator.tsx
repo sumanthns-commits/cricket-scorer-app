@@ -1,3 +1,5 @@
+import { View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import HomeScreen from '../screens/Home';
@@ -18,6 +20,18 @@ export type TabParamList = {
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
+function withTopInset<T extends object>(Screen: React.ComponentType<T>) {
+  return function SafeTopScreen(props: T) {
+    const insets = useSafeAreaInsets();
+    const theme = useThemeStore((s) => s.theme);
+    return (
+      <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: theme.bg }}>
+        <Screen {...props} />
+      </View>
+    );
+  };
+}
+
 const TAB_ICONS: Record<keyof TabParamList, keyof typeof Ionicons.glyphMap> = {
   Home: 'home',
   Matches: 'calendar',
@@ -35,8 +49,7 @@ export default function TabNavigator() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        headerStyle: { backgroundColor: theme.bg },
-        headerTintColor: theme.text,
+        headerShown: false,
         tabBarStyle: { backgroundColor: theme.bg, borderTopColor: theme.border },
         tabBarActiveTintColor: theme.accent,
         tabBarInactiveTintColor: theme.textMuted,
@@ -45,23 +58,23 @@ export default function TabNavigator() {
         ),
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Home" component={withTopInset(HomeScreen)} />
       <Tab.Screen
         name="Matches"
-        component={MatchesScreen}
+        component={withTopInset(MatchesScreen)}
         options={{ tabBarButton: hideWhenNoClub }}
       />
       <Tab.Screen
         name="Squad"
-        component={SquadScreen}
+        component={withTopInset(SquadScreen)}
         options={{ tabBarButton: hideWhenNoClub }}
       />
       <Tab.Screen
         name="Assistant"
-        component={AIAssistantScreen}
-        options={{ title: 'AI Assistant', tabBarButton: hideWhenNoClub }}
+        component={withTopInset(AIAssistantScreen)}
+        options={{ tabBarButton: hideWhenNoClub }}
       />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen name="Profile" component={withTopInset(ProfileScreen)} />
     </Tab.Navigator>
   );
 }
