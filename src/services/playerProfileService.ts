@@ -1,7 +1,29 @@
-import { doc, getDoc, updateDoc, deleteField } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, deleteField, addDoc, collection } from 'firebase/firestore';
 import { db } from './firebase';
 import { callCallableFunction } from './functionsClient';
-import type { BattingHand, BowlingStyle, CareerStats, Claim, Player, StrengthOverride, WicketKeepingAbility } from '../types';
+import type { BattingHand, BowlingStyle, CareerStats, Claim, Player, PlayerType, StrengthOverride, WicketKeepingAbility } from '../types';
+
+export async function createGhostPlayer(
+  clubId: string,
+  displayName: string,
+  attrs?: { battingHand?: BattingHand; bowlingStyle?: BowlingStyle; wicketKeeping?: WicketKeepingAbility }
+): Promise<string> {
+  const emptyStats: CareerStats = {
+    totalRuns: 0, totalWickets: 0, totalBallsFaced: 0, totalDismissals: 0,
+    totalBallsBowled: 0, totalRunsConceded: 0, totalCatches: 0,
+    totalRunOuts: 0, totalStumpings: 0, highScore: 0, matchesPlayed: 0,
+  };
+  const data: Record<string, unknown> = {
+    displayName: displayName.trim(),
+    type: 'ghost' as PlayerType,
+    careerStats: emptyStats,
+  };
+  if (attrs?.battingHand) data.battingHand = attrs.battingHand;
+  if (attrs?.bowlingStyle) data.bowlingStyle = attrs.bowlingStyle;
+  if (attrs?.wicketKeeping) data.wicketKeeping = attrs.wicketKeeping;
+  const ref = await addDoc(collection(db, 'clubs', clubId, 'players'), data);
+  return ref.id;
+}
 
 export async function updatePlayerAttributes(
   clubId: string,

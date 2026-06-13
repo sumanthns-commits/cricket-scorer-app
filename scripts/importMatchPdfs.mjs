@@ -33,6 +33,9 @@ const ENV      = option('--env', 'emulator');
 const DRY      = hasFlag('--dry-run');
 const SEED_DIR = path.resolve(option('--seed-dir', './seed'));
 
+const rl = createInterface({ input: process.stdin, output: process.stdout });
+const ask = (q) => new Promise((resolve) => rl.question(q, resolve));
+
 if (!['emulator', 'staging', 'prod'].includes(ENV)) {
   console.error(`Unknown --env "${ENV}". Use: emulator | staging | prod`);
   process.exit(1);
@@ -62,6 +65,61 @@ initializeApp({ projectId: PROJECT_ID });
 const db = getFirestore();
 
 console.log(`\nEnv: ${ENV}  |  Project: ${PROJECT_ID}${DRY ? '  |  DRY RUN' : ''}`);
+
+// ─── Name normalization + fuzzy matching ──────────────────────────────────────
+
+/** Strip trailing role annotations like (WK), (VC), (wk) then normalise. */
+function normalizeForMatch(name) {
+  return name
+    .replace(/\s*\([^)]*\)\s*$/, '')
+    .toLowerCase()
+    .replace(/[^a-z]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  const m = a.length, n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  let row = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 0; i < m; i++) {
+    const next = [i + 1];
+    for (let j = 0; j < n; j++) {
+      next[j + 1] = a[i] === b[j] ? row[j] : 1 + Math.min(row[j], row[j + 1], next[j]);
+    }
+    row = next;
+  }
+  return row[n];
+}
+
+/**
+ * Returns { entry, reason } if an existing player looks like a duplicate of
+ * `newName`, otherwise null.
+ *   1. Normalised names are identical (e.g. "Pradhyu (WK)" → "Pradhyu")
+ *   2. One normalised name is a prefix of the other (≥ 4 chars)
+ *   3. Levenshtein ≤ 2 on names ≥ 6 chars
+ */
+function findSimilarPlayer(newName, existingMap) {
+  const newNorm = normalizeForMatch(newName);
+  for (const [, entry] of existingMap) {
+    const existNorm = normalizeForMatch(entry.displayName);
+    if (newNorm === existNorm) {
+      return { entry, reason: `both normalise to "${newNorm}"` };
+    }
+    if (newNorm.length >= 4 && existNorm.length >= 4 &&
+        (newNorm.startsWith(existNorm) || existNorm.startsWith(newNorm))) {
+      return { entry, reason: 'one name is a prefix of the other' };
+    }
+    const len = Math.max(newNorm.length, existNorm.length);
+    if (len >= 6) {
+      const dist = levenshtein(newNorm, existNorm);
+      if (dist <= 2) return { entry, reason: `similar spelling (${dist} char difference)` };
+    }
+  }
+  return null;
+}
 
 // ─── PDF text extraction ──────────────────────────────────────────────────────
 
@@ -303,18 +361,13 @@ async function selectClub() {
   console.log('\nActive clubs:');
   clubs.forEach((c, i) => console.log(`  ${i + 1}. ${c.name}  (${c.id})`));
 
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => {
-    rl.question('\nSelect club number: ', (ans) => {
-      rl.close();
-      const idx = parseInt(ans) - 1;
-      if (!Number.isInteger(idx) || idx < 0 || idx >= clubs.length) {
-        console.error('Invalid selection.');
-        process.exit(1);
-      }
-      resolve(clubs[idx]);
-    });
-  });
+  const ans = await ask('\nSelect club number: ');
+  const idx = parseInt(ans) - 1;
+  if (!Number.isInteger(idx) || idx < 0 || idx >= clubs.length) {
+    console.error('Invalid selection.');
+    process.exit(1);
+  }
+  return clubs[idx];
 }
 
 // ─── Ghost player upsert ──────────────────────────────────────────────────────
@@ -344,6 +397,21 @@ async function findOrCreateGhosts(clubId, names, dryRun) {
       nameToId.set(name, p.id);
       console.log(`  found    ${name}  →  ${p.id}`);
     } else {
+      // No exact match — look for a near-duplicate before creating a new ghost
+      const similar = findSimilarPlayer(name, existing);
+      if (similar) {
+        const { entry, reason } = similar;
+        console.log(`\n  ? "${name}" looks similar to existing player "${entry.displayName}"`);
+        console.log(`    Reason: ${reason}`);
+        const ans = await ask(`    Treat as the same player? [Y/n]: `);
+        if (ans.trim().toLowerCase() !== 'n') {
+          nameToId.set(name, entry.id);
+          existing.set(key, entry);
+          console.log(`  merged   ${name}  →  ${entry.id} (${entry.displayName})\n`);
+          continue;
+        }
+        console.log('');
+      }
       const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
       const newId = `ghost-${slug}`;
       const ghostDoc = {
@@ -665,14 +733,8 @@ async function main() {
 
   // Prod safety gate
   if (ENV === 'prod' && !DRY) {
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    await new Promise((resolve) => {
-      rl.question('\n⚠  Writing to PRODUCTION. Type "yes" to continue: ', (ans) => {
-        rl.close();
-        if (ans.trim() !== 'yes') { console.log('Aborted.'); process.exit(0); }
-        resolve();
-      });
-    });
+    const ans = await ask('\n⚠  Writing to PRODUCTION. Type "yes" to continue: ');
+    if (ans.trim() !== 'yes') { console.log('Aborted.'); rl.close(); process.exit(0); }
   }
 
   // Discover PDFs
@@ -743,6 +805,7 @@ async function main() {
     await applyStats(club.id, matchId, matchData, playerStats, nameToId, DRY);
   }
 
+  rl.close();
   console.log(DRY ? '\nDry run complete — nothing written.' : '\nImport complete!');
   process.exit(0);
 }
