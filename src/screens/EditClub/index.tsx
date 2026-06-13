@@ -126,8 +126,8 @@ export default function EditClubScreen({ route, navigation }: Props) {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={{ padding: 24 }}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView contentContainerStyle={{ padding: 24 }} keyboardShouldPersistTaps="handled">
         <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700', marginBottom: 24 }}>Edit Club</Text>
 
         <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 6 }}>CLUB NAME *</Text>

@@ -111,8 +111,8 @@ export default function EditProfileScreen({ navigation }: Props) {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={{ padding: 24 }}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView contentContainerStyle={{ padding: 24 }} keyboardShouldPersistTaps="handled">
         <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 6 }}>DISPLAY NAME</Text>
         <TextInput value={displayName ?? ''} onChangeText={setDisplayName} placeholder="Your name" placeholderTextColor={theme.textMuted} style={inputStyle} />
 

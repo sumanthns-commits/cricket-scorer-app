@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, FlatList, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
@@ -78,7 +78,8 @@ export default function FindClubsScreen() {
   });
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg, padding: 16 }}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <View style={{ flex: 1, padding: 16 }}>
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
         <TextInput
           value={term} onChangeText={setTerm}
@@ -105,5 +106,6 @@ export default function FindClubsScreen() {
         />
       )}
     </View>
+    </KeyboardAvoidingView>
   );
 }

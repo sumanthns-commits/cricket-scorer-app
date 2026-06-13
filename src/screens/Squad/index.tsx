@@ -1,17 +1,23 @@
-import { View, Text, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
+import { useState } from 'react';
+import {
+  View, Text, TouchableOpacity, FlatList, ActivityIndicator,
+  Modal, TextInput, KeyboardAvoidingView, Platform, Pressable, Alert, ScrollView,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import type { TabParamList } from '../../navigation/TabNavigator';
 import { useClubStore } from '../../store/clubStore';
 import { useThemeStore } from '../../store/themeStore';
+import { useAuthStore } from '../../store/authStore';
 import { getClubSquad, type SquadEntry } from '../../services/squadService';
-import { computeSkillRating } from '../../services/playerProfileService';
+import { computeSkillRating, createGhostPlayer } from '../../services/playerProfileService';
+import { getClubMember } from '../../services/clubService';
 import PlayerAvatar from '../../components/PlayerAvatar';
-import type { PlayerType } from '../../types';
+import type { BattingHand, BowlingStyle, PlayerType, WicketKeepingAbility } from '../../types';
 
 type Nav = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList>,
@@ -93,16 +99,102 @@ function SquadRow({ entry, onPress }: { entry: SquadEntry; onPress: () => void }
   );
 }
 
+function ChipSelector<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+  theme,
+}: {
+  label: string;
+  options: { value: T; label: string }[];
+  value: T | null;
+  onChange: (v: T | null) => void;
+  theme: ReturnType<typeof useThemeStore.getState>['theme'];
+}) {
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600', marginBottom: 8 }}>{label}</Text>
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+        {options.map((opt) => {
+          const selected = value === opt.value;
+          return (
+            <TouchableOpacity
+              key={opt.value}
+              onPress={() => onChange(selected ? null : opt.value)}
+              style={{
+                paddingHorizontal: 14,
+                paddingVertical: 7,
+                borderRadius: 20,
+                borderWidth: 1.5,
+                borderColor: selected ? theme.accent : theme.border,
+                backgroundColor: selected ? theme.accentDim : theme.surfaceAlt,
+              }}
+            >
+              <Text style={{ color: selected ? theme.accent : theme.textSecondary, fontSize: 13, fontWeight: selected ? '700' : '500' }}>
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 export default function SquadScreen() {
   const navigation = useNavigation<Nav>();
   const activeClubId = useClubStore((s) => s.activeClubId);
+  const uid = useAuthStore((s) => s.user?.uid);
   const theme = useThemeStore((s) => s.theme);
+  const queryClient = useQueryClient();
 
   const { data: squad, isLoading, refetch } = useQuery({
     queryKey: ['clubSquad', activeClubId],
     queryFn: () => getClubSquad(activeClubId!),
     enabled: !!activeClubId,
   });
+
+  const { data: me } = useQuery({
+    queryKey: ['clubMember', activeClubId, uid],
+    queryFn: () => getClubMember(activeClubId!, uid!),
+    enabled: !!activeClubId && !!uid,
+  });
+  const isAdmin = me?.role === 'admin';
+
+  const [modalVisible, setModalVisible] = useState(false);
+  const [displayName, setDisplayName] = useState('');
+  const [battingHand, setBattingHand] = useState<BattingHand | null>(null);
+  const [bowlingStyle, setBowlingStyle] = useState<BowlingStyle | null>(null);
+  const [keepingAbility, setKeepingAbility] = useState<WicketKeepingAbility | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  function openModal() {
+    setDisplayName('');
+    setBattingHand(null);
+    setBowlingStyle(null);
+    setKeepingAbility(null);
+    setModalVisible(true);
+  }
+
+  async function handleCreate() {
+    const name = displayName.trim();
+    if (!name || !activeClubId) return;
+    setSaving(true);
+    try {
+      await createGhostPlayer(activeClubId, name, {
+        battingHand: battingHand ?? undefined,
+        bowlingStyle: bowlingStyle ?? undefined,
+        wicketKeeping: keepingAbility ?? undefined,
+      });
+      setModalVisible(false);
+      queryClient.invalidateQueries({ queryKey: ['clubSquad', activeClubId] });
+    } catch {
+      Alert.alert('Error', 'Failed to create player. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (!activeClubId) {
     return (
@@ -114,6 +206,17 @@ export default function SquadScreen() {
       </View>
     );
   }
+
+  const inputStyle = {
+    backgroundColor: theme.surfaceAlt,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: 10,
+    padding: 12,
+    color: theme.text,
+    fontSize: 15,
+    marginBottom: 16,
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, padding: 16 }}>
@@ -145,6 +248,123 @@ export default function SquadScreen() {
           </Text>
         </View>
       )}
+
+      {isAdmin && (
+        <TouchableOpacity
+          onPress={openModal}
+          style={{
+            position: 'absolute',
+            bottom: 24,
+            right: 24,
+            width: 52,
+            height: 52,
+            borderRadius: 26,
+            backgroundColor: theme.accent,
+            alignItems: 'center',
+            justifyContent: 'center',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.25,
+            shadowRadius: 4,
+            elevation: 5,
+          }}
+        >
+          <Text style={{ color: '#fff', fontSize: 28, lineHeight: 32, fontWeight: '300' }}>+</Text>
+        </TouchableOpacity>
+      )}
+
+      <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}
+          onPress={() => setModalVisible(false)}
+        >
+          <Pressable>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+              <View
+                style={{
+                  backgroundColor: theme.surface,
+                  borderTopLeftRadius: 20,
+                  borderTopRightRadius: 20,
+                  padding: 24,
+                  paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+                  borderTopWidth: 1,
+                  borderColor: theme.border,
+                }}
+              >
+                <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700', marginBottom: 20 }}>
+                  Add Ghost Player
+                </Text>
+
+                <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                  <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600', marginBottom: 6 }}>
+                    PLAYER NAME *
+                  </Text>
+                  <TextInput
+                    value={displayName}
+                    onChangeText={setDisplayName}
+                    placeholder="Full name"
+                    placeholderTextColor={theme.textMuted}
+                    autoFocus
+                    style={inputStyle}
+                  />
+
+                  <ChipSelector
+                    label="BATTING HAND"
+                    options={[
+                      { value: 'RHB', label: 'Right hand' },
+                      { value: 'LHB', label: 'Left hand' },
+                    ]}
+                    value={battingHand}
+                    onChange={(v) => setBattingHand(v as BattingHand | null)}
+                    theme={theme}
+                  />
+
+                  <ChipSelector
+                    label="BOWLING STYLE"
+                    options={[
+                      { value: 'fast', label: 'Fast' },
+                      { value: 'medium', label: 'Medium' },
+                      { value: 'spin', label: 'Spin' },
+                    ]}
+                    value={bowlingStyle}
+                    onChange={(v) => setBowlingStyle(v as BowlingStyle | null)}
+                    theme={theme}
+                  />
+
+                  <ChipSelector
+                    label="WICKET KEEPING"
+                    options={[
+                      { value: 'keeper', label: 'Keeper' },
+                      { value: 'can-keep', label: 'Can keep' },
+                    ]}
+                    value={keepingAbility}
+                    onChange={(v) => setKeepingAbility(v as WicketKeepingAbility | null)}
+                    theme={theme}
+                  />
+
+                  <TouchableOpacity
+                    onPress={handleCreate}
+                    disabled={!displayName.trim() || saving}
+                    style={{
+                      backgroundColor: displayName.trim() ? theme.accent : theme.border,
+                      borderRadius: 12,
+                      padding: 14,
+                      alignItems: 'center',
+                      marginTop: 4,
+                    }}
+                  >
+                    {saving ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Create Player</Text>
+                    )}
+                  </TouchableOpacity>
+                </ScrollView>
+              </View>
+            </KeyboardAvoidingView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }

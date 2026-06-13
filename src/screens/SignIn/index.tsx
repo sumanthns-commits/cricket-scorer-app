@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import {
@@ -49,15 +49,8 @@ export default function SignInScreen() {
   }, [response]);
 
   return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: '#ffffff',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 24,
-      }}
-    >
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: '#ffffff' }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }} keyboardShouldPersistTaps="handled">
       <Text style={{ color: '#16a34a', fontSize: 48, fontWeight: '800', marginBottom: 6, letterSpacing: 2 }}>
         Crease
       </Text>
@@ -156,6 +149,7 @@ export default function SignInScreen() {
           </TouchableOpacity>
         </View>
       )}
-    </View>
+    </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

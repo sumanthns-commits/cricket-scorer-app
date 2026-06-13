@@ -55,7 +55,7 @@ export default function CreateClubScreen({ navigation }: Props) {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={{ padding: 24 }}>
         <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700', marginBottom: 24 }}>Create Club</Text>
 
