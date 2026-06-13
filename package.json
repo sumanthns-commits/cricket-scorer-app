@@ -38,7 +38,11 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "jest"
+    "test": "jest",
+    "import:emulator": "node scripts/importMatchPdfs.mjs --env emulator",
+    "import:staging": "node scripts/importMatchPdfs.mjs --env staging",
+    "import:prod": "node scripts/importMatchPdfs.mjs --env prod",
+    "import:dry": "node scripts/importMatchPdfs.mjs --dry-run"
   },
   "private": true
 }
