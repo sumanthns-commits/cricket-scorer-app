@@ -173,7 +173,8 @@ export default function ScheduleMatchScreen() {
     }
   };
 
-  const canSubmit = selectedIds.size >= 2 && !isPending && !!club;
+  const customOversValid = format !== 'custom' || parseInt(customOvers, 10) >= 1;
+  const canSubmit = selectedIds.size >= 2 && !isPending && !!club && customOversValid;
 
   const inputStyle = {
     backgroundColor: theme.surface,
@@ -249,14 +250,25 @@ export default function ScheduleMatchScreen() {
         ))}
       </View>
       {format === 'custom' && (
-        <TextInput
-          value={customOvers}
-          onChangeText={setCustomOvers}
-          placeholder="Overs per innings"
-          placeholderTextColor={theme.textMuted}
-          keyboardType="numeric"
-          style={{ ...inputStyle, marginBottom: 20 }}
-        />
+        <>
+          <TextInput
+            value={customOvers}
+            onChangeText={setCustomOvers}
+            placeholder="Overs per innings (required)"
+            placeholderTextColor={theme.textMuted}
+            keyboardType="numeric"
+            style={{
+              ...inputStyle,
+              marginBottom: customOversValid ? 20 : 4,
+              borderColor: customOversValid ? theme.border : '#dc2626',
+            }}
+          />
+          {!customOversValid && (
+            <Text style={{ color: '#dc2626', fontSize: 12, marginBottom: 20 }}>
+              Enter the number of overs per innings
+            </Text>
+          )}
+        </>
       )}
 
       {prevMatch && (

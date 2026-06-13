@@ -122,8 +122,12 @@ export default function TeamBuilderScreen() {
         setAiError('Too many requests — please wait a moment and try again.');
       } else if (lower.includes('network') || lower.includes('fetch') || lower.includes('econnrefused')) {
         setAiError('Network error — check your connection and try again.');
+      } else if (lower.includes('403') || lower.includes('401') || lower.includes('permission') || lower.includes('api key') || lower.includes('unauthenticated')) {
+        setAiError('AI is not available — Vertex AI API may not be enabled in the Firebase project.');
+      } else if (lower.includes('could not parse')) {
+        setAiError('AI responded but could not produce a valid team split. Try again.');
       } else {
-        setAiError('AI selection failed. Please try again.');
+        setAiError(`AI selection failed: ${msg}`);
       }
     }
     finally { setAiThinking(false); }
