@@ -1,7 +1,7 @@
 import {
   getAI,
   getGenerativeModel,
-  GoogleAIBackend,
+  VertexAIBackend,
   type Content,
   type FunctionResponsePart,
 } from 'firebase/ai';
@@ -11,8 +11,7 @@ import { executeToolCall } from './toolExecutor';
 
 const MODEL = 'gemini-2.5-flash';
 
-// Gemini Developer API backend — uses the Firebase project's free tier.
-const ai = getAI(app, { backend: new GoogleAIBackend() });
+const ai = getAI(app, { backend: new VertexAIBackend() });
 
 export interface AssistantResult {
   text: string;

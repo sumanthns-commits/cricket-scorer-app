@@ -18,40 +18,59 @@ export function detectHemisphere(): Hemisphere {
   return SOUTHERN_REGIONS.has(region.toUpperCase()) ? 'S' : 'N';
 }
 
-/**
- * Season label for a match date, split into two halves of the year:
- *   Apr–Sep → single-year label
- *   Oct–Mar → spanning-year label (e.g. "2025/26")
- * The Summer/Winter word flips by hemisphere; the main cricket season is the
- * half that crosses the New Year (Oct–Mar in N, which is winter there).
- */
-export function seasonLabel(date: Date, hemisphere: Hemisphere): string {
-  const month = date.getMonth(); // 0 = Jan
-  const year = date.getFullYear();
-  const isAprToSep = month >= 3 && month <= 8;
+// NH season name by month index (0=Jan … 11=Dec).
+// Dec–Feb is the NH winter bucket and spans the new year.
+const NH_SEASON = [
+  'Winter', 'Winter', 'Spring', 'Spring', 'Spring',
+  'Summer', 'Summer', 'Summer', 'Autumn', 'Autumn', 'Autumn', 'Winter',
+] as const;
+type SeasonName = (typeof NH_SEASON)[number];
 
-  if (isAprToSep) {
-    const name = hemisphere === 'N' ? 'Summer' : 'Winter';
-    return `${name} ${year}`;
-  }
+// SH names are the opposite of NH names.
+const SH_FLIP: Record<SeasonName, SeasonName> = {
+  Winter: 'Summer', Summer: 'Winter', Spring: 'Autumn', Autumn: 'Spring',
+};
 
-  // Oct–Mar: spans the New Year. Resolve the start year of the span.
-  const startYear = month >= 9 ? year : year - 1;
-  const endYY = String((startYear + 1) % 100).padStart(2, '0');
-  const name = hemisphere === 'N' ? 'Winter' : 'Summer';
-  return `${name} ${startYear}/${endYY}`;
+// Monotonic offset within a year: Spring < Summer < Autumn < Winter.
+const SEASON_OFFSET: Record<SeasonName, number> = {
+  Spring: 0.0, Summer: 0.25, Autumn: 0.5, Winter: 0.75,
+};
+
+function resolveNH(month: number, year: number): { nhSeason: SeasonName; startYear: number; spansNewYear: boolean } {
+  const nhSeason = NH_SEASON[month];
+  // Dec–Jan–Feb (Winter/NH) spans the new year; Dec is the start month.
+  const spansNewYear = nhSeason === 'Winter';
+  const startYear = spansNewYear ? (month === 11 ? year : year - 1) : year;
+  return { nhSeason, startYear, spansNewYear };
 }
 
 /**
- * Monotonic sort value for a season (higher = more recent), so sections can be
- * ordered newest-first without parsing the label string. Two buckets per year:
- * Oct–Mar resolves to its start year + 0.5 so it sorts after that year's
- * Apr–Sep half.
+ * Season label for a match date. Four seasons per year; the winter bucket
+ * (Dec–Feb) spans the new year and uses a "2025/26" suffix.
+ * Southern hemisphere flips Summer↔Winter and Spring↔Autumn.
+ */
+export function seasonLabel(date: Date, hemisphere: Hemisphere): string {
+  const { nhSeason, startYear, spansNewYear } = resolveNH(date.getMonth(), date.getFullYear());
+  const name = hemisphere === 'N' ? nhSeason : SH_FLIP[nhSeason];
+
+  if (spansNewYear) {
+    const endYY = String((startYear + 1) % 100).padStart(2, '0');
+    return `${name} ${startYear}/${endYY}`;
+  }
+  return `${name} ${startYear}`;
+}
+
+/** Season label for today — used to default selectors to the current season. */
+export function currentSeasonLabel(hemisphere: Hemisphere): string {
+  return seasonLabel(new Date(), hemisphere);
+}
+
+/**
+ * Monotonic sort value for a season (higher = more recent).
+ * Four buckets per year, ordered Spring → Summer → Autumn → Winter.
+ * Hemisphere-independent — chronological order of dates doesn't change.
  */
 export function seasonSortValue(date: Date): number {
-  const month = date.getMonth();
-  const year = date.getFullYear();
-  if (month >= 3 && month <= 8) return year;
-  const startYear = month >= 9 ? year : year - 1;
-  return startYear + 0.5;
+  const { nhSeason, startYear } = resolveNH(date.getMonth(), date.getFullYear());
+  return startYear + SEASON_OFFSET[nhSeason];
 }

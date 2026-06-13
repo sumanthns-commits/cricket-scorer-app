@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, Modal, Pressable } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
+import { Ionicons } from '@expo/vector-icons';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { getClubMatches, getClubPlayers } from '../../services/matchService';
 import { getClub } from '../../services/clubService';
 import { getLinkedGhostMap } from '../../services/joinRequestService';
 import { buildSeasonLeaderboard } from '../../services/seasonLeaderboard';
-import { seasonLabel, seasonSortValue, type Hemisphere } from '../../utils/seasons';
+import { seasonLabel, seasonSortValue, currentSeasonLabel, type Hemisphere } from '../../utils/seasons';
 import { useThemeStore } from '../../store/themeStore';
 import PlayerAvatar from '../../components/PlayerAvatar';
 import type { Match } from '../../types';
@@ -124,7 +125,8 @@ export default function LeaderboardScreen() {
   const { params } = useRoute<Route>();
   const { clubId } = params;
   const [discipline, setDiscipline] = useState<Discipline>('batting');
-  const [seasonIdx, setSeasonIdx] = useState(0);
+  const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const theme = useThemeStore((s) => s.theme);
 
   const { data: club } = useQuery({
@@ -153,7 +155,12 @@ export default function LeaderboardScreen() {
     () => seasonsFrom(base?.matches ?? [], hemisphere),
     [base?.matches, hemisphere],
   );
-  const activeSeason = seasons[seasonIdx];
+  const activeSeason = useMemo(() => {
+    if (!seasons.length) return undefined;
+    if (selectedLabel) return seasons.find((s) => s.label === selectedLabel) ?? seasons[0];
+    const cur = currentSeasonLabel(hemisphere);
+    return seasons.find((s) => s.label === cur) ?? seasons[0];
+  }, [selectedLabel, seasons, hemisphere]);
 
   const { data: board, isFetching } = useQuery({
     queryKey: ['leaderboard', clubId, activeSeason?.label],
@@ -186,31 +193,70 @@ export default function LeaderboardScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       {/* Season selector */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, gap: 8 }}
-        style={{ flexGrow: 0 }}
+      <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+        <TouchableOpacity
+          onPress={() => setDropdownOpen(true)}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingVertical: 10,
+            paddingHorizontal: 14,
+            borderRadius: 10,
+            backgroundColor: theme.surface,
+            borderWidth: 1,
+            borderColor: theme.border,
+          }}
+        >
+          <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>
+            {activeSeason?.label ?? '—'}
+          </Text>
+          <Ionicons name="chevron-down" size={16} color={theme.textMuted} />
+        </TouchableOpacity>
+      </View>
+
+      <Modal
+        visible={dropdownOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDropdownOpen(false)}
       >
-        {seasons.map((s, i) => (
-          <TouchableOpacity
-            key={s.label}
-            onPress={() => setSeasonIdx(i)}
-            style={{
-              paddingVertical: 6,
-              paddingHorizontal: 12,
-              borderRadius: 16,
-              backgroundColor: i === seasonIdx ? theme.accentDim : theme.surface,
-              borderWidth: 1,
-              borderColor: i === seasonIdx ? theme.accent : theme.border,
-            }}
-          >
-            <Text style={{ color: i === seasonIdx ? theme.accent : theme.textMuted, fontSize: 13, fontWeight: '600' }}>
-              {s.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 32 }}
+          onPress={() => setDropdownOpen(false)}
+        >
+          <Pressable>
+            <View style={{ backgroundColor: theme.surface, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: theme.border }}>
+              <Text style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8, letterSpacing: 0.8 }}>
+                SEASON
+              </Text>
+              {seasons.map((s) => {
+                const isSelected = s.label === activeSeason?.label;
+                return (
+                  <TouchableOpacity
+                    key={s.label}
+                    onPress={() => { setSelectedLabel(s.label); setDropdownOpen(false); }}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingVertical: 13,
+                      paddingHorizontal: 16,
+                      borderTopWidth: 1,
+                      borderTopColor: theme.border,
+                      backgroundColor: isSelected ? theme.accentDim : 'transparent',
+                    }}
+                  >
+                    <Text style={{ flex: 1, color: isSelected ? theme.accent : theme.text, fontSize: 15, fontWeight: isSelected ? '700' : '400' }}>
+                      {s.label}
+                    </Text>
+                    {isSelected && <Ionicons name="checkmark" size={18} color={theme.accent} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Discipline tabs */}
       <View style={{ flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginTop: 12, marginBottom: 4 }}>
@@ -240,7 +286,7 @@ export default function LeaderboardScreen() {
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
           <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 10 }}>
-            {board.matchesCounted} match{board.matchesCounted === 1 ? '' : 'es'} · {activeSeason.label}
+            {board.matchesCounted} match{board.matchesCounted === 1 ? '' : 'es'} · {activeSeason?.label}
           </Text>
 
           {discipline === 'batting' && (
