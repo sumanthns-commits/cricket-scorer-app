@@ -7,6 +7,9 @@ import {
   updateDoc,
   deleteDoc,
   Timestamp,
+  query,
+  where,
+  orderBy,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type { BallEntry, ClubRules, Match, MatchFormat, MatchToss, OverDocument, Player, PlayerType, CareerStats } from '../types';
@@ -91,6 +94,21 @@ export async function getMatch(clubId: string, matchId: string): Promise<Match |
 
 export async function getClubMatches(clubId: string): Promise<Match[]> {
   const snap = await getDocs(collection(db, 'clubs', clubId, 'matches'));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Match);
+}
+
+export async function getClubMatchesBySeason(
+  clubId: string,
+  start: Date,
+  end: Date,
+): Promise<Match[]> {
+  const q = query(
+    collection(db, 'clubs', clubId, 'matches'),
+    where('date', '>=', Timestamp.fromDate(start)),
+    where('date', '<', Timestamp.fromDate(end)),
+    orderBy('date', 'desc'),
+  );
+  const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Match);
 }
 

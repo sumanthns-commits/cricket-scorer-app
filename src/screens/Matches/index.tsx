@@ -1,5 +1,14 @@
-import { useMemo } from 'react';
-import { View, Text, TouchableOpacity, SectionList, ActivityIndicator, Alert } from 'react-native';
+import { useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  FlatList,
+  Modal,
+  ActivityIndicator,
+  Alert,
+  Pressable,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
@@ -7,34 +16,15 @@ import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useClubStore } from '../../store/clubStore';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
-import { getClubMatches, deleteMatch, getMatchOvers } from '../../services/matchService';
+import { getClubMatchesBySeason, deleteMatch, getMatchOvers } from '../../services/matchService';
 import { getClub, getClubMember } from '../../services/clubService';
-import { seasonLabel, seasonSortValue, type Hemisphere } from '../../utils/seasons';
+import {
+  currentSeasonInfo,
+  generateSeasonRange,
+  type Hemisphere,
+  type SeasonInfo,
+} from '../../utils/seasons';
 import type { Match } from '../../types';
-
-interface MatchSection {
-  title: string;
-  sortValue: number;
-  data: Match[];
-}
-
-function groupBySeason(matches: Match[], hemisphere: Hemisphere): MatchSection[] {
-  const sorted = [...matches].sort((a, b) => b.date.toMillis() - a.date.toMillis());
-  const sections = new Map<string, MatchSection>();
-
-  for (const match of sorted) {
-    const date = match.date.toDate();
-    const title = seasonLabel(date, hemisphere);
-    const existing = sections.get(title);
-    if (existing) {
-      existing.data.push(match);
-    } else {
-      sections.set(title, { title, sortValue: seasonSortValue(date), data: [match] });
-    }
-  }
-
-  return [...sections.values()].sort((a, b) => b.sortValue - a.sortValue);
-}
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -45,7 +35,17 @@ const STATUS_COLORS: Record<Match['status'], string> = {
   abandoned: '#dc2626',
 };
 
-function MatchCard({ match, onPress, onDelete, isAdmin }: { match: Match; onPress: () => void; onDelete?: () => void; isAdmin: boolean }) {
+function MatchCard({
+  match,
+  onPress,
+  onDelete,
+  isAdmin,
+}: {
+  match: Match;
+  onPress: () => void;
+  onDelete?: () => void;
+  isAdmin: boolean;
+}) {
   const theme = useThemeStore((s) => s.theme);
   const dateObj = match.date.toDate();
   const dateStr = dateObj.toLocaleDateString('en-GB', {
@@ -67,9 +67,7 @@ function MatchCard({ match, onPress, onDelete, isAdmin }: { match: Match; onPres
       ? 'Toss'
       : 'Build Teams';
 
-  const memberActionLabel =
-    match.status === 'live' ? 'Live' : isFinished ? 'View' : null;
-
+  const memberActionLabel = match.status === 'live' ? 'Live' : isFinished ? 'View' : null;
   const actionLabel = isAdmin ? adminActionLabel : memberActionLabel;
   const statusColor = STATUS_COLORS[match.status];
 
@@ -95,7 +93,9 @@ function MatchCard({ match, onPress, onDelete, isAdmin }: { match: Match; onPres
           ) : null}
           <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 4 }}>
             {dateStr}
-            {match.format ? ` · ${match.format === 'custom' ? `${match.rules.oversPerInnings ?? '?'} ov` : match.format}` : ''}
+            {match.format
+              ? ` · ${match.format === 'custom' ? `${match.rules.oversPerInnings ?? '?'} ov` : match.format}`
+              : ''}
           </Text>
         </View>
         <View style={{ alignItems: 'flex-end', gap: 6 }}>
@@ -127,17 +127,119 @@ function MatchCard({ match, onPress, onDelete, isAdmin }: { match: Match; onPres
   );
 }
 
+function SeasonDropdown({
+  seasons,
+  selected,
+  onSelect,
+}: {
+  seasons: SeasonInfo[];
+  selected: SeasonInfo;
+  onSelect: (s: SeasonInfo) => void;
+}) {
+  const theme = useThemeStore((s) => s.theme);
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <TouchableOpacity
+        onPress={() => setOpen(true)}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 6,
+          backgroundColor: theme.surface,
+          borderRadius: 8,
+          paddingVertical: 7,
+          paddingHorizontal: 12,
+          borderWidth: 1,
+          borderColor: theme.border,
+        }}
+      >
+        <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>{selected.label}</Text>
+        <Text style={{ color: theme.textMuted, fontSize: 11 }}>▾</Text>
+      </TouchableOpacity>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable
+          style={{ flex: 1, backgroundColor: '#00000066', justifyContent: 'center', padding: 32 }}
+          onPress={() => setOpen(false)}
+        >
+          <Pressable
+            style={{
+              backgroundColor: theme.surface,
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: theme.border,
+              overflow: 'hidden',
+              maxHeight: 360,
+            }}
+            onPress={() => {}}
+          >
+            <Text
+              style={{
+                color: theme.textMuted,
+                fontSize: 12,
+                fontWeight: '700',
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+                paddingHorizontal: 16,
+                paddingTop: 14,
+                paddingBottom: 10,
+              }}
+            >
+              Select Season
+            </Text>
+            <FlatList
+              data={seasons}
+              keyExtractor={(s) => s.label}
+              renderItem={({ item, index }) => {
+                const isSelected = item.label === selected.label;
+                const isLast = index === seasons.length - 1;
+                return (
+                  <TouchableOpacity
+                    onPress={() => {
+                      onSelect(item);
+                      setOpen(false);
+                    }}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingVertical: 13,
+                      paddingHorizontal: 16,
+                      borderTopWidth: 1,
+                      borderTopColor: theme.border,
+                      borderBottomWidth: isLast ? 0 : 0,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: isSelected ? theme.accent : theme.text,
+                        fontSize: 15,
+                        fontWeight: isSelected ? '700' : '400',
+                      }}
+                    >
+                      {item.label}
+                    </Text>
+                    {isSelected && (
+                      <Text style={{ color: theme.accent, fontSize: 14 }}>✓</Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
 export default function MatchesScreen() {
   const navigation = useNavigation<Nav>();
   const activeClubId = useClubStore((s) => s.activeClubId);
   const user = useAuthStore((s) => s.user);
   const theme = useThemeStore((s) => s.theme);
-
-  const { data: matches, isLoading, refetch } = useQuery({
-    queryKey: ['matches', activeClubId],
-    queryFn: () => getClubMatches(activeClubId!),
-    enabled: !!activeClubId,
-  });
 
   const { data: club } = useQuery({
     queryKey: ['club', activeClubId],
@@ -154,10 +256,32 @@ export default function MatchesScreen() {
   const isAdmin = member?.role === 'admin';
   const hemisphere: Hemisphere = club?.hemisphere ?? 'N';
 
-  const sections = useMemo(
-    () => groupBySeason(matches ?? [], hemisphere),
-    [matches, hemisphere]
-  );
+  // Generate a rolling 3-year window of seasons for the dropdown.
+  const seasons = useMemo(() => {
+    const from = new Date();
+    from.setFullYear(from.getFullYear() - 3);
+    return generateSeasonRange(from, new Date(), hemisphere);
+  }, [hemisphere]);
+
+  const [selectedSeason, setSelectedSeason] = useState<SeasonInfo | null>(null);
+
+  // Resolve effective season: explicit pick > current > first in list.
+  const effectiveSeason = useMemo<SeasonInfo | null>(() => {
+    if (!seasons.length) return null;
+    if (selectedSeason && seasons.some((s) => s.label === selectedSeason.label)) {
+      return selectedSeason;
+    }
+    const current = currentSeasonInfo(hemisphere);
+    const found = seasons.find((s) => s.label === current.label);
+    return found ?? seasons[0];
+  }, [selectedSeason, seasons, hemisphere]);
+
+  const { data: matches, isLoading, refetch } = useQuery({
+    queryKey: ['matches', activeClubId, effectiveSeason?.label],
+    queryFn: () =>
+      getClubMatchesBySeason(activeClubId!, effectiveSeason!.start, effectiveSeason!.end),
+    enabled: !!activeClubId && !!effectiveSeason,
+  });
 
   const handleMatchPress = (match: Match) => {
     const clubId = match.clubId;
@@ -203,7 +327,7 @@ export default function MatchesScreen() {
               .catch(() => Alert.alert('Could not delete the match. Please try again.'));
           },
         },
-      ]
+      ],
     );
   };
 
@@ -220,16 +344,17 @@ export default function MatchesScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, padding: 16 }}>
-      <View
-        style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 16,
-        }}
-      >
-        <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700' }}>Matches</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <View style={{ marginBottom: 16 }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 10,
+          }}
+        >
+          <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700' }}>Matches</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <TouchableOpacity
             onPress={() => navigation.navigate('Leaderboard', { clubId: activeClubId })}
             style={{
@@ -256,31 +381,23 @@ export default function MatchesScreen() {
               <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '700' }}>+ Schedule</Text>
             </TouchableOpacity>
           )}
+          </View>
         </View>
+        {effectiveSeason && (
+          <SeasonDropdown
+            seasons={seasons}
+            selected={effectiveSeason}
+            onSelect={setSelectedSeason}
+          />
+        )}
       </View>
 
       {isLoading ? (
         <ActivityIndicator color={theme.accent} style={{ marginTop: 40 }} />
-      ) : sections.length > 0 ? (
-        <SectionList
-          sections={sections}
+      ) : matches && matches.length > 0 ? (
+        <FlatList
+          data={matches}
           keyExtractor={(item) => item.id}
-          renderSectionHeader={({ section }) => (
-            <Text
-              style={{
-                color: theme.textMuted,
-                fontSize: 13,
-                fontWeight: '700',
-                textTransform: 'uppercase',
-                letterSpacing: 0.5,
-                backgroundColor: theme.bg,
-                paddingTop: 12,
-                paddingBottom: 8,
-              }}
-            >
-              {section.title}
-            </Text>
-          )}
           renderItem={({ item }) => (
             <MatchCard
               match={item}
@@ -299,7 +416,7 @@ export default function MatchesScreen() {
       ) : (
         <View style={{ alignItems: 'center', marginTop: 60 }}>
           <Text style={{ color: theme.textMuted, fontSize: 16, textAlign: 'center' }}>
-            No matches yet.{'\n'}Schedule your first match to get started.
+            No matches in {effectiveSeason?.label ?? 'this season'}.
           </Text>
         </View>
       )}

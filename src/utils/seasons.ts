@@ -74,3 +74,75 @@ export function seasonSortValue(date: Date): number {
   const { nhSeason, startYear } = resolveNH(date.getMonth(), date.getFullYear());
   return startYear + SEASON_OFFSET[nhSeason];
 }
+
+// NH season start months (0-indexed). End is the start of the next season.
+const NH_START_MONTH: Record<SeasonName, number> = {
+  Spring: 2, Summer: 5, Autumn: 8, Winter: 11,
+};
+
+export interface SeasonInfo {
+  label: string;
+  sortValue: number;
+  /** Inclusive start of the season (local midnight). */
+  start: Date;
+  /** Exclusive end of the season (local midnight of first day of next season). */
+  end: Date;
+}
+
+function seasonInfoFromNH(nhSeason: SeasonName, startYear: number, hemisphere: Hemisphere): SeasonInfo {
+  const spansNewYear = nhSeason === 'Winter';
+  const displayName = hemisphere === 'N' ? nhSeason : SH_FLIP[nhSeason];
+
+  const label = spansNewYear
+    ? `${displayName} ${startYear}/${String((startYear + 1) % 100).padStart(2, '0')}`
+    : `${displayName} ${startYear}`;
+
+  const sortValue = startYear + SEASON_OFFSET[nhSeason];
+
+  let start: Date;
+  let end: Date;
+  if (spansNewYear) {
+    start = new Date(startYear, 11, 1);      // Dec 1
+    end = new Date(startYear + 1, 2, 1);     // Mar 1 next year
+  } else {
+    const m = NH_START_MONTH[nhSeason];
+    start = new Date(startYear, m, 1);
+    end = new Date(startYear, m + 3, 1);
+  }
+
+  return { label, sortValue, start, end };
+}
+
+/** Full SeasonInfo for a given date (includes date range for Firestore queries). */
+export function seasonInfoForDate(date: Date, hemisphere: Hemisphere): SeasonInfo {
+  const { nhSeason, startYear } = resolveNH(date.getMonth(), date.getFullYear());
+  return seasonInfoFromNH(nhSeason, startYear, hemisphere);
+}
+
+/** SeasonInfo for today. */
+export function currentSeasonInfo(hemisphere: Hemisphere): SeasonInfo {
+  return seasonInfoForDate(new Date(), hemisphere);
+}
+
+/**
+ * All seasons from `from` date to `to` date (inclusive), sorted most-recent first.
+ * Walks month-by-month deduplicating by label.
+ */
+export function generateSeasonRange(from: Date, to: Date, hemisphere: Hemisphere): SeasonInfo[] {
+  const seen = new Set<string>();
+  const results: SeasonInfo[] = [];
+
+  const cursor = new Date(from.getFullYear(), from.getMonth(), 1);
+  const limit = new Date(to.getFullYear(), to.getMonth() + 1, 1);
+
+  while (cursor < limit) {
+    const info = seasonInfoForDate(cursor, hemisphere);
+    if (!seen.has(info.label)) {
+      seen.add(info.label);
+      results.push(info);
+    }
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  return results.sort((a, b) => b.sortValue - a.sortValue);
+}
