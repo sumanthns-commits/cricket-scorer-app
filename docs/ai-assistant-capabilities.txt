@@ -1,0 +1,123 @@
+AI Assistant — Supported Query Types
+======================================
+Last updated: 2026-06-13
+
+The cricket assistant is powered by Gemini (gemini-2.5-flash) via Firebase AI SDK.
+It has access to 7 tools that fetch live club data. All reasoning is done by the LLM;
+tools return raw data only.
+
+Player names are resolved automatically — you never need to supply a player ID.
+
+
+TOOL: get_available_players
+---------------------------
+Returns all non-linked club players (name, role, battingHand, careerStats).
+When a matchId is provided, results are scoped to that match's squad.
+
+Example queries:
+  - "Who's available for selection?"
+  - "List all players in the club"
+  - "Who's in the squad for this match?"
+
+
+TOOL: get_player_stats
+----------------------
+Returns the full career stats for one player: runs, dismissals, balls faced,
+batting average, wickets, economy, catches, run-outs, stumpings, fieldingPoints.
+
+Example queries:
+  - "What's [player]'s batting average?"
+  - "How many wickets has [player] taken?"
+  - "What's [player]'s economy rate?"
+  - "Who is the better bowler — [A] or [B]?"
+
+
+TOOL: get_player_form
+---------------------
+Returns per-match performance records from the playerPerformances collection.
+Defaults to the last 5 matches; you can ask for more (e.g. "last 10").
+
+Example queries:
+  - "How has [player] been performing lately?"
+  - "Is [player] in good form?"
+  - "Show me [player]'s last 10 matches"
+  - "Who is in the best form right now?"
+
+
+TOOL: get_batting_insights
+--------------------------
+Returns career stats plus a 12-sector wagon wheel (runs by direction, keeper's view).
+This is the richest batting signal and the primary source for weakness analysis.
+
+Example queries:
+  - "What are [player]'s strengths/weaknesses as a batsman?"
+  - "Which zones does [player] score in most?"
+  - "Where should we set the field against [player]?"
+  - "Does [player] favour the leg side or off side?"
+  - "Is [player] a LHB or RHB?"
+
+
+TOOL: get_bowling_insights
+--------------------------
+Returns career bowling stats (economy, wickets, runs conceded).
+Note: no separate pitch-map or line/length breakdown is stored yet — this tool
+surfaces the same career stats as get_player_stats.
+
+Example queries:
+  - "What's [player]'s bowling style and economy?"
+  - "Is [player] a good death bowler?"
+  - "Who should bowl in the powerplay?"
+
+
+TOOL: get_head_to_head
+----------------------
+Queries the headToHead collection for recorded history between a specific batsman
+and bowler. Only populated once enough club match data has been accumulated.
+
+Example queries:
+  - "How has [batsman] done against [bowler]?"
+  - "Who has the edge — [batsman] or [bowler]?"
+  - "Should I bowl [bowler] to [batsman]?"
+
+
+TOOL: get_match_context
+-----------------------
+Returns the full match document: venue, format, rules, squad, opponent details.
+
+Example queries:
+  - "What's the format of the upcoming match?"
+  - "Who is the opponent?"
+  - "What are the conditions for this match?"
+
+
+TEAM SELECTION (system prompt rule)
+------------------------------------
+When you explicitly ask the assistant to pick or balance teams, it returns a
+structured JSON block listing team_a, team_b, rationale, and keyDecisions.
+All other queries get plain prose answers.
+
+Example queries:
+  - "Pick two balanced teams from the available players"
+  - "Help me select a XI for T20"
+  - "Balance the teams for this match"
+
+
+KNOWN GAPS
+----------
+The following queries are not well-supported by the current toolset:
+
+  - Club leaderboard / top scorer ranking
+      Workaround: the model can reason over get_available_players (which includes
+      inline careerStats) but there is no dedicated ranking tool.
+
+  - Team/match results history
+      No tool returns match outcomes or win/loss records.
+
+  - Weakness against spin vs pace
+      Wagon wheel shows scoring zones by direction but not by ball type.
+
+  - Bowling pitch map (line and length breakdown)
+      getBowlingInsights has no separate store yet — planned future addition.
+
+  - Opponent player analysis
+      Only your club's own players are in the database.
