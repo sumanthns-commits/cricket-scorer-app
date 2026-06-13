@@ -3,7 +3,7 @@ import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, TextInput 
 import Slider from '@react-native-community/slider';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { resolvePlayerStats } from '../services/statsResolver';
-import { linkGhost, unlinkGhost, getClubGhosts } from '../services/joinRequestService';
+import { linkGhost, unlinkGhost, getClubGhosts, getClubRegisteredMembers } from '../services/joinRequestService';
 import {
   computeDerivedStats,
   computeSkillRating,
@@ -225,10 +225,20 @@ export default function PlayerProfileView({
   const [selectedGhostId, setSelectedGhostId] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
 
+  // Ghost-side picker: link this ghost to a chosen registered member
+  const [showMemberPicker, setShowMemberPicker] = useState(false);
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+
   const { data: ghosts } = useQuery({
     queryKey: ['clubGhosts', clubId],
     queryFn: () => getClubGhosts(clubId),
     enabled: showLinkPicker,
+  });
+
+  const { data: members } = useQuery({
+    queryKey: ['clubRegisteredMembers', clubId],
+    queryFn: () => getClubRegisteredMembers(clubId),
+    enabled: showMemberPicker,
   });
 
   const handleLink = () => {
@@ -239,12 +249,33 @@ export default function PlayerProfileView({
         Promise.all([
           queryClient.invalidateQueries({ queryKey: ['player', clubId, playerId] }),
           queryClient.invalidateQueries({ queryKey: ['resolvedStats', clubId, playerId] }),
-          queryClient.invalidateQueries({ queryKey: ['squad', clubId] }),
+          queryClient.invalidateQueries({ queryKey: ['clubSquad', clubId] }),
           queryClient.invalidateQueries({ queryKey: ['clubGhosts', clubId] }),
+          queryClient.invalidateQueries({ queryKey: ['leaderboard-base', clubId] }),
         ])
       )
       .then(() => { setShowLinkPicker(false); setSelectedGhostId(null); })
       .catch((e) => console.error('linkGhost failed', e))
+      .finally(() => setLinking(false));
+  };
+
+  const handleLinkToMember = () => {
+    if (!selectedMemberId) return;
+    setLinking(true);
+    linkGhost(clubId, selectedMemberId, playerId)
+      .then(() =>
+        Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['player', clubId, playerId] }),
+          queryClient.invalidateQueries({ queryKey: ['resolvedStats', clubId, playerId] }),
+          queryClient.invalidateQueries({ queryKey: ['player', clubId, selectedMemberId] }),
+          queryClient.invalidateQueries({ queryKey: ['clubSquad', clubId] }),
+          queryClient.invalidateQueries({ queryKey: ['clubGhosts', clubId] }),
+          queryClient.invalidateQueries({ queryKey: ['clubRegisteredMembers', clubId] }),
+          queryClient.invalidateQueries({ queryKey: ['leaderboard-base', clubId] }),
+        ])
+      )
+      .then(() => { setShowMemberPicker(false); setSelectedMemberId(null); })
+      .catch((e) => console.error('linkGhost (from ghost) failed', e))
       .finally(() => setLinking(false));
   };
 
@@ -255,6 +286,9 @@ export default function PlayerProfileView({
         Promise.all([
           queryClient.invalidateQueries({ queryKey: ['player', clubId, playerId] }),
           queryClient.invalidateQueries({ queryKey: ['resolvedStats', clubId, playerId] }),
+          queryClient.invalidateQueries({ queryKey: ['clubSquad', clubId] }),
+          queryClient.invalidateQueries({ queryKey: ['clubGhosts', clubId] }),
+          queryClient.invalidateQueries({ queryKey: ['leaderboard-base', clubId] }),
         ])
       )
       .catch((e) => console.error('unlinkGhost failed', e))
@@ -416,6 +450,87 @@ export default function PlayerProfileView({
               <Text style={{ color: '#dc2626', fontSize: 13, fontWeight: '700' }}>Unlink</Text>
             )}
           </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {isAdmin && player.type === 'ghost' ? (
+        <View
+          style={{
+            backgroundColor: theme.surface,
+            borderRadius: 10,
+            marginTop: 16,
+            borderWidth: 1,
+            borderColor: theme.border,
+            overflow: 'hidden',
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => { setShowMemberPicker((v) => !v); setSelectedMemberId(null); }}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12 }}
+          >
+            <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '600' }}>Link to member</Text>
+            <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>{showMemberPicker ? 'Cancel' : 'Choose'}</Text>
+          </TouchableOpacity>
+          {showMemberPicker ? (
+            <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
+              <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 10 }}>
+                Select a registered member to merge this ghost's historical stats into their record.
+              </Text>
+              {!members ? (
+                <ActivityIndicator color={theme.accent} style={{ marginVertical: 12 }} />
+              ) : members.length === 0 ? (
+                <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 8 }}>No eligible registered members in this club.</Text>
+              ) : (
+                members.map((m: Player) => {
+                  const sel = selectedMemberId === m.id;
+                  return (
+                    <TouchableOpacity
+                      key={m.id}
+                      onPress={() => setSelectedMemberId(sel ? null : m.id)}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 10,
+                        backgroundColor: sel ? theme.accentDim : theme.surfaceAlt,
+                        borderRadius: 8, padding: 10, marginBottom: 6,
+                        borderWidth: 1, borderColor: sel ? theme.accent : theme.border,
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 18, height: 18, borderRadius: 9,
+                          borderWidth: 2, borderColor: sel ? theme.accent : theme.textMuted,
+                          backgroundColor: sel ? theme.accent : 'transparent',
+                        }}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>{m.displayName}</Text>
+                        <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 1 }}>
+                          {m.careerStats.matchesPlayed} matches · {m.careerStats.totalRuns} runs · {m.careerStats.totalWickets} wkts
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+              <TouchableOpacity
+                onPress={handleLinkToMember}
+                disabled={!selectedMemberId || linking}
+                style={{
+                  marginTop: 6,
+                  backgroundColor: selectedMemberId ? theme.accent : theme.border,
+                  borderRadius: 8, paddingVertical: 11, alignItems: 'center',
+                  opacity: linking ? 0.6 : 1,
+                }}
+              >
+                {linking ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '700' }}>
+                    {selectedMemberId ? 'Link to member' : 'Select a member'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
       ) : null}
 

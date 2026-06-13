@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { getClubMatches, getClubPlayers } from '../../services/matchService';
 import { getClub } from '../../services/clubService';
+import { getLinkedGhostMap } from '../../services/joinRequestService';
 import { buildSeasonLeaderboard } from '../../services/seasonLeaderboard';
 import { seasonLabel, seasonSortValue, type Hemisphere } from '../../utils/seasons';
 import { useThemeStore } from '../../store/themeStore';
@@ -134,15 +135,16 @@ export default function LeaderboardScreen() {
   const { data: base, isLoading } = useQuery({
     queryKey: ['leaderboard-base', clubId],
     queryFn: async () => {
-      const [matches, players] = await Promise.all([
+      const [matches, players, ghostToMember] = await Promise.all([
         getClubMatches(clubId),
         getClubPlayers(clubId),
+        getLinkedGhostMap(clubId),
       ]);
       const nameMap = Object.fromEntries(players.map((p) => [p.id, p.displayName]));
       const photoMap = Object.fromEntries(
         players.map((p) => [p.id, p.photoURL]),
       ) as Record<string, string | undefined>;
-      return { matches, nameMap, photoMap };
+      return { matches, nameMap, photoMap, ghostToMember };
     },
   });
 
@@ -155,8 +157,8 @@ export default function LeaderboardScreen() {
 
   const { data: board, isFetching } = useQuery({
     queryKey: ['leaderboard', clubId, activeSeason?.label],
-    queryFn: () => buildSeasonLeaderboard(clubId, activeSeason!.matches),
-    enabled: !!activeSeason,
+    queryFn: () => buildSeasonLeaderboard(clubId, activeSeason!.matches, base!.ghostToMember),
+    enabled: !!activeSeason && !!base,
   });
 
   const nameOf = (id: string) => base?.nameMap[id] ?? id;

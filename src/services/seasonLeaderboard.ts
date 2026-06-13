@@ -87,12 +87,14 @@ function tallyFielding(
   over: OverDocument,
   fielding: Map<string, FieldingAcc>,
   eventPoints: Map<string, number>,
+  resolve: (id: string) => string,
 ): void {
   const acc = (id: string): FieldingAcc => {
-    let f = fielding.get(id);
+    const key = resolve(id);
+    let f = fielding.get(key);
     if (!f) {
       f = { catches: 0, stumpings: 0, runOuts: 0, eventPoints: 0 };
-      fielding.set(id, f);
+      fielding.set(key, f);
     }
     return f;
   };
@@ -129,6 +131,7 @@ function tallyFielding(
 export async function buildSeasonLeaderboard(
   clubId: string,
   matches: Match[],
+  ghostToMember: Record<string, string> = {},
 ): Promise<SeasonLeaderboard> {
   const played = matches.filter(
     (m) => m.status === 'completed' || m.status === 'abandoned',
@@ -137,6 +140,10 @@ export async function buildSeasonLeaderboard(
   const batting = new Map<string, BattingAcc>();
   const bowling = new Map<string, BowlingAcc>();
   const fielding = new Map<string, FieldingAcc>();
+
+  // Remap a linked ghost's ID to its member's ID so historical imported stats
+  // are credited to the member rather than the now-hidden ghost.
+  const resolve = (id: string) => ghostToMember[id] ?? id;
 
   const batAcc = (id: string): BattingAcc => {
     let b = batting.get(id);
@@ -163,7 +170,41 @@ export async function buildSeasonLeaderboard(
 
   played.forEach((match, i) => {
     const overs = overSets[i];
-    if (overs.length === 0) return;
+
+    if (overs.length === 0) {
+      // Imported match: no ball-by-ball overs, fall back to inningsSummary.
+      const summary = match.inningsSummary;
+      if (!summary || Object.keys(summary).length === 0) return;
+      matchesCounted++;
+
+      for (const inn of Object.values(summary)) {
+        for (const bat of inn.batting) {
+          const a = batAcc(resolve(bat.id));
+          a.innings++;
+          a.runs += bat.runs;
+          a.balls += bat.balls;
+          a.fours += bat.fours;
+          a.sixes += bat.sixes;
+          if (bat.out) a.outs++;
+          if (bat.runs > a.highScore) a.highScore = bat.runs;
+        }
+        for (const bowl of inn.bowling) {
+          const a = bowlAcc(resolve(bowl.id));
+          a.balls += bowl.balls;
+          a.runs += bowl.runs;
+          a.wickets += bowl.wickets;
+          if (
+            bowl.wickets > a.bestWickets ||
+            (bowl.wickets === a.bestWickets && bowl.runs < a.bestRuns)
+          ) {
+            a.bestWickets = bowl.wickets;
+            a.bestRuns = bowl.runs;
+          }
+        }
+      }
+      return;
+    }
+
     matchesCounted++;
     const ballsPerOver = match.rules.ballsPerOver ?? 6;
 
@@ -173,7 +214,7 @@ export async function buildSeasonLeaderboard(
       const card = buildInningsCard(inningsOvers, ballsPerOver);
 
       for (const bat of card.batting) {
-        const a = batAcc(bat.id);
+        const a = batAcc(resolve(bat.id));
         a.innings++;
         a.runs += bat.runs;
         a.balls += bat.balls;
@@ -184,7 +225,7 @@ export async function buildSeasonLeaderboard(
       }
 
       for (const bowl of card.bowling) {
-        const a = bowlAcc(bowl.id);
+        const a = bowlAcc(resolve(bowl.id));
         a.balls += bowl.balls;
         a.runs += bowl.runs;
         a.wickets += bowl.wickets;
@@ -205,7 +246,7 @@ export async function buildSeasonLeaderboard(
     for (const ev of match.rules.fieldingEvents ?? []) {
       eventPoints.set(ev.label, POLARITY_POINTS[ev.polarity ?? 'neutral']);
     }
-    for (const over of overs) tallyFielding(over, fielding, eventPoints);
+    for (const over of overs) tallyFielding(over, fielding, eventPoints, resolve);
   });
 
   const battingLeaders: BattingLeader[] = [...batting.entries()].map(([playerId, a]) => ({

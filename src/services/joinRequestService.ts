@@ -70,6 +70,19 @@ export async function resolveJoinRequest(
   });
 }
 
+// Registered (non-ghost) club members without an existing ghost link, for the
+// ghost-profile link picker.
+export async function getClubRegisteredMembers(clubId: string): Promise<Player[]> {
+  const q = query(
+    collection(db, 'clubs', clubId, 'players'),
+    where('type', '==', 'registered')
+  );
+  const snap = await getDocs(q);
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }) as Player)
+    .filter((p) => !p.linkedGhost);
+}
+
 // Unlinked ghost players in a club, for the approval-time link picker. Excludes
 // already-linked ghosts (type:'linked').
 export async function getClubGhosts(clubId: string): Promise<Player[]> {
@@ -79,6 +92,22 @@ export async function getClubGhosts(clubId: string): Promise<Player[]> {
   );
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Player);
+}
+
+// Returns a map of ghostId → memberUid for all linked ghosts in the club.
+// Used by the leaderboard to remap historical ghost stats to the member.
+export async function getLinkedGhostMap(clubId: string): Promise<Record<string, string>> {
+  const q = query(
+    collection(db, 'clubs', clubId, 'players'),
+    where('type', '==', 'linked')
+  );
+  const snap = await getDocs(q);
+  const map: Record<string, string> = {};
+  for (const d of snap.docs) {
+    const linkedTo = (d.data() as { linkedTo?: string }).linkedTo;
+    if (linkedTo) map[d.id] = linkedTo;
+  }
+  return map;
 }
 
 export async function linkGhost(clubId: string, memberUid: string, ghostId: string): Promise<void> {
