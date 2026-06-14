@@ -14,7 +14,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.cricketscorer.app"
+      "bundleIdentifier": "com.cricketscorer.app",
+      "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
       "package": "com.cricketscorer.app",
@@ -24,18 +25,23 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "apiKey": null
+      "apiKey": {},
+      "eas": {
+        "projectId": "1483b1e4-d5e3-49ce-a2bc-8cf779606d0d"
+      }
     },
     "plugins": [
       "expo-web-browser",
       "expo-dev-client",
       "expo-localization"
-    ]
+    ],
+    "owner": "sumanthns-commits"
   }
 }

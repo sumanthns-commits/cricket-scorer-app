@@ -33,6 +33,7 @@ yarn-error.*
 # local env files
 .env
 .env*.local
+.env.production
 
 # typescript
 *.tsbuildinfo
@@ -44,3 +45,7 @@ yarn-error.*
 .claude/
 
 seed/
+
+# Android and iOS configuration files for Firebase, which may contain sensitive information
+google-services.json
+GoogleService-Info.plist
