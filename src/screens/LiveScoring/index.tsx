@@ -30,6 +30,7 @@ import { getClub, getClubMember } from '../../services/clubService';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import { recordBall } from '../../services/scoringEngine';
+import { MatchStatsContent } from '../MatchStats';
 import type {
   BallEntry,
   ClubRules,
@@ -1025,7 +1026,7 @@ export default function LiveScoringScreen() {
   const [firstInningsRuns, setFirstInningsRuns] = useState<number | null>(null);
   const [firstInnings, setFirstInnings] = useState<InningsState | null>(null);
   // Top-of-screen tab + which innings the scorecard shows.
-  const [tab, setTab] = useState<'scoring' | 'scorecard'>('scoring');
+  const [tab, setTab] = useState<'scoring' | 'scorecard' | 'stats'>('scoring');
   const [cardInnings, setCardInnings] = useState<1 | 2>(1);
 
   // Pending ball flow
@@ -1812,14 +1813,14 @@ export default function LiveScoringScreen() {
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       {/* Top tabs */}
       <View style={{ flexDirection: 'row', backgroundColor: theme.surfaceAlt }}>
-        {(['scoring', 'scorecard'] as const).map((t) => (
+        {(['scoring', 'scorecard', 'stats'] as const).map((t) => (
           <TouchableOpacity
             key={t}
             onPress={() => setTab(t)}
             style={{ flex: 1, paddingVertical: 12, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: tab === t ? theme.accent : 'transparent' }}
           >
             <Text style={{ color: tab === t ? theme.accent : theme.textMuted, fontWeight: '700', fontSize: 13 }}>
-              {t === 'scoring' ? 'SCORING' : 'SCORECARD'}
+              {t === 'scoring' ? 'SCORING' : t === 'scorecard' ? 'SCORECARD' : 'STATS'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -1846,6 +1847,8 @@ export default function LiveScoringScreen() {
             <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 40 }}>No data yet</Text>
           )}
         </View>
+      ) : tab === 'stats' ? (
+        <MatchStatsContent clubId={clubId} matchId={matchId} />
       ) : (
       <>
       {/* Score header */}

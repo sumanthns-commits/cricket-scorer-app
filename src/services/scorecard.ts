@@ -1,4 +1,4 @@
-import type { OverDocument } from '../types';
+import type { CustomDismissal, DismissalEntry, OverDocument } from '../types';
 
 export interface BatterCard {
   id: string;
@@ -7,6 +7,7 @@ export interface BatterCard {
   fours: number;
   sixes: number;
   out: boolean;
+  dismissal?: DismissalEntry;
 }
 
 export interface BowlerCard {
@@ -80,6 +81,7 @@ export function buildInningsCard(overs: OverDocument[], ballsPerOver: number): I
       if (ball.dismissal) {
         totalWickets++;
         bat.out = true;
+        bat.dismissal = ball.dismissal;
         if (BOWLER_CREDIT.has(ball.dismissal.type)) bowler.wickets++;
       }
     }
@@ -93,4 +95,37 @@ export function buildInningsCard(overs: OverDocument[], ballsPerOver: number): I
     totalWickets,
     overs: oversStr,
   };
+}
+
+/** "c Smith b Jones", "lbw b Jones", "run out (Smith)", a custom dismissal's label, etc. */
+export function formatDismissal(
+  dismissal: DismissalEntry | undefined,
+  nameOf: (id: string) => string,
+  customDismissals: CustomDismissal[],
+): string {
+  if (!dismissal) return 'not out';
+
+  const custom = customDismissals.find((d) => d.id === dismissal.type);
+  if (custom) return custom.label;
+
+  const bowler = dismissal.bowlerId ? nameOf(dismissal.bowlerId) : '';
+  const fielders = dismissal.fielderIds?.length
+    ? dismissal.fielderIds.map(nameOf).join('/')
+    : dismissal.fielderId
+      ? nameOf(dismissal.fielderId)
+      : '';
+
+  switch (dismissal.type) {
+    case 'caught': return fielders ? `c ${fielders} b ${bowler}` : `c & b ${bowler}`;
+    case 'bowled': return `b ${bowler}`;
+    case 'lbw': return `lbw b ${bowler}`;
+    case 'stumped': return `st ${fielders} b ${bowler}`;
+    case 'hit-wicket': return `hit wkt b ${bowler}`;
+    case 'run-out': return fielders ? `run out (${fielders})` : 'run out';
+    case 'obstructing-field': return 'obstructing the field';
+    case 'timed-out': return 'timed out';
+    case 'handled-ball': return 'handled the ball';
+    case 'hit-ball-twice': return 'hit the ball twice';
+    default: return 'out';
+  }
 }

@@ -7,9 +7,9 @@ import ViewShot, { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { getMatch, getMatchOvers, getClubPlayers } from '../../services/matchService';
-import { buildInningsCard, type InningsCard } from '../../services/scorecard';
+import { buildInningsCard, formatDismissal, type InningsCard } from '../../services/scorecard';
 import { useThemeStore } from '../../store/themeStore';
-import type { Match } from '../../types';
+import type { CustomDismissal, Match } from '../../types';
 
 type Route = RouteProp<RootStackParamList, 'MatchScorecard'>;
 
@@ -38,10 +38,12 @@ function InningsView({
   card,
   nameOf,
   captains,
+  customDismissals,
 }: {
   card: InningsCard;
   nameOf: (id: string) => string;
   captains: Set<string>;
+  customDismissals: CustomDismissal[];
 }) {
   const theme = useThemeStore((s) => s.theme);
   const num = { width: 38, textAlign: 'right' as const, color: theme.textSecondary, fontSize: 13 };
@@ -71,7 +73,7 @@ function InningsView({
                 {captains.has(b.id) && <CaptainBadge />}
               </View>
               <Text style={{ color: b.out ? theme.textMuted : theme.accent, fontSize: 10 }}>
-                {b.out ? 'out' : 'not out'}
+                {b.out ? formatDismissal(b.dismissal, nameOf, customDismissals) : 'not out'}
               </Text>
             </View>
             <Text style={num}>{b.runs}</Text>
@@ -112,7 +114,7 @@ function InningsView({
 
 // ── Snapshot-only components (fixed dark theme, no Zustand) ──────────────────
 
-function SnapInningsTable({ card, nameOf, label }: { card: InningsCard; nameOf: (id: string) => string; label: string }) {
+function SnapInningsTable({ card, nameOf, label, customDismissals }: { card: InningsCard; nameOf: (id: string) => string; label: string; customDismissals: CustomDismissal[] }) {
   const num = { width: 36, textAlign: 'right' as const, color: SNAP_MUTED, fontSize: 12 };
   const bnum = { width: 42, textAlign: 'right' as const, color: SNAP_MUTED, fontSize: 12 };
 
@@ -141,7 +143,7 @@ function SnapInningsTable({ card, nameOf, label }: { card: InningsCard; nameOf: 
           <View key={b.id} style={{ flexDirection: 'row', paddingVertical: 5, borderTopWidth: 1, borderTopColor: SNAP_BORDER }}>
             <View style={{ flex: 1 }}>
               <Text style={{ color: SNAP_TEXT, fontSize: 12 }}>{nameOf(b.id)}</Text>
-              <Text style={{ color: b.out ? SNAP_MUTED : SNAP_ACCENT, fontSize: 10 }}>{b.out ? 'out' : 'not out'}</Text>
+              <Text style={{ color: b.out ? SNAP_MUTED : SNAP_ACCENT, fontSize: 10 }}>{b.out ? formatDismissal(b.dismissal, nameOf, customDismissals) : 'not out'}</Text>
             </View>
             <Text style={num}>{b.runs}</Text>
             <Text style={num}>{b.balls}</Text>
@@ -182,11 +184,13 @@ function ScorecardSnapshot({
   card1,
   card2,
   nameOf,
+  customDismissals,
 }: {
   match: Match;
   card1: InningsCard | null;
   card2: InningsCard | null;
   nameOf: (id: string) => string;
+  customDismissals: CustomDismissal[];
 }) {
   const dateStr = match.date
     ? new Date(match.date.toMillis()).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -217,9 +221,9 @@ function ScorecardSnapshot({
       <View style={{ height: 1, backgroundColor: SNAP_BORDER, marginVertical: 14 }} />
 
       {/* Innings tables */}
-      {card1 && <SnapInningsTable card={card1} nameOf={nameOf} label="INNINGS 1" />}
+      {card1 && <SnapInningsTable card={card1} nameOf={nameOf} label="INNINGS 1" customDismissals={customDismissals} />}
       {card1 && card2 && <View style={{ height: 1, backgroundColor: SNAP_BORDER, marginVertical: 14 }} />}
-      {card2 && <SnapInningsTable card={card2} nameOf={nameOf} label="INNINGS 2" />}
+      {card2 && <SnapInningsTable card={card2} nameOf={nameOf} label="INNINGS 2" customDismissals={customDismissals} />}
 
       {/* Footer */}
       <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 20, paddingTop: 14, borderTopWidth: 1, borderTopColor: SNAP_BORDER }}>
@@ -297,6 +301,7 @@ export default function MatchScorecardScreen() {
   const hasBoth = !!card1 && !!card2;
   const card = innings === 1 ? card1 : card2;
   const captains = new Set([match?.captainA, match?.captainB].filter(Boolean) as string[]);
+  const customDismissals = match?.rules.customDismissals ?? [];
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -304,7 +309,7 @@ export default function MatchScorecardScreen() {
       <View style={{ position: 'absolute', top: -9999, left: 0 }} pointerEvents="none">
         <ViewShot ref={snapshotRef} options={{ format: 'png', quality: 1 }}>
           {match && (
-            <ScorecardSnapshot match={match} card1={card1} card2={card2} nameOf={nameOf} />
+            <ScorecardSnapshot match={match} card1={card1} card2={card2} nameOf={nameOf} customDismissals={customDismissals} />
           )}
         </ViewShot>
       </View>
@@ -356,7 +361,7 @@ export default function MatchScorecardScreen() {
 
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
         {card ? (
-          <InningsView card={card} nameOf={nameOf} captains={captains} />
+          <InningsView card={card} nameOf={nameOf} captains={captains} customDismissals={customDismissals} />
         ) : (
           <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 40 }}>No scorecard data.</Text>
         )}
