@@ -10,4 +10,5 @@ module.exports = ({ config }) => ({
     ...config.extra,
     apiKey: process.env.API_KEY ?? null,
   },
+  googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json"
 });
