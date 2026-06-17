@@ -43,7 +43,8 @@
     "plugins": [
       "expo-web-browser",
       "expo-dev-client",
-      "expo-localization"
+      "expo-localization",
+      "expo-font"
     ],
     "owner": "sumanthns-commits"
   }
