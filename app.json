@@ -17,7 +17,14 @@
       "bundleIdentifier": "com.crease.cricket",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.29441644794-mstiu484f6hhod5glni0e1hr4clavnt0"
+            ]
+          }
+        ]
       }
     },
     "android": {
