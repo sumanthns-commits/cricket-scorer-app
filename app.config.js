@@ -10,5 +10,12 @@ module.exports = ({ config }) => ({
     ...config.extra,
     apiKey: process.env.API_KEY ?? null,
   },
-  googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json"
+  android: {
+    ...config.android,
+    googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
+  },
+  ios: {
+    ...config.ios,
+    googleServicesFile: process.env.GOOGLE_SERVICES_PLIST ?? "./GoogleService-Info.plist",
+  },
 });
