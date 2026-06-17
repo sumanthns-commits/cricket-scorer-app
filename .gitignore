@@ -49,3 +49,8 @@ seed/
 # Android and iOS configuration files for Firebase, which may contain sensitive information
 google-services.json
 GoogleService-Info.plist
+
+# Google service acount json
+crease-*.json
+
+adb-log.txt
