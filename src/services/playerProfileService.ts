@@ -89,12 +89,27 @@ export function computeDerivedStats(stats: CareerStats): DerivedStats {
 /** A computed 0–100 rating used when a player has no stored skillRating. */
 export function computeSkillRating(stats: CareerStats): number {
   const derived = computeDerivedStats(stats);
-  const battingScore = Math.min((derived.strikeRate ?? 0) / 2, 50); // ~100 SR → 50
-  const wicketScore = Math.min(stats.totalWickets * 2, 30);
-  const experience = Math.min(stats.matchesPlayed, 10);
+
+  // Batting: require ≥30 balls to avoid noise; SR 175 → max 50pts.
+  const sr = stats.totalBallsFaced >= 30 ? (derived.strikeRate ?? 0) : 0;
+  const battingScore = Math.min(sr / 3.5, 50);
+
+  // Bowling: 30-wicket base (20pts) + bowling-average bonus (up to 15pts).
+  // Average bonus only kicks in once there are ≥5 wickets and ≥60 balls bowled.
+  const wicketBase = Math.min((stats.totalWickets / 30) * 20, 20);
+  const hasBowled = stats.totalWickets >= 5 && stats.totalBallsBowled >= 60;
+  const bowlingAvg = hasBowled ? stats.totalRunsConceded / stats.totalWickets : 50;
+  const avgBonus = Math.max(0, Math.min(((50 - bowlingAvg) / 50) * 15, 15));
+  const bowlingScore = Math.min(wicketBase + avgBonus, 30);
+
+  // Experience: 30 matches to max out (was 10).
+  const experience = Math.min((stats.matchesPlayed / 30) * 10, 10);
+
+  // Fielding: 7 dismissals to max out (was 5).
   const dismissals = (stats.totalCatches ?? 0) + (stats.totalRunOuts ?? 0) + (stats.totalStumpings ?? 0);
-  const fieldingScore = Math.min(dismissals * 2 + (stats.fieldingPoints ?? 0), 10);
-  return Math.round(Math.min(battingScore + wicketScore + experience + fieldingScore, 100));
+  const fieldingScore = Math.min(dismissals * 1.4 + Math.max(0, stats.fieldingPoints ?? 0), 10);
+
+  return Math.round(Math.min(battingScore + bowlingScore + experience + fieldingScore, 100));
 }
 
 export async function getPlayer(clubId: string, playerId: string): Promise<Player | null> {

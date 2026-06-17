@@ -8,6 +8,8 @@ export interface BatterCard {
   sixes: number;
   out: boolean;
   dismissal?: DismissalEntry;
+  // Raw dismissal text for imported matches (no DismissalEntry available)
+  dismissalText?: string;
 }
 
 export interface BowlerCard {

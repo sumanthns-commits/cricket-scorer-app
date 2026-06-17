@@ -183,9 +183,11 @@ function parseInnings(block) {
   const stumpingMap = {};
   const runOutMap   = {};
 
-  let teamName   = '';
-  let headerSeen = false;
-  let section    = 'batting'; // 'batting' | 'bowling' | 'done'
+  let teamName    = '';
+  let headerSeen  = false;
+  let section     = 'batting'; // 'batting' | 'bowling' | 'done'
+  let innTotalRuns     = null; // parsed from "Total NN/NN" line (includes extras)
+  let innTotalWickets  = null;
 
   for (const line of block) {
     const trimmed = line.trim();
@@ -217,9 +219,18 @@ function parseInnings(block) {
     if (/Fall Of Wickets/.test(trimmed)) continue;
     if (/^\s*\d+-\d+ \(/.test(line))    continue; // FOW values
 
-    // Extras / Total rows (not needed for stats but skip cleanly)
+    // Total line: "     Total     50/5     Run Rate  7.1"
+    // Capture actual innings total (batting runs + extras) and wickets.
+    if (/^\s+Total\b/.test(line)) {
+      const totalM = line.match(/(\d+)\/(\d+)/);
+      if (totalM) {
+        innTotalRuns    = parseInt(totalM[1]);
+        innTotalWickets = parseInt(totalM[2]);
+      }
+      continue;
+    }
+
     if (/^\s+Extras\b/.test(line))  continue;
-    if (/^\s+Total\b/.test(line))   continue;
     if (/^\s+Overs\b/.test(line))   continue;
     if (/^\s+Run Rate\b/.test(line)) continue;
 
@@ -262,7 +273,7 @@ function parseInnings(block) {
     }
   }
 
-  return { teamName, batting, bowling, catchMap, stumpingMap, runOutMap };
+  return { teamName, batting, bowling, catchMap, stumpingMap, runOutMap, innTotalRuns, innTotalWickets };
 }
 
 /**
@@ -512,7 +523,9 @@ function buildInningsSummary(inn, nameToId) {
     .map((b) => {
       const id = nameToId.get(b.name);
       if (!id) return null;
-      return { id, runs: b.runs, balls: b.balls, fours: b.fours, sixes: b.sixes, out: !b.notOut };
+      const entry = { id, runs: b.runs, balls: b.balls, fours: b.fours, sixes: b.sixes, out: !b.notOut };
+      if (!b.notOut) entry.dismissalText = b.dismissal;
+      return entry;
     })
     .filter(Boolean);
 
@@ -524,8 +537,10 @@ function buildInningsSummary(inn, nameToId) {
     })
     .filter(Boolean);
 
-  const totalRuns = batting.reduce((s, b) => s + b.runs, 0);
-  const totalWickets = batting.filter((b) => b.out).length;
+  // Use the actual innings total from the PDF (includes extras); fall back to
+  // summing batting rows only if the Total line wasn't parsed.
+  const totalRuns = inn.innTotalRuns ?? batting.reduce((s, b) => s + b.runs, 0);
+  const totalWickets = inn.innTotalWickets ?? batting.filter((b) => b.out).length;
   const totalBalls = bowling.reduce((s, b) => s + b.balls, 0);
   const overs = `${Math.floor(totalBalls / 6)}.${totalBalls % 6}`;
 
@@ -546,15 +561,25 @@ async function importMatch(clubId, club, matchData, nameToId, dryRun) {
     .get();
   if (!dupSnap.empty) {
     const existing = dupSnap.docs[0];
-    // Backfill inningsSummary on old imports that predate this field.
-    if (!existing.data().inningsSummary && !dryRun) {
+    const existingData = existing.data();
+    // Refresh inningsSummary if it's missing or its run totals or dismissal
+    // text are stale (older imports summed batting rows only, omitting extras).
+    const existingSummary = existingData.inningsSummary;
+    const s1 = existingSummary?.['1'];
+    const hasCorrectTotal =
+      matchData.innings1.innTotalRuns === null ||
+      s1?.totalRuns === matchData.innings1.innTotalRuns;
+    const dismissedBatter = s1?.batting?.find((b) => b.out);
+    const hasDismissalText = !dismissedBatter || 'dismissalText' in dismissedBatter;
+    const needsRefresh = !s1 || !hasCorrectTotal || !hasDismissalText;
+    if (needsRefresh && !dryRun) {
       await existing.ref.update({
         inningsSummary: {
           '1': buildInningsSummary(matchData.innings1, nameToId),
           '2': buildInningsSummary(matchData.innings2, nameToId),
         },
       });
-      console.log(`  backfilled inningsSummary on ${existing.id}  (external: ${matchData.externalId})`);
+      console.log(`  refreshed inningsSummary on ${existing.id}  (external: ${matchData.externalId})`);
     } else {
       console.log(`  skip  ${matchData.externalId}  (already imported as ${existing.id})`);
     }

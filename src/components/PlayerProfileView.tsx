@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Modal } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { resolvePlayerStats } from '../services/statsResolver';
@@ -220,6 +220,7 @@ export default function PlayerProfileView({
   const theme = useThemeStore((s) => s.theme);
   const queryClient = useQueryClient();
 
+  const [showRatingInfo, setShowRatingInfo] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
   const [showLinkPicker, setShowLinkPicker] = useState(false);
   const [selectedGhostId, setSelectedGhostId] = useState<string | null>(null);
@@ -407,7 +408,24 @@ export default function PlayerProfileView({
             >
               <Text style={{ color: badge.color, fontSize: 10, fontWeight: '800' }}>{badge.label}</Text>
             </View>
-            <Text style={{ color: theme.textMuted, fontSize: 12 }}>Rating {rating}</Text>
+            <TouchableOpacity
+              onPress={() => setShowRatingInfo(true)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 5,
+                backgroundColor: `${theme.accent}22`,
+                borderRadius: 6,
+                borderWidth: 1,
+                borderColor: theme.accent,
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+              }}
+            >
+              <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '800' }}>{rating}</Text>
+              <Text style={{ color: theme.accent, fontSize: 10, fontWeight: '600', letterSpacing: 0.5 }}>RATING</Text>
+              <Text style={{ color: theme.accent, fontSize: 11, opacity: 0.7 }}>ⓘ</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -833,6 +851,68 @@ export default function PlayerProfileView({
         </View>
       </Section>
     </ScrollView>
+
+    <Modal visible={showRatingInfo} transparent animationType="fade" onRequestClose={() => setShowRatingInfo(false)}>
+      <TouchableOpacity
+        style={{ flex: 1, backgroundColor: '#00000088', justifyContent: 'center', padding: 24 }}
+        activeOpacity={1}
+        onPress={() => setShowRatingInfo(false)}
+      >
+        <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+          <View style={{ backgroundColor: theme.surface, borderRadius: 16, padding: 20, gap: 16 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ color: theme.text, fontSize: 17, fontWeight: '800' }}>How Rating is calculated</Text>
+              <TouchableOpacity onPress={() => setShowRatingInfo(false)}>
+                <Text style={{ color: theme.textMuted, fontSize: 20, lineHeight: 22 }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ color: theme.textMuted, fontSize: 13, lineHeight: 19 }}>
+              The rating is a 0–100 score built from four components:
+            </Text>
+
+            {[
+              {
+                label: 'Batting  (max 50)',
+                color: '#3b82f6',
+                desc: 'Based on strike rate — how many runs scored per 100 balls. Counts only after 30+ balls faced. SR 175 or above maxes this out.',
+              },
+              {
+                label: 'Bowling  (max 30)',
+                color: '#10b981',
+                desc: 'Two parts: wicket volume (30 wickets = full base) plus a quality bonus for a low bowling average. Taking wickets cheaply earns more than just taking lots.',
+              },
+              {
+                label: 'Experience  (max 10)',
+                color: '#f59e0b',
+                desc: 'Grows with matches played, capping at 30 matches. A newer player is rated more cautiously until they have a meaningful sample.',
+              },
+              {
+                label: 'Fielding  (max 10)',
+                color: '#a855f7',
+                desc: 'Catches, run-outs, and stumpings each contribute. Club-specific fielding events (great stops, drops) can also add or subtract points.',
+              },
+            ].map(({ label, color, desc }) => (
+              <View key={label} style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ width: 4, borderRadius: 2, backgroundColor: color, marginTop: 2 }} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>{label}</Text>
+                  <Text style={{ color: theme.textMuted, fontSize: 12, lineHeight: 18 }}>{desc}</Text>
+                </View>
+              </View>
+            ))}
+
+            <View style={{ backgroundColor: theme.surfaceAlt, borderRadius: 10, padding: 12, gap: 4 }}>
+              <Text style={{ color: theme.textMuted, fontSize: 12, lineHeight: 18 }}>
+                <Text style={{ color: theme.text, fontWeight: '700' }}>Typical ranges: </Text>
+                Newcomer 25–40 · Club regular 45–65 · Strong player 65–80 · Elite 80+
+              </Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
+
     </KeyboardAvoidingView>
   );
 }

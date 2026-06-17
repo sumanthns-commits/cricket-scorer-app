@@ -73,7 +73,7 @@ function InningsView({
                 {captains.has(b.id) && <CaptainBadge />}
               </View>
               <Text style={{ color: b.out ? theme.textMuted : theme.accent, fontSize: 10 }}>
-                {b.out ? formatDismissal(b.dismissal, nameOf, customDismissals) : 'not out'}
+                {b.out ? (b.dismissal ? formatDismissal(b.dismissal, nameOf, customDismissals) : (b.dismissalText ?? 'out')) : 'not out'}
               </Text>
             </View>
             <Text style={num}>{b.runs}</Text>
@@ -143,7 +143,7 @@ function SnapInningsTable({ card, nameOf, label, customDismissals }: { card: Inn
           <View key={b.id} style={{ flexDirection: 'row', paddingVertical: 5, borderTopWidth: 1, borderTopColor: SNAP_BORDER }}>
             <View style={{ flex: 1 }}>
               <Text style={{ color: SNAP_TEXT, fontSize: 12 }}>{nameOf(b.id)}</Text>
-              <Text style={{ color: b.out ? SNAP_MUTED : SNAP_ACCENT, fontSize: 10 }}>{b.out ? formatDismissal(b.dismissal, nameOf, customDismissals) : 'not out'}</Text>
+              <Text style={{ color: b.out ? SNAP_MUTED : SNAP_ACCENT, fontSize: 10 }}>{b.out ? (b.dismissal ? formatDismissal(b.dismissal, nameOf, customDismissals) : (b.dismissalText ?? 'out')) : 'not out'}</Text>
             </View>
             <Text style={num}>{b.runs}</Text>
             <Text style={num}>{b.balls}</Text>

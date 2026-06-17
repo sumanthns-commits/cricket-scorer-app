@@ -289,6 +289,7 @@ export interface ImportedBatterEntry {
   fours: number;
   sixes: number;
   out: boolean;
+  dismissalText?: string;
 }
 
 export interface ImportedBowlerEntry {
