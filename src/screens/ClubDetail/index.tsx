@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,15 +7,15 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useQuery } from '@tanstack/react-query';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
-import { useClubStore } from '../../store/clubStore';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
-import { getClubMatchesBySeason, deleteMatch, getMatchOvers } from '../../services/matchService';
+import { getClubMatchesBySeason, getMatchOvers, deleteMatch } from '../../services/matchService';
 import { getClub, getClubMember } from '../../services/clubService';
+import { requestToJoin, getMyJoinRequest, cancelJoinRequest } from '../../services/joinRequestService';
 import {
   currentSeasonInfo,
   generateSeasonRange,
@@ -25,6 +25,7 @@ import {
 import type { Match } from '../../types';
 import { SeasonDropdown } from '../../components/SeasonDropdown';
 
+type Props = NativeStackScreenProps<RootStackParamList, 'ClubDetail'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const STATUS_COLORS: Record<Match['status'], string> = {
@@ -66,8 +67,8 @@ function MatchCard({
       ? 'Toss'
       : 'Build Teams';
 
-  const memberActionLabel = match.status === 'live' ? 'Live' : isFinished ? 'View' : null;
-  const actionLabel = isAdmin ? adminActionLabel : memberActionLabel;
+  const viewerActionLabel = match.status === 'live' ? 'Live' : isFinished ? 'View' : null;
+  const actionLabel = isAdmin ? adminActionLabel : viewerActionLabel;
   const statusColor = STATUS_COLORS[match.status];
 
   return (
@@ -126,29 +127,44 @@ function MatchCard({
   );
 }
 
-
-export default function MatchesScreen() {
-  const navigation = useNavigation<Nav>();
-  const activeClubId = useClubStore((s) => s.activeClubId);
+export default function ClubDetailScreen({ navigation }: Props) {
+  const route = useRoute<Props['route']>();
+  const { clubId } = route.params;
+  const nav = useNavigation<Nav>();
   const user = useAuthStore((s) => s.user);
   const theme = useThemeStore((s) => s.theme);
+  const queryClient = useQueryClient();
+  const [joinBusy, setJoinBusy] = useState(false);
 
   const { data: club } = useQuery({
-    queryKey: ['club', activeClubId],
-    queryFn: () => getClub(activeClubId!),
-    enabled: !!activeClubId,
+    queryKey: ['club', clubId],
+    queryFn: () => getClub(clubId),
+    enabled: !!clubId,
   });
 
   const { data: member } = useQuery({
-    queryKey: ['clubMember', activeClubId, user?.uid],
-    queryFn: () => getClubMember(activeClubId!, user!.uid),
-    enabled: !!activeClubId && !!user,
+    queryKey: ['clubMember', clubId, user?.uid],
+    queryFn: () => getClubMember(clubId, user!.uid),
+    enabled: !!clubId && !!user,
   });
 
+  const isMember = !!member;
   const isAdmin = member?.role === 'admin';
+
+  const { data: joinRequest } = useQuery({
+    queryKey: ['joinRequest', clubId, user?.uid],
+    queryFn: () => getMyJoinRequest(clubId, user!.uid),
+    enabled: !!clubId && !!user && !isMember,
+  });
+
+  const isPending = joinRequest?.status === 'pending';
+
+  useEffect(() => {
+    if (club) navigation.setOptions({ title: club.name });
+  }, [club, navigation]);
+
   const hemisphere: Hemisphere = club?.hemisphere ?? 'N';
 
-  // Generate a rolling 3-year window of seasons for the dropdown.
   const seasons = useMemo(() => {
     const from = new Date();
     from.setFullYear(from.getFullYear() - 3);
@@ -157,7 +173,6 @@ export default function MatchesScreen() {
 
   const [selectedSeason, setSelectedSeason] = useState<SeasonInfo | null>(null);
 
-  // Resolve effective season: explicit pick > current > first in list.
   const effectiveSeason = useMemo<SeasonInfo | null>(() => {
     if (!seasons.length) return null;
     if (selectedSeason && seasons.some((s) => s.label === selectedSeason.label)) {
@@ -169,31 +184,48 @@ export default function MatchesScreen() {
   }, [selectedSeason, seasons, hemisphere]);
 
   const { data: matches, isLoading, refetch } = useQuery({
-    queryKey: ['matches', activeClubId, effectiveSeason?.label],
-    queryFn: () =>
-      getClubMatchesBySeason(activeClubId!, effectiveSeason!.start, effectiveSeason!.end),
-    enabled: !!activeClubId && !!effectiveSeason,
+    queryKey: ['matches', clubId, effectiveSeason?.label],
+    queryFn: () => getClubMatchesBySeason(clubId, effectiveSeason!.start, effectiveSeason!.end),
+    enabled: !!clubId && !!effectiveSeason,
   });
 
+  async function handleJoinToggle() {
+    if (!user) return;
+    setJoinBusy(true);
+    try {
+      if (isPending) {
+        await cancelJoinRequest(clubId, user.uid);
+      } else {
+        await requestToJoin(clubId, {
+          uid: user.uid,
+          displayName: user.displayName ?? user.email ?? 'Player',
+          photoURL: user.photoURL,
+        });
+      }
+      await queryClient.invalidateQueries({ queryKey: ['joinRequest', clubId, user.uid] });
+    } finally {
+      setJoinBusy(false);
+    }
+  }
+
   const handleMatchPress = (match: Match) => {
-    const clubId = match.clubId;
     const matchId = match.id;
     const hasTeams = (match.teamA?.length ?? 0) > 0;
     const hasToss = !!match.toss;
 
     if (match.status === 'completed' || match.status === 'abandoned') {
-      navigation.navigate('MatchScorecard', { clubId, matchId });
+      nav.navigate('MatchScorecard', { clubId, matchId });
       return;
     }
     if (match.status === 'live' || hasToss) {
-      navigation.navigate('LiveScoring', { clubId, matchId });
+      nav.navigate('LiveScoring', { clubId, matchId });
       return;
     }
     if (!isAdmin) return;
     if (hasTeams) {
-      navigation.navigate('Toss', { clubId, matchId });
+      nav.navigate('Toss', { clubId, matchId });
     } else {
-      navigation.navigate('TeamBuilder', { clubId, matchId });
+      nav.navigate('TeamBuilder', { clubId, matchId });
     }
   };
 
@@ -223,19 +255,45 @@ export default function MatchesScreen() {
     );
   };
 
-  if (!activeClubId) {
-    return (
-      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-        <Text style={{ color: theme.textSecondary, fontSize: 20, marginBottom: 8 }}>No club selected</Text>
-        <Text style={{ color: theme.textMuted, fontSize: 14, textAlign: 'center' }}>
-          Go to Home and tap a club to view its matches.
-        </Text>
-      </View>
-    );
-  }
-
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, padding: 16 }}>
+      {!isMember && (
+        <View
+          style={{
+            backgroundColor: theme.surface,
+            borderRadius: 12,
+            padding: 14,
+            marginBottom: 16,
+            borderWidth: 1,
+            borderColor: theme.border,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <Text style={{ color: theme.textSecondary, fontSize: 14, flex: 1, marginRight: 12 }}>
+            You're viewing as a guest
+          </Text>
+          <TouchableOpacity
+            onPress={handleJoinToggle}
+            disabled={joinBusy}
+            style={{
+              backgroundColor: isPending ? theme.surface : theme.accent,
+              borderWidth: 1,
+              borderColor: isPending ? theme.border : theme.accent,
+              borderRadius: 8,
+              paddingVertical: 8,
+              paddingHorizontal: 14,
+              opacity: joinBusy ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: isPending ? theme.textMuted : '#ffffff', fontSize: 13, fontWeight: '700' }}>
+              {isPending ? 'Requested ✕' : 'Request to join'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <View style={{ marginBottom: 16 }}>
         <View
           style={{
@@ -247,32 +305,32 @@ export default function MatchesScreen() {
         >
           <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700' }}>Matches</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Leaderboard', { clubId: activeClubId })}
-            style={{
-              backgroundColor: theme.surface,
-              borderRadius: 8,
-              paddingVertical: 8,
-              paddingHorizontal: 12,
-              borderWidth: 1,
-              borderColor: theme.border,
-            }}
-          >
-            <Text style={{ color: theme.accent, fontSize: 14, fontWeight: '700' }}>🏆 Leaders</Text>
-          </TouchableOpacity>
-          {isAdmin && (
             <TouchableOpacity
-              onPress={() => navigation.navigate('ScheduleMatch', { clubId: activeClubId })}
+              onPress={() => nav.navigate('Leaderboard', { clubId })}
               style={{
-                backgroundColor: theme.accent,
+                backgroundColor: theme.surface,
                 borderRadius: 8,
                 paddingVertical: 8,
-                paddingHorizontal: 14,
+                paddingHorizontal: 12,
+                borderWidth: 1,
+                borderColor: theme.border,
               }}
             >
-              <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '700' }}>+ Schedule</Text>
+              <Text style={{ color: theme.accent, fontSize: 14, fontWeight: '700' }}>🏆 Leaders</Text>
             </TouchableOpacity>
-          )}
+            {isAdmin && (
+              <TouchableOpacity
+                onPress={() => nav.navigate('ScheduleMatch', { clubId })}
+                style={{
+                  backgroundColor: theme.accent,
+                  borderRadius: 8,
+                  paddingVertical: 8,
+                  paddingHorizontal: 14,
+                }}
+              >
+                <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '700' }}>+ Schedule</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
         {effectiveSeason && (

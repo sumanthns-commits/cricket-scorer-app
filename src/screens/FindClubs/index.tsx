@@ -1,12 +1,28 @@
 import { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
+import { useClubStore } from '../../store/clubStore';
 import { searchClubsByName, getUserClubs, type ClubSearchResult } from '../../services/clubService';
 import { requestToJoin, getMyJoinRequest, cancelJoinRequest } from '../../services/joinRequestService';
+import type { RootStackParamList } from '../../navigation/RootNavigator';
 
-function ResultRow({ result, isMember, uid }: { result: ClubSearchResult; isMember: boolean; uid: string }) {
+type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+function ResultRow({
+  result,
+  isMember,
+  uid,
+  onPress,
+}: {
+  result: ClubSearchResult;
+  isMember: boolean;
+  uid: string;
+  onPress: () => void;
+}) {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const theme = useThemeStore((s) => s.theme);
@@ -36,7 +52,11 @@ function ResultRow({ result, isMember, uid }: { result: ClubSearchResult; isMemb
   }
 
   return (
-    <View style={{ backgroundColor: theme.surface, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: theme.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      style={{ backgroundColor: theme.surface, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: theme.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+    >
       <Text style={{ color: theme.text, fontSize: 16, fontWeight: '600', flex: 1, marginRight: 12 }}>{result.name}</Text>
       {isMember ? (
         <View style={{ paddingVertical: 8, paddingHorizontal: 14 }}>
@@ -46,7 +66,7 @@ function ResultRow({ result, isMember, uid }: { result: ClubSearchResult; isMemb
         <ActivityIndicator color={theme.accent} />
       ) : (
         <TouchableOpacity
-          onPress={toggle} disabled={busy}
+          onPress={(e) => { e.stopPropagation?.(); toggle(); }} disabled={busy}
           style={{ backgroundColor: pending ? theme.surface : theme.accent, borderWidth: 1, borderColor: pending ? theme.border : theme.accent, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 14, opacity: busy ? 0.6 : 1 }}
         >
           <Text style={{ color: pending ? theme.textMuted : '#ffffff', fontSize: 13, fontWeight: '700' }}>
@@ -54,13 +74,15 @@ function ResultRow({ result, isMember, uid }: { result: ClubSearchResult; isMemb
           </Text>
         </TouchableOpacity>
       )}
-    </View>
+    </TouchableOpacity>
   );
 }
 
 export default function FindClubsScreen() {
   const user = useAuthStore((s) => s.user);
   const theme = useThemeStore((s) => s.theme);
+  const navigation = useNavigation<Nav>();
+  const setActiveClubId = useClubStore((s) => s.setActiveClubId);
   const [term, setTerm] = useState('');
   const [submitted, setSubmitted] = useState('');
 
@@ -101,7 +123,21 @@ export default function FindClubsScreen() {
         <FlatList
           data={results ?? []}
           keyExtractor={(item) => item.clubId}
-          renderItem={({ item }) => <ResultRow result={item} isMember={memberIds.has(item.clubId)} uid={user!.uid} />}
+          renderItem={({ item }) => (
+            <ResultRow
+              result={item}
+              isMember={memberIds.has(item.clubId)}
+              uid={user!.uid}
+              onPress={() => {
+                if (memberIds.has(item.clubId)) {
+                  setActiveClubId(item.clubId);
+                  navigation.navigate('Tabs', { screen: 'Matches' });
+                } else {
+                  navigation.navigate('ClubDetail', { clubId: item.clubId });
+                }
+              }}
+            />
+          )}
           ListEmptyComponent={submitted ? null : <Text style={{ color: theme.textMuted, fontSize: 15, textAlign: 'center', marginTop: 40 }}>Search for a club to request to join.</Text>}
         />
       )}

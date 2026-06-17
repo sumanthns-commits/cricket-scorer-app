@@ -21,6 +21,7 @@ import FindClubsScreen from '../screens/FindClubs';
 import JoinRequestsScreen from '../screens/JoinRequests';
 import RequesterProfileScreen from '../screens/RequesterProfile';
 import EditProfileScreen from '../screens/EditProfile';
+import ClubDetailScreen from '../screens/ClubDetail';
 
 export type RootStackParamList = {
   SignIn: undefined;
@@ -37,6 +38,7 @@ export type RootStackParamList = {
   MatchStats: { clubId: string; matchId: string };
   Leaderboard: { clubId: string };
   FindClubs: undefined;
+  ClubDetail: { clubId: string };
   JoinRequests: { clubId: string };
   RequesterProfile: { clubId: string; uid: string; displayName: string };
   EditProfile: undefined;
@@ -96,6 +98,7 @@ export default function RootNavigator() {
           <Stack.Screen name="MatchStats" component={MatchStatsScreen} options={{ title: 'Stats' }} />
           <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ title: 'Leaderboard' }} />
           <Stack.Screen name="FindClubs" component={FindClubsScreen} options={{ title: 'Find Clubs' }} />
+          <Stack.Screen name="ClubDetail" component={ClubDetailScreen} options={{ title: 'Club' }} />
           <Stack.Screen name="JoinRequests" component={JoinRequestsScreen} options={{ title: 'Join Requests' }} />
           <Stack.Screen name="RequesterProfile" component={RequesterProfileScreen} options={{ title: 'Player' }} />
           <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: 'Edit Profile' }} />
