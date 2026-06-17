@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, Modal } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -66,6 +66,74 @@ function Section({
   );
 }
 
+function PlayerDropdown({
+  options,
+  selected,
+  onSelect,
+  nameOf,
+}: {
+  options: string[];
+  selected: string | null;
+  onSelect: (id: string) => void;
+  nameOf: (id: string) => string;
+}) {
+  const theme = useThemeStore((s) => s.theme);
+  const [open, setOpen] = useState(false);
+  const effectiveSelected = selected && options.includes(selected) ? selected : options[0] ?? null;
+  const displayName = effectiveSelected ? nameOf(effectiveSelected) : 'No players';
+
+  return (
+    <>
+      <TouchableOpacity
+        onPress={() => options.length > 0 && setOpen(true)}
+        style={{
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+          paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8,
+          backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
+        }}
+      >
+        <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600', flex: 1 }}>{displayName}</Text>
+        <Ionicons name="chevron-down" size={16} color={theme.textMuted} style={{ marginLeft: 8 }} />
+      </TouchableOpacity>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' }}
+          activeOpacity={1}
+          onPress={() => setOpen(false)}
+        >
+          <View
+            style={{
+              backgroundColor: theme.surfaceAlt, borderTopLeftRadius: 16, borderTopRightRadius: 16,
+              paddingBottom: 32, maxHeight: '60%',
+            }}
+          >
+            <View style={{ padding: 16, borderBottomWidth: 1, borderColor: theme.border }}>
+              <Text style={{ color: theme.textMuted, fontWeight: '700', fontSize: 12, letterSpacing: 0.6 }}>SELECT PLAYER</Text>
+            </View>
+            <ScrollView bounces={false}>
+              {options.map((id) => (
+                <TouchableOpacity
+                  key={id}
+                  onPress={() => { onSelect(id); setOpen(false); }}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                    paddingHorizontal: 16, paddingVertical: 14,
+                    borderBottomWidth: 1, borderColor: theme.border,
+                  }}
+                >
+                  <Text style={{ color: theme.text, fontSize: 15 }}>{nameOf(id)}</Text>
+                  {id === effectiveSelected && <Ionicons name="checkmark" size={18} color={theme.accent} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </>
+  );
+}
+
 function scoreOf(worm: WormPoint[]) {
   const last = worm[worm.length - 1];
   const wickets = worm.reduce((sum, p) => sum + p.wickets, 0);
@@ -75,6 +143,7 @@ function scoreOf(worm: WormPoint[]) {
 export function MatchStatsContent({ clubId, matchId }: { clubId: string; matchId: string }) {
   const theme = useThemeStore((s) => s.theme);
   const [innings, setInnings] = useState<1 | 2>(1);
+  const [wagonInnings, setWagonInnings] = useState<1 | 2>(1);
   const [wagonRole, setWagonRole] = useState<'batsman' | 'bowler'>('batsman');
   const [wagonPlayerId, setWagonPlayerId] = useState<string | null>(null);
 
@@ -129,11 +198,12 @@ export function MatchStatsContent({ clubId, matchId }: { clubId: string; matchId
   const worm1 = getWormSeries(innings1Overs);
   const worm2 = hasInnings2 ? getWormSeries(innings2Overs) : undefined;
 
-  const { batsmen, bowlers } = getInningsParticipants(selectedOvers);
+  const wagonOvers = wagonInnings === 2 && hasInnings2 ? innings2Overs : innings1Overs;
+  const { batsmen, bowlers } = getInningsParticipants(wagonOvers);
   const wagonIds = wagonRole === 'batsman' ? batsmen : bowlers;
   const activeWagonId = wagonPlayerId && wagonIds.includes(wagonPlayerId) ? wagonPlayerId : wagonIds[0];
   const wagonFilter: WagonWheelFilter | null = activeWagonId ? { role: wagonRole, playerId: activeWagonId } : null;
-  const wagonData = wagonFilter ? getWagonWheelData(selectedOvers, wagonFilter) : new Array(12).fill(0);
+  const wagonData = wagonFilter ? getWagonWheelData(wagonOvers, wagonFilter) : new Array(12).fill(0);
   const wagonHand: BattingHand = wagonRole === 'batsman' ? (handMap[activeWagonId ?? ''] ?? 'RHB') : 'RHB';
 
   const nameOf = (id: string) => nameMap[id] ?? id;
@@ -189,17 +259,22 @@ export function MatchStatsContent({ clubId, matchId }: { clubId: string; matchId
 
       {/* Wagon wheel */}
       <Section title="WAGON WHEEL" icon="locate-outline">
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-          <Pill label="Batsman" selected={wagonRole === 'batsman'} onPress={() => { setWagonRole('batsman'); setWagonPlayerId(null); }} />
-          <Pill label="Bowler" selected={wagonRole === 'bowler'} onPress={() => { setWagonRole('bowler'); setWagonPlayerId(null); }} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pill label="Batsman" selected={wagonRole === 'batsman'} onPress={() => { setWagonRole('batsman'); setWagonPlayerId(null); }} />
+            <Pill label="Bowler" selected={wagonRole === 'bowler'} onPress={() => { setWagonRole('bowler'); setWagonPlayerId(null); }} />
+          </View>
+          {hasInnings2 && (
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {([1, 2] as const).map((n) => (
+                <Pill key={n} label={`Inn ${n}`} selected={wagonInnings === n} onPress={() => { setWagonInnings(n); setWagonPlayerId(null); }} />
+              ))}
+            </View>
+          )}
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 14 }}>
-          {wagonIds.map((id) => (
-            <Pill key={id} label={nameOf(id)} selected={id === activeWagonId} onPress={() => setWagonPlayerId(id)} />
-          ))}
-        </ScrollView>
+        <PlayerDropdown options={wagonIds} selected={activeWagonId ?? null} onSelect={setWagonPlayerId} nameOf={nameOf} />
         {activeWagonId ? (
-          <View style={{ alignItems: 'center' }}>
+          <View style={{ alignItems: 'center', marginTop: 12 }}>
             <WagonWheel data={wagonData} batsmanHand={wagonHand} />
           </View>
         ) : (
