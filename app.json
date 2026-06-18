@@ -17,14 +17,7 @@
       "bundleIdentifier": "com.crease.cricket",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false,
-        "CFBundleURLTypes": [
-          {
-            "CFBundleURLSchemes": [
-              "com.googleusercontent.apps.29441644794-mstiu484f6hhod5glni0e1hr4clavnt0"
-            ]
-          }
-        ]
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -51,7 +44,10 @@
       "expo-web-browser",
       "expo-dev-client",
       "expo-localization",
-      "expo-font"
+      "expo-font",
+      ["@react-native-google-signin/google-signin", {
+        "iosUrlScheme": "com.googleusercontent.apps.29441644794-mstiu484f6hhod5glni0e1hr4clavnt0"
+      }]
     ],
     "owner": "sumanthns-commits"
   }

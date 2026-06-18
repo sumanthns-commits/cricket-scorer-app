@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import {
-  signInWithGoogleAccessToken,
+  signInWithGoogleIdToken,
   signInWithEmulatorCredentials,
 } from '../../services/authService';
 
-WebBrowser.maybeCompleteAuthSession();
+GoogleSignin.configure({
+  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+});
 
 const USE_EMULATOR = process.env.EXPO_PUBLIC_USE_EMULATOR === 'true';
 
@@ -26,27 +28,20 @@ export default function SignInScreen() {
     });
   };
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  });
-
-  useEffect(() => {
-    if (response?.type === 'success') {
-      const accessToken = response.authentication?.accessToken ?? '';
-      setLoading(true);
-      setError(null);
-      signInWithGoogleAccessToken(accessToken)
-        .catch(() => {
-          setError('Sign-in failed. Please try again.');
-          setLoading(false);
-        });
-    } else if (response?.type === 'error') {
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      await GoogleSignin.hasPlayServices();
+      const userInfo = await GoogleSignin.signIn();
+      const idToken = userInfo.data?.idToken;
+      if (!idToken) throw new Error('No ID token');
+      await signInWithGoogleIdToken(idToken);
+    } catch {
       setError('Sign-in failed. Please try again.');
       setLoading(false);
     }
-  }, [response]);
+  };
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: '#ffffff' }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -62,15 +57,7 @@ export default function SignInScreen() {
         <ActivityIndicator size="large" color="#16a34a" />
       ) : (
         <TouchableOpacity
-          disabled={!request}
-          onPress={() => {
-            setError(null);
-            setLoading(true);
-            promptAsync().catch(() => {
-              setError('Sign-in failed. Please try again.');
-              setLoading(false);
-            });
-          }}
+          onPress={handleGoogleSignIn}
           style={{
             backgroundColor: '#16a34a',
             borderRadius: 10,
@@ -79,7 +66,6 @@ export default function SignInScreen() {
             flexDirection: 'row',
             alignItems: 'center',
             gap: 12,
-            opacity: request ? 1 : 0.5,
           }}
         >
           <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '700' }}>

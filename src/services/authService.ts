@@ -16,8 +16,8 @@ import {
 import { FirebaseError } from 'firebase/app';
 import { db, auth } from './firebase';
 
-export async function signInWithGoogleAccessToken(accessToken: string): Promise<User> {
-  const credential = GoogleAuthProvider.credential(null, accessToken);
+export async function signInWithGoogleIdToken(idToken: string): Promise<User> {
+  const credential = GoogleAuthProvider.credential(idToken);
   const result = await signInWithCredential(auth, credential);
   return result.user;
 }
