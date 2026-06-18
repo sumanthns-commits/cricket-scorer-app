@@ -116,6 +116,7 @@ export default function TeamBuilderScreen() {
       setTeamA(parsed.team_a); setTeamB(parsed.team_b);
       setRationale(parsed.rationale); setKeyDecisions(parsed.keyDecisions);
     } catch (e) {
+      console.error('[AI full error]', JSON.stringify(e, Object.getOwnPropertyNames(e as object)));
       const msg = e instanceof Error ? e.message : String(e);
       const lower = msg.toLowerCase();
       if (lower.includes('429') || lower.includes('quota') || lower.includes('rate') || lower.includes('resource_exhausted')) {
