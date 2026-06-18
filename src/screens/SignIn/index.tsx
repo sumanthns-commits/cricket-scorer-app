@@ -35,9 +35,10 @@ export default function SignInScreen() {
       await GoogleSignin.hasPlayServices();
       const userInfo = await GoogleSignin.signIn();
       const idToken = userInfo.data?.idToken;
-      if (!idToken) throw new Error('No ID token');
+      if (!idToken) throw new Error('No ID token returned');
       await signInWithGoogleIdToken(idToken);
-    } catch {
+    } catch (err) {
+      console.error('[GoogleSignIn] error:', err);
       setError('Sign-in failed. Please try again.');
       setLoading(false);
     }
