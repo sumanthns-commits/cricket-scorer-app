@@ -56,7 +56,7 @@ export default function SignInScreen() {
 
       {loading ? (
         <ActivityIndicator size="large" color="#16a34a" />
-      ) : (
+      ) : !USE_EMULATOR ? (
         <TouchableOpacity
           onPress={handleGoogleSignIn}
           style={{
