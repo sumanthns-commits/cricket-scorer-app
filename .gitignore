@@ -51,6 +51,7 @@ google-services.json
 GoogleService-Info.plist
 
 # Google service acount json
+firebase-adminsdk.json
 crease-*.json
 
 adb-log.txt
