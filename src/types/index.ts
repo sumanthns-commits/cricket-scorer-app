@@ -265,6 +265,10 @@ export interface OverDocument {
   bowlerId: string;
   balls: BallEntry[];
   isComplete: boolean;
+  // Current batters at the end of this over (written on every ball save so
+  // reconstruction after sign-out gets the correct pair without replaying rotations).
+  onStrikeId?: string;
+  offStrikeId?: string;
 }
 
 export type MatchFormat = 'T20' | 'ODI' | 'custom';

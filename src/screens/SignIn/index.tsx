@@ -1,17 +1,22 @@
 import { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import {
   signInWithGoogleIdToken,
   signInWithEmulatorCredentials,
 } from '../../services/authService';
 
-GoogleSignin.configure({
-  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-});
-
 const USE_EMULATOR = process.env.EXPO_PUBLIC_USE_EMULATOR === 'true';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let GoogleSignin: any = null;
+if (!USE_EMULATOR) {
+  // Lazy require — native module must not be touched in emulator/Expo Go
+  GoogleSignin = require('@react-native-google-signin/google-signin').GoogleSignin;
+  GoogleSignin.configure({
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+  });
+}
 
 export default function SignInScreen() {
   const [loading, setLoading] = useState(false);
@@ -73,7 +78,7 @@ export default function SignInScreen() {
             Sign in with Google
           </Text>
         </TouchableOpacity>
-      )}
+      ) : null}
 
       {error && (
         <Text style={{ color: '#dc2626', marginTop: 16, fontSize: 14 }}>

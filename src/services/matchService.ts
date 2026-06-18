@@ -198,11 +198,13 @@ export async function saveOver(params: {
   bowlerId: string;
   balls: BallEntry[];
   isComplete: boolean;
+  onStrikeId?: string;
+  offStrikeId?: string;
 }): Promise<void> {
-  const { clubId, matchId, inningsId, overNumber, bowlerId, balls, isComplete } = params;
+  const { clubId, matchId, inningsId, overNumber, bowlerId, balls, isComplete, onStrikeId, offStrikeId } = params;
   const overKey = `${inningsId}_${overNumber}`;
   await setDoc(
     doc(db, 'clubs', clubId, 'matches', matchId, 'overs', overKey),
-    { id: overKey, matchId, inningsId, overNumber, bowlerId, balls, isComplete },
+    { id: overKey, matchId, inningsId, overNumber, bowlerId, balls, isComplete, onStrikeId, offStrikeId },
   );
 }

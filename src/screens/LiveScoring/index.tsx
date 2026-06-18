@@ -1145,9 +1145,15 @@ export default function LiveScoringScreen() {
 
     let totalRuns = 0;
     let totalWickets = 0;
-    let onStrikeId = battingIds[0] ?? '';
-    let offStrikeId = battingIds[1] ?? '';
-    let nextBatterIdx = 2;
+
+    // Derive initial on-striker from the first ball so reconstruction survives
+    // sign-out (scorer may have chosen openers in a different order than battingIds).
+    const firstBall = sorted[0]?.balls[0];
+    let onStrikeId = firstBall?.batsmanId ?? battingIds[0] ?? '';
+    let offStrikeId = battingIds.find((id) => id !== onStrikeId) ?? '';
+    // Track who has entered so wicket-replacement picks the next unused batter.
+    const enteredBatters = new Set<string>([onStrikeId, offStrikeId].filter(Boolean));
+
     const handedness: Record<string, 'RHB' | 'LHB'> = {};
 
     for (const over of sorted) {
@@ -1178,7 +1184,8 @@ export default function LiveScoringScreen() {
 
         // Strike rotation (simplified replay)
         if (isOut) {
-          const nextBatter = battingIds[nextBatterIdx++] ?? '';
+          const nextBatter = battingIds.find((id) => !enteredBatters.has(id)) ?? '';
+          if (nextBatter) enteredBatters.add(nextBatter);
           onStrikeId = nextBatter;
         } else if ((runs % 2 !== 0) !== (legalInOver >= ballsPerOver)) {
           [onStrikeId, offStrikeId] = [offStrikeId, onStrikeId];
@@ -1196,6 +1203,12 @@ export default function LiveScoringScreen() {
       (b) => b.extras?.type !== 'wide' && b.extras?.type !== 'no-ball'
     ).length ?? 0);
 
+    // Prefer the stored batters from the last over document (written on every
+    // ball save) over the replayed values, which can diverge if openers were
+    // chosen in a non-default order or if a run-out crossed the batters.
+    const storedOnStrike = lastOver?.onStrikeId;
+    const storedOffStrike = lastOver?.offStrikeId;
+
     return {
       inningsId: `innings-${n}`,
       battingIds,
@@ -1206,8 +1219,8 @@ export default function LiveScoringScreen() {
         ? (lastOver.overNumber + 1)
         : (lastOver?.overNumber ?? 0),
       legalBallsInOver,
-      onStrikeId,
-      offStrikeId,
+      onStrikeId: storedOnStrike ?? onStrikeId,
+      offStrikeId: storedOffStrike ?? offStrikeId,
       bowlerId: lastOver?.bowlerId ?? bowlingIds[0] ?? '',
       batterStats,
       bowlerStats,
@@ -1440,6 +1453,8 @@ export default function LiveScoringScreen() {
         bowlerId: input.bowlerId,
         balls: newOverBalls,
         isComplete: result.isOverComplete,
+        onStrikeId: newInnings.onStrikeId,
+        offStrikeId: newInnings.offStrikeId,
       }).catch(() => {/* swallow – UI already updated */});
     }
 
@@ -1585,24 +1600,52 @@ export default function LiveScoringScreen() {
     );
   }
 
-  function handleUndo() {
-    if (history.length === 0 || !innings || !match || !clubId) return;
-    const prev = history[history.length - 1];
-    setHistory((h) => h.slice(0, -1));
-    setInnings(prev);
-
-    // Rewrite over to Firestore
-    saveOver({
+  async function undoLastBallFromFirestore() {
+    if (!innings || !match || !clubId) return;
+    const overs = await getMatchOvers(clubId, match.id);
+    const inningsOvers = overs
+      .filter((o) => o.inningsId === innings.inningsId)
+      .sort((a, b) => a.overNumber - b.overNumber);
+    if (inningsOvers.length === 0) return;
+    const lastOver = inningsOvers[inningsOvers.length - 1];
+    if (lastOver.balls.length === 0) return;
+    const trimmedBalls = lastOver.balls.slice(0, -1);
+    await saveOver({
       clubId,
       matchId: match.id,
-      inningsId: prev.inningsId,
-      overNumber: prev.overNumber,
-      bowlerId: prev.bowlerId,
-      balls: prev.currentOverBalls,
+      inningsId: innings.inningsId,
+      overNumber: lastOver.overNumber,
+      bowlerId: lastOver.bowlerId,
+      balls: trimmedBalls,
       isComplete: false,
-    }).catch(() => {});
+    });
+    await load();
+  }
 
-    setPhase('scoring');
+  function handleUndo() {
+    if (!innings || !match || !clubId) return;
+
+    if (history.length > 0) {
+      const prev = history[history.length - 1];
+      setHistory((h) => h.slice(0, -1));
+      setInnings(prev);
+      saveOver({
+        clubId,
+        matchId: match.id,
+        inningsId: prev.inningsId,
+        overNumber: prev.overNumber,
+        bowlerId: prev.bowlerId,
+        balls: prev.currentOverBalls,
+        isComplete: false,
+        onStrikeId: prev.onStrikeId,
+        offStrikeId: prev.offStrikeId,
+      }).catch(() => {});
+      setPhase('scoring');
+      return;
+    }
+
+    // Cross-session fallback: fetch from Firestore and trim last ball then reload
+    undoLastBallFromFirestore().catch(() => {});
   }
 
   // ── New bowler / new batter handlers ────────────────────────────
