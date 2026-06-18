@@ -132,11 +132,13 @@ export async function setMatchTeams(params: {
 export async function setMatchToss(
   clubId: string,
   matchId: string,
-  toss: MatchToss
+  toss: MatchToss,
+  scorer?: { scorerId: string; scorerName: string }
 ): Promise<void> {
   await updateDoc(doc(db, 'clubs', clubId, 'matches', matchId), {
     toss,
     status: 'live',
+    ...(scorer && { scorerId: scorer.scorerId, scorerName: scorer.scorerName }),
   });
 }
 

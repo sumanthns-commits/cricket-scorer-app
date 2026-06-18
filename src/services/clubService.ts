@@ -198,6 +198,13 @@ export async function getClubMember(clubId: string, uid: string): Promise<ClubMe
   return snap.exists() ? (snap.data() as ClubMember) : null;
 }
 
+export async function getRegisteredClubMembers(clubId: string): Promise<{ id: string; displayName: string }[]> {
+  const snap = await getDocs(
+    query(collection(db, 'clubs', clubId, 'players'), where('type', '==', 'registered'))
+  );
+  return snap.docs.map(d => ({ id: d.id, displayName: d.data().displayName ?? '' }));
+}
+
 export async function hasLiveMatch(clubId: string): Promise<boolean> {
   // Matches are a subcollection of the club (clubs/{clubId}/matches). Querying a
   // top-level `matches` collection both misses the data and hits a deny rule.

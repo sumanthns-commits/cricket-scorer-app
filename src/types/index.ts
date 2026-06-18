@@ -326,4 +326,6 @@ export interface Match {
   toss?: MatchToss;
   result?: string;
   inningsSummary?: Record<string, InningsSummary>;
+  scorerId?: string;
+  scorerName?: string;
 }

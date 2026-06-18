@@ -1,11 +1,12 @@
 import { useState, useRef } from 'react';
-import { View, Text, TouchableOpacity, Animated, Easing, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, Animated, Easing, ActivityIndicator, ScrollView } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { getMatch, setMatchToss } from '../../services/matchService';
+import { getRegisteredClubMembers } from '../../services/clubService';
 import { useThemeStore } from '../../store/themeStore';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -22,6 +23,8 @@ export default function TossScreen() {
   const [flipped, setFlipped] = useState(false);
   const [flipping, setFlipping] = useState(false);
   const [coin, setCoin] = useState<'Heads' | 'Tails' | null>(null);
+  const [scorerId, setScorerId] = useState<string | null>(null);
+  const [scorerPickerOpen, setScorerPickerOpen] = useState(false);
 
   const flipAnim = useRef(new Animated.Value(0)).current;
 
@@ -29,6 +32,13 @@ export default function TossScreen() {
     queryKey: ['match', clubId, matchId],
     queryFn: () => getMatch(clubId, matchId),
   });
+
+  const { data: members = [] } = useQuery({
+    queryKey: ['registeredMembers', clubId],
+    queryFn: () => getRegisteredClubMembers(clubId),
+  });
+
+  const selectedScorer = members.find(m => m.id === scorerId);
 
   const flipCoin = () => {
     if (flipping) return;
@@ -51,7 +61,8 @@ export default function TossScreen() {
     mutationFn: () => {
       if (!winnerId || !choice || !match) throw new Error('Select toss winner and choice');
       const winnerName = winnerId === 'homeTeam' ? match.homeTeam : match.awayTeam;
-      return setMatchToss(clubId, matchId, { winnerId, winnerName, choice });
+      const scorer = selectedScorer ? { scorerId: selectedScorer.id, scorerName: selectedScorer.displayName } : undefined;
+      return setMatchToss(clubId, matchId, { winnerId, winnerName, choice }, scorer);
     },
     onSuccess: () => navigation.replace('LiveScoring', { clubId, matchId }),
   });
@@ -69,7 +80,7 @@ export default function TossScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg, padding: 16 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
       <Text style={{ color: theme.text, fontSize: 20, fontWeight: '700', textAlign: 'center', marginTop: 12, marginBottom: 4 }}>
         {homeTeam} vs {awayTeam}
       </Text>
@@ -144,6 +155,49 @@ export default function TossScreen() {
         </View>
       )}
 
+      {/* Scorer picker */}
+      <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 8 }}>SCORER (OPTIONAL)</Text>
+      <TouchableOpacity
+        onPress={() => setScorerPickerOpen(o => !o)}
+        style={{ backgroundColor: theme.surface, borderRadius: 8, padding: 14, borderWidth: 1, borderColor: scorerId ? theme.accent : theme.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}
+      >
+        <Text style={{ color: scorerId ? theme.accent : theme.textMuted, fontSize: 15, fontWeight: scorerId ? '600' : '400' }}>
+          {selectedScorer ? selectedScorer.displayName : 'Assign a scorer…'}
+        </Text>
+        <Text style={{ color: theme.textMuted }}>{scorerPickerOpen ? '▲' : '▼'}</Text>
+      </TouchableOpacity>
+
+      {scorerPickerOpen && (
+        <View style={{ backgroundColor: theme.surface, borderRadius: 8, borderWidth: 1, borderColor: theme.border, marginBottom: 16, maxHeight: 180, overflow: 'hidden' }}>
+          <ScrollView>
+            {scorerId !== null && (
+              <TouchableOpacity
+                onPress={() => { setScorerId(null); setScorerPickerOpen(false); }}
+                style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: theme.border }}
+              >
+                <Text style={{ color: '#dc2626', fontSize: 14 }}>✕ Remove scorer</Text>
+              </TouchableOpacity>
+            )}
+            {members.length === 0 && (
+              <Text style={{ color: theme.textMuted, padding: 14, fontSize: 14 }}>No registered members found</Text>
+            )}
+            {members.map((m, i) => (
+              <TouchableOpacity
+                key={m.id}
+                onPress={() => { setScorerId(m.id); setScorerPickerOpen(false); }}
+                style={{ padding: 14, borderBottomWidth: i < members.length - 1 ? 1 : 0, borderBottomColor: theme.border, backgroundColor: scorerId === m.id ? theme.accentDim : 'transparent' }}
+              >
+                <Text style={{ color: scorerId === m.id ? theme.accent : theme.text, fontSize: 15, fontWeight: scorerId === m.id ? '600' : '400' }}>
+                  {m.displayName}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      {!scorerPickerOpen && <View style={{ marginBottom: 16 }} />}
+
       {error instanceof Error && (
         <Text style={{ color: '#dc2626', textAlign: 'center', marginBottom: 12 }}>{error.message}</Text>
       )}
@@ -158,6 +212,6 @@ export default function TossScreen() {
           <Text style={{ color: canConfirm ? '#ffffff' : theme.textMuted, fontSize: 16, fontWeight: '700' }}>Start Match</Text>
         )}
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
