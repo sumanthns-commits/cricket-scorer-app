@@ -9,7 +9,7 @@ Live scoring, player management, stats tracking, AI team selection.
 - Firebase JS SDK v10 modular imports only
 - React Navigation v6 (bottom tabs + native stack)
 - Zustand for local state, React Query for server state
-- Firebase AI SDK (`firebase/ai`, GoogleAIBackend) with Gemini (gemini-2.5-flash) for AI assistant
+- Firebase AI SDK (`firebase/ai`, VertexAIBackend) with Gemini (gemini-2.5-flash) for AI assistant
 
 ## Folder structure
 src/
