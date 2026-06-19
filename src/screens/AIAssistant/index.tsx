@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import type { Content } from 'firebase/ai';
+import { useAuthStore } from '../../store/authStore';
 import { useClubStore } from '../../store/clubStore';
 import { useThemeStore } from '../../store/themeStore';
 import { askCricketAssistant } from '../../ai/cricketAssistant';
@@ -102,6 +103,7 @@ function Bubble({ msg, nameOf }: { msg: ChatMessage; nameOf: (id: string) => str
 }
 
 export default function AIAssistantScreen() {
+  const user = useAuthStore((s) => s.user);
   const activeClubId = useClubStore((s) => s.activeClubId);
   const theme = useThemeStore((s) => s.theme);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -120,6 +122,11 @@ export default function AIAssistantScreen() {
 
   const nameOf = (id: string) => players.find((p) => p.id === id)?.displayName ?? id;
 
+  const signedInPlayer = user ? players.find((p) => p.id === user.uid) : null;
+  const systemPrompt = signedInPlayer
+    ? `${ASSISTANT_SYSTEM_PROMPT}\n\nThe signed-in user is ${signedInPlayer.displayName} (player ID: ${signedInPlayer.id}). When they refer to themselves ("my", "me", "I"), use this player ID directly — do not ask for their name.`
+    : ASSISTANT_SYSTEM_PROMPT;
+
   if (!activeClubId) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
@@ -137,7 +144,7 @@ export default function AIAssistantScreen() {
     setBusy(true); setToolLabel('');
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
     try {
-      const result = await askCricketAssistant(text, activeClubId, ASSISTANT_SYSTEM_PROMPT, { history: historyRef.current, onToolCall: (name) => setToolLabel(TOOL_LABELS[name] ?? 'Working…') });
+      const result = await askCricketAssistant(text, activeClubId, systemPrompt, { history: historyRef.current, onToolCall: (name) => setToolLabel(TOOL_LABELS[name] ?? 'Working…') });
       historyRef.current = result.history;
       const teams = parseTeams(result.text);
       const body = teams ? stripJson(result.text) : result.text;
