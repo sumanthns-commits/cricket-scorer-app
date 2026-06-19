@@ -2075,12 +2075,12 @@ export default function LiveScoringScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleUndo}
-            disabled={history.length === 0}
+            disabled={!firstBallBowled && history.length === 0}
             style={{
               flex: 1, paddingVertical: 14, borderRadius: 10,
               backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
               alignItems: 'center',
-              opacity: history.length === 0 ? 0.4 : 1,
+              opacity: (firstBallBowled || history.length > 0) ? 1 : 0.4,
             }}
           >
             <Text style={{ color: theme.textMuted, fontSize: 15, fontWeight: '700' }}>↩ Undo</Text>

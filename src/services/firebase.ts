@@ -5,7 +5,14 @@ import {
   connectFirestoreEmulator,
   type Firestore,
 } from 'firebase/firestore';
-import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { getAuth, initializeAuth, connectAuthEmulator, type Auth, type Persistence } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// getReactNativePersistence is only exported in @firebase/auth's React Native
+// build (resolved by Metro at runtime). TypeScript's browser types don't include
+// it, so we pull it via require to avoid a type error.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { getReactNativePersistence } = require('@firebase/auth') as { getReactNativePersistence: (s: typeof AsyncStorage) => Persistence };
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 import { EMULATOR_HOST } from './emulatorHost';
 
@@ -37,8 +44,21 @@ function createDb(): Firestore {
   }
 }
 
+// initializeAuth with AsyncStorage persistence so the ID token survives
+// across sessions and refreshes correctly on React Native.
+// Falls back to getAuth on Fast Refresh (initializeAuth throws if called twice).
+function createAuth(): Auth {
+  try {
+    return initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
+  } catch {
+    return getAuth(app);
+  }
+}
+
 export const db = createDb();
-export const auth = getAuth(app);
+export const auth = createAuth();
 export const functions = getFunctions(app, FUNCTIONS_REGION);
 
 let emulatorsConnected = false;
