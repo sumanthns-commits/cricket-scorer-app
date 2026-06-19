@@ -55,3 +55,4 @@ firebase-adminsdk.json
 crease-*.json
 
 adb-log.txt
+android/local.properties
