@@ -22,6 +22,7 @@
     },
     "android": {
       "package": "com.crease.cricket",
+      "versionCode": 17,
       "adaptiveIcon": {
         "backgroundColor": "#16a34a",
         "foregroundImage": "./assets/android-icon-foreground.png",
