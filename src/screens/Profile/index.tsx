@@ -145,13 +145,19 @@ export default function ProfileScreen() {
       </View>
       <ThemePicker />
       <View style={{ height: 1, backgroundColor: theme.border }} />
-      <PlayerProfileView clubId={activeClubId} playerId={user.uid} canEdit />
-      <TouchableOpacity
-        onPress={handleSignOut}
-        style={{ margin: 16, paddingVertical: 12, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: '#dc2626' }}
-      >
-        <Text style={{ color: '#dc2626', fontSize: 14, fontWeight: '600' }}>Sign Out</Text>
-      </TouchableOpacity>
+      <PlayerProfileView
+        clubId={activeClubId}
+        playerId={user.uid}
+        canEdit
+        footer={
+          <TouchableOpacity
+            onPress={handleSignOut}
+            style={{ marginTop: 24, paddingVertical: 12, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: '#dc2626' }}
+          >
+            <Text style={{ color: '#dc2626', fontSize: 14, fontWeight: '600' }}>Sign Out</Text>
+          </TouchableOpacity>
+        }
+      />
     </View>
   );
 }

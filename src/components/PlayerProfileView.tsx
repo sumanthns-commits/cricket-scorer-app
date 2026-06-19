@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Modal } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -211,11 +211,13 @@ export default function PlayerProfileView({
   playerId,
   canEdit = false,
   isAdmin = false,
+  footer,
 }: {
   clubId: string;
   playerId: string;
   canEdit?: boolean;
   isAdmin?: boolean;
+  footer?: ReactNode;
 }) {
   const theme = useThemeStore((s) => s.theme);
   const queryClient = useQueryClient();
@@ -850,6 +852,7 @@ export default function PlayerProfileView({
           />
         </View>
       </Section>
+      {footer}
     </ScrollView>
 
     <Modal visible={showRatingInfo} transparent animationType="fade" onRequestClose={() => setShowRatingInfo(false)}>
