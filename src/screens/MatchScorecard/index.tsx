@@ -244,13 +244,15 @@ export default function MatchScorecardScreen() {
   const theme = useThemeStore((s) => s.theme);
   const snapshotRef = useRef<ViewShot>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['scorecard', clubId, matchId],
     queryFn: async () => {
       const [match, overs, players] = await Promise.all([
         getMatch(clubId, matchId),
         getMatchOvers(clubId, matchId),
-        getClubPlayers(clubId),
+        // Non-members may not have permission to read the players subcollection;
+        // fall back to an empty map so the scorecard still renders with IDs.
+        getClubPlayers(clubId).catch(() => [] as import('../../types').Player[]),
       ]);
       const ballsPerOver = match?.rules.ballsPerOver ?? 6;
       const first = overs.filter((o) => o.inningsId === 'innings-1');
@@ -288,10 +290,19 @@ export default function MatchScorecardScreen() {
     }
   }
 
-  if (isLoading || !data) {
+  if (isLoading) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator size="large" color={theme.accent} />
+      </View>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+        <Text style={{ color: theme.textSecondary, fontSize: 16, textAlign: 'center' }}>Could not load scorecard.</Text>
+        <Text style={{ color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 8 }}>You may not have access to this club's data.</Text>
       </View>
     );
   }
