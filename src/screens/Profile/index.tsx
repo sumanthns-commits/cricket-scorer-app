@@ -130,9 +130,9 @@ export default function ProfileScreen() {
         <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 16, marginTop: 8 }} />
         <TouchableOpacity
           onPress={handleSignOut}
-          style={{ margin: 16, paddingVertical: 12, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: '#dc2626' }}
+          style={{ margin: 16, paddingVertical: 14, alignItems: 'center', borderRadius: 8, backgroundColor: '#dc2626' }}
         >
-          <Text style={{ color: '#dc2626', fontSize: 14, fontWeight: '600' }}>Sign Out</Text>
+          <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '700' }}>Sign Out</Text>
         </TouchableOpacity>
       </ScrollView>
     );
