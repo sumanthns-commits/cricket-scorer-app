@@ -7,28 +7,28 @@ function toFunctionName(name: string): string {
   return name.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
 }
 
-/**
- * Call an onCall (callable) Cloud Function. Accepts either the snake_case tool
- * name or the camelCase function name. The callable SDK handles auth context,
- * region, the data envelope and emulator routing.
- */
 export async function callCallableFunction(
   name: string,
   data: Record<string, unknown>
 ): Promise<unknown> {
+  // Wait for Firebase to finish restoring auth state from AsyncStorage persistence.
+  // Without this, auth.currentUser can be null during the async restoration window
+  // even when the user is genuinely signed in.
+  await auth.authStateReady();
+
   const user = auth.currentUser;
   if (!user) {
-    console.error('[callCallableFunction] No currentUser — not authenticated', name);
     throw new Error('unauthenticated');
   }
-  // Force-refresh the token before every callable so a recently-expired token
-  // doesn't silently fail inside the Functions SDK.
+
+  // Best-effort token pre-refresh to avoid 1h ID token expiry mid-session.
+  // Non-fatal: if refresh fails the callable SDK uses the cached token.
   try {
     await user.getIdToken(true);
   } catch (e) {
-    console.error('[callCallableFunction] Token refresh failed', e);
-    throw new Error('unauthenticated');
+    console.warn('[callCallableFunction] Token pre-refresh failed (non-fatal):', e);
   }
+
   const fn = httpsCallable(functions, toFunctionName(name));
   const res = await fn(data);
   return res.data;

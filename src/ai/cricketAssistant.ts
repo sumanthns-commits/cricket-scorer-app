@@ -5,7 +5,7 @@ import {
   type Content,
   type FunctionResponsePart,
 } from 'firebase/ai';
-import { app } from '../services/firebase';
+import { app, auth } from '../services/firebase';
 import { functionDeclarations } from './toolDefinitions';
 import { executeToolCall } from './toolExecutor';
 
@@ -29,6 +29,10 @@ export async function askCricketAssistant(
   systemPrompt: string,
   options: AssistantOptions = {}
 ): Promise<AssistantResult> {
+  // Ensure Firebase auth state is restored from persistence before making
+  // authenticated Vertex AI requests.
+  await auth.authStateReady();
+
   const model = getGenerativeModel(ai, {
     model: MODEL,
     systemInstruction: systemPrompt,

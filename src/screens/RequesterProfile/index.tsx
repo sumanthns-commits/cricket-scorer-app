@@ -88,10 +88,14 @@ export default function RequesterProfileScreen({ route, navigation }: Props) {
     } catch (err) {
       console.error('resolveJoinRequest failed', err);
       setBusy(null);
+      const code = (err as { code?: string }).code ?? '';
       const msg = err instanceof Error ? err.message : String(err);
-      Alert.alert('Action failed', msg.includes('unauthenticated')
-        ? 'You are not authenticated. Please sign out and sign back in, then try again.'
-        : `Could not ${decision} the request. Please try again.\n\n${msg}`
+      const isAuthError = code === 'functions/unauthenticated' || msg === 'unauthenticated';
+      Alert.alert(
+        'Action failed',
+        isAuthError
+          ? 'Session expired. Please sign out and sign in again.'
+          : `Could not ${decision} the request.\n\n${msg}`,
       );
     }
   }
