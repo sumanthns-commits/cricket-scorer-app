@@ -10,7 +10,8 @@ export ANDROID_HOME="$HOME/Library/Android/sdk"
 export PATH="$ANDROID_HOME/platform-tools:$PATH"
 
 # Keystore credentials (from EAS: run `eas credentials --platform android` to download)
-./build-secrets.sh
+# source (not ./): exports must propagate to this shell so KEYSTORE_PATH is available below
+source ./build-secrets.sh
 # Resolve KEYSTORE_PATH to absolute so gradle can find it from android/ subdir
 export KEYSTORE_PATH="$(pwd)/$KEYSTORE_PATH"
 
