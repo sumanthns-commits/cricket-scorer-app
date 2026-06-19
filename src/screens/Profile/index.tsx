@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -10,6 +10,7 @@ import { useClubStore } from '../../store/clubStore';
 import { useThemeStore } from '../../store/themeStore';
 import { THEMES } from '../../constants/themes';
 import PlayerProfileView from '../../components/PlayerProfileView';
+import { signOut } from '../../services/authService';
 
 type Nav = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList>,
@@ -97,7 +98,22 @@ function EditProfileButton() {
 export default function ProfileScreen() {
   const user = useAuthStore((s) => s.user);
   const activeClubId = useClubStore((s) => s.activeClubId);
+  const setActiveClubId = useClubStore((s) => s.setActiveClubId);
   const theme = useThemeStore((s) => s.theme);
+
+  function handleSignOut() {
+    Alert.alert('Sign out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: () => {
+          setActiveClubId(null);
+          signOut().catch(() => {});
+        },
+      },
+    ]);
+  }
 
   if (!activeClubId || !user) {
     return (
@@ -111,6 +127,13 @@ export default function ProfileScreen() {
         </View>
         <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 16 }} />
         <ThemePicker />
+        <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 16, marginTop: 8 }} />
+        <TouchableOpacity
+          onPress={handleSignOut}
+          style={{ margin: 16, paddingVertical: 12, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: '#dc2626' }}
+        >
+          <Text style={{ color: '#dc2626', fontSize: 14, fontWeight: '600' }}>Sign Out</Text>
+        </TouchableOpacity>
       </ScrollView>
     );
   }
@@ -123,6 +146,12 @@ export default function ProfileScreen() {
       <ThemePicker />
       <View style={{ height: 1, backgroundColor: theme.border }} />
       <PlayerProfileView clubId={activeClubId} playerId={user.uid} canEdit />
+      <TouchableOpacity
+        onPress={handleSignOut}
+        style={{ margin: 16, paddingVertical: 12, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: '#dc2626' }}
+      >
+        <Text style={{ color: '#dc2626', fontSize: 14, fontWeight: '600' }}>Sign Out</Text>
+      </TouchableOpacity>
     </View>
   );
 }

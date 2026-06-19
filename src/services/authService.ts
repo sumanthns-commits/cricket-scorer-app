@@ -49,6 +49,14 @@ export async function signInWithEmulatorCredentials(
 }
 
 export async function signOut(): Promise<void> {
+  if (process.env.EXPO_PUBLIC_USE_EMULATOR !== 'true') {
+    try {
+      const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+      await GoogleSignin.signOut();
+    } catch {
+      // non-fatal — Firebase sign-out still clears the session
+    }
+  }
   await firebaseSignOut(auth);
 }
 
