@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
@@ -88,6 +88,11 @@ export default function RequesterProfileScreen({ route, navigation }: Props) {
     } catch (err) {
       console.error('resolveJoinRequest failed', err);
       setBusy(null);
+      const msg = err instanceof Error ? err.message : String(err);
+      Alert.alert('Action failed', msg.includes('unauthenticated')
+        ? 'You are not authenticated. Please sign out and sign back in, then try again.'
+        : `Could not ${decision} the request. Please try again.\n\n${msg}`
+      );
     }
   }
 
