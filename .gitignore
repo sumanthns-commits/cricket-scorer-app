@@ -57,3 +57,4 @@ crease-*.json
 adb-log.txt
 android/local.properties
 build-secrets.sh
+bundletool.jar
