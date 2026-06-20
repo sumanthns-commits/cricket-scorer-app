@@ -240,6 +240,7 @@ export default function MatchScorecardScreen() {
   const { params } = useRoute<Route>();
   const { clubId, matchId } = params;
   const [innings, setInnings] = useState<1 | 2>(1);
+  const [tab, setTab] = useState<'scorecard' | 'teams'>('scorecard');
   const [sharing, setSharing] = useState(false);
   const theme = useThemeStore((s) => s.theme);
   const snapshotRef = useRef<ViewShot>(null);
@@ -314,6 +315,9 @@ export default function MatchScorecardScreen() {
   const captains = new Set([match?.captainA, match?.captainB].filter(Boolean) as string[]);
   const customDismissals = match?.rules.customDismissals ?? [];
 
+  const teamA = match?.teamA ?? [];
+  const teamB = match?.teamB ?? [];
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       {/* Off-screen snapshot (rendered but hidden via absolute position off-viewport) */}
@@ -350,33 +354,94 @@ export default function MatchScorecardScreen() {
         </TouchableOpacity>
       </View>
 
-      {hasBoth && (
-        <View style={{ flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 4 }}>
-          {([1, 2] as const).map((n) => (
-            <TouchableOpacity
-              key={n}
-              onPress={() => setInnings(n)}
-              style={{
-                flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 8,
-                backgroundColor: innings === n ? theme.accentDim : theme.surface,
-                borderWidth: 1, borderColor: innings === n ? theme.accent : theme.border,
-              }}
-            >
-              <Text style={{ color: innings === n ? theme.accent : theme.textMuted, fontWeight: '600' }}>
-                Innings {n}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
+      {/* Tab bar */}
+      <View style={{ flexDirection: 'row', backgroundColor: theme.surfaceAlt, borderBottomWidth: 1, borderBottomColor: theme.border }}>
+        {(['scorecard', 'teams'] as const).map((t) => (
+          <TouchableOpacity
+            key={t}
+            onPress={() => setTab(t)}
+            style={{ flex: 1, paddingVertical: 11, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: tab === t ? theme.accent : 'transparent' }}
+          >
+            <Text style={{ color: tab === t ? theme.accent : theme.textMuted, fontWeight: '700', fontSize: 12 }}>
+              {t === 'scorecard' ? 'SCORECARD' : 'TEAMS'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-        {card ? (
-          <InningsView card={card} nameOf={nameOf} captains={captains} customDismissals={customDismissals} />
-        ) : (
-          <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 40 }}>No scorecard data.</Text>
-        )}
-      </ScrollView>
+      {tab === 'teams' ? (
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+          {([['A', '#60a5fa', match?.homeTeam ?? 'Team A', teamA, match?.captainA], ['B', '#f97316', match?.awayTeam ?? 'Team B', teamB, match?.captainB]] as const).map(([label, color, name, ids, captain]) => (
+            <View key={label} style={{ marginBottom: 20 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+                <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 12 }}>{label}</Text>
+                </View>
+                <Text style={{ color: label === 'A' ? '#2563eb' : '#f97316', fontSize: 15, fontWeight: '700' }}>
+                  {name} ({ids.length})
+                </Text>
+              </View>
+              {ids.length === 0 ? (
+                <Text style={{ color: theme.textMuted, fontSize: 13, paddingLeft: 30 }}>No players assigned</Text>
+              ) : (
+                ids.map((id: string) => (
+                  <View key={id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 12, backgroundColor: theme.surface, borderRadius: 8, marginBottom: 4, borderWidth: 1, borderColor: theme.border }}>
+                    <Text style={{ flex: 1, color: theme.text, fontSize: 14 }}>{nameOf(id)}</Text>
+                    {captain === id && (
+                      <View style={{ backgroundColor: theme.id === 'light' ? '#fef9c3' : '#3b2f0a', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, borderWidth: 1, borderColor: '#fbbf24' }}>
+                        <Text style={{ color: '#d97706', fontSize: 10, fontWeight: '700' }}>C</Text>
+                      </View>
+                    )}
+                  </View>
+                ))
+              )}
+            </View>
+          ))}
+          {(match?.substitutes ?? []).length > 0 && (
+            <View style={{ borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 16 }}>
+              <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '700', marginBottom: 10 }}>SUBSTITUTES</Text>
+              {(match?.substitutes ?? []).map((id: string) => (
+                <View key={id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 12, backgroundColor: theme.surface, borderRadius: 8, marginBottom: 4, borderWidth: 1, borderColor: theme.border }}>
+                  <Text style={{ flex: 1, color: theme.text, fontSize: 14 }}>{nameOf(id)}</Text>
+                  <View style={{ backgroundColor: theme.id === 'light' ? '#f0fdf4' : '#0a2a1a', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, borderWidth: 1, borderColor: '#22c55e' }}>
+                    <Text style={{ color: '#22c55e', fontSize: 9, fontWeight: '700' }}>SUB</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </ScrollView>
+      ) : (
+        <>
+          {hasBoth && (
+            <View style={{ flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 4, marginTop: 8 }}>
+              {([1, 2] as const).map((n) => (
+                <TouchableOpacity
+                  key={n}
+                  onPress={() => setInnings(n)}
+                  style={{
+                    flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 8,
+                    backgroundColor: innings === n ? theme.accentDim : theme.surface,
+                    borderWidth: 1, borderColor: innings === n ? theme.accent : theme.border,
+                  }}
+                >
+                  <Text style={{ color: innings === n ? theme.accent : theme.textMuted, fontWeight: '600' }}>
+                    Innings {n}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+            {card ? (
+              <InningsView card={card} nameOf={nameOf} captains={captains} customDismissals={customDismissals} />
+            ) : (
+              <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 40 }}>No scorecard data.</Text>
+            )}
+          </ScrollView>
+        </>
+      )}
     </View>
   );
 }

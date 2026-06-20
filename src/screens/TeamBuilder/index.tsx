@@ -70,7 +70,7 @@ function PlayerRow({ name, badge, shared, isCaptain, onSetCaptain, onMoveA, onMo
 export default function TeamBuilderScreen() {
   const navigation = useNavigation<Nav>();
   const { params } = useRoute<Route>();
-  const { clubId, matchId } = params;
+  const { clubId, matchId, returnTo } = params;
   const theme = useThemeStore((s) => s.theme);
 
   const [teamA, setTeamA] = useState<string[]>([]);
@@ -136,7 +136,13 @@ export default function TeamBuilderScreen() {
 
   const { mutate: confirm, isPending } = useMutation({
     mutationFn: () => setMatchTeams({ clubId, matchId, teamA, teamB, captainA: captainA ?? undefined, captainB: captainB ?? undefined }),
-    onSuccess: () => navigation.replace('Toss', { clubId, matchId }),
+    onSuccess: () => {
+      if (returnTo === 'LiveScoring') {
+        navigation.replace('LiveScoring', { clubId, matchId });
+      } else {
+        navigation.navigate('Toss', { clubId, matchId });
+      }
+    },
   });
 
   const canConfirm = teamA.length > 0 && teamB.length > 0 && !!captainA && !!captainB && !isPending;

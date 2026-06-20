@@ -10,6 +10,8 @@ import {
   query,
   where,
   orderBy,
+  arrayUnion,
+  arrayRemove,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type { BallEntry, ClubRules, Match, MatchFormat, MatchToss, OverDocument, Player, PlayerType, CareerStats } from '../types';
@@ -67,6 +69,8 @@ export async function createMatch(params: {
   squad: string[];
   teamA?: string[];
   teamB?: string[];
+  captainA?: string;
+  captainB?: string;
 }): Promise<string> {
   const matchRef = doc(collection(db, 'clubs', params.clubId, 'matches'));
   const matchId = matchRef.id;
@@ -83,6 +87,8 @@ export async function createMatch(params: {
     squad: params.squad,
     teamA: params.teamA ?? [],
     teamB: params.teamB ?? [],
+    ...(params.captainA ? { captainA: params.captainA } : {}),
+    ...(params.captainB ? { captainB: params.captainB } : {}),
   });
   return matchId;
 }
@@ -126,6 +132,18 @@ export async function setMatchTeams(params: {
     teamB,
     captainA: captainA ?? null,
     captainB: captainB ?? null,
+  });
+}
+
+export async function addSubstitute(clubId: string, matchId: string, playerId: string): Promise<void> {
+  await updateDoc(doc(db, 'clubs', clubId, 'matches', matchId), {
+    substitutes: arrayUnion(playerId),
+  });
+}
+
+export async function removeSubstitute(clubId: string, matchId: string, playerId: string): Promise<void> {
+  await updateDoc(doc(db, 'clubs', clubId, 'matches', matchId), {
+    substitutes: arrayRemove(playerId),
   });
 }
 

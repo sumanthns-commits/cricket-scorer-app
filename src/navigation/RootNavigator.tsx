@@ -30,7 +30,7 @@ export type RootStackParamList = {
   EditClub: { clubId: string };
   ClubRulesAdmin: { clubId: string };
   ScheduleMatch: { clubId: string };
-  TeamBuilder: { clubId: string; matchId: string };
+  TeamBuilder: { clubId: string; matchId: string; returnTo?: 'LiveScoring' };
   Toss: { clubId: string; matchId: string };
   LiveScoring: { clubId: string; matchId: string };
   PlayerProfile: { clubId: string; playerId: string };

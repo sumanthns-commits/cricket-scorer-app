@@ -253,7 +253,7 @@ export interface BallEntry {
   extras?: { type: ExtrasType; runs: number };
   dismissal?: DismissalEntry;
   wagon?: WagonShot;
-  fielding?: { eventId?: string; eventLabel?: string; fielderId?: string };
+  fielding?: { eventId?: string; eventLabel?: string; fielderId?: string; fielderIds?: string[] };
   timestamp?: Timestamp;
 }
 
@@ -332,4 +332,5 @@ export interface Match {
   inningsSummary?: Record<string, InningsSummary>;
   scorerId?: string;
   scorerName?: string;
+  substitutes?: string[];
 }

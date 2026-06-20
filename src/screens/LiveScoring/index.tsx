@@ -25,6 +25,8 @@ import {
   abandonMatch,
   deleteMatch,
   updateMatchOvers,
+  addSubstitute,
+  removeSubstitute,
 } from '../../services/matchService';
 import { getClub, getClubMember } from '../../services/clubService';
 import { useAuthStore } from '../../store/authStore';
@@ -214,18 +216,18 @@ function FieldingPanel({
   players: Player[];
   fieldingEvents: Array<{ id: string; label: string }>;
   hideFielders: boolean;
-  onDone: (eventId: string | null, fielderId: string | null) => void;
+  onDone: (eventId: string | null, fielderIds: string[]) => void;
 }) {
   const theme = useThemeStore((s) => s.theme);
   const slideY = useRef(new Animated.Value(400)).current;
   const progress = useRef(new Animated.Value(1)).current;
   const [eventId, setEventId] = useState<string | null>(null);
-  const [fielderId, setFielderId] = useState<string | null>(null);
+  const [fielderIds, setFielderIds] = useState<string[]>([]);
   const isBoundary = runs === 4 || runs === 6;
 
   // Keep the latest selection + callback for the auto-dismiss timer.
-  const selRef = useRef<{ eventId: string | null; fielderId: string | null }>({ eventId: null, fielderId: null });
-  selRef.current = { eventId, fielderId };
+  const selRef = useRef<{ eventId: string | null; fielderIds: string[] }>({ eventId: null, fielderIds: [] });
+  selRef.current = { eventId, fielderIds };
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
 
@@ -236,7 +238,7 @@ function FieldingPanel({
     progress.setValue(1);
     Animated.timing(progress, { toValue: 0, duration: FIELDING_AUTO_MS, useNativeDriver: false }).start(
       ({ finished }) => {
-        if (finished) onDoneRef.current(selRef.current.eventId, selRef.current.fielderId);
+        if (finished) onDoneRef.current(selRef.current.eventId, selRef.current.fielderIds);
       }
     );
   }, [progress]);
@@ -244,7 +246,7 @@ function FieldingPanel({
   useEffect(() => {
     if (visible) {
       setEventId(null);
-      setFielderId(null);
+      setFielderIds([]);
       Animated.spring(slideY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
       startCountdown();
     } else {
@@ -256,12 +258,21 @@ function FieldingPanel({
   }, [visible]);
 
   const pickEvent = (id: string) => { setEventId((c) => (c === id ? null : id)); startCountdown(); };
-  const pickFielder = (id: string) => { setFielderId((c) => (c === id ? null : id)); startCountdown(); };
-  const finish = () => { progress.stopAnimation(); onDone(eventId, fielderId); };
+  const toggleFielder = (id: string) => {
+    setFielderIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+    startCountdown();
+  };
+  const finish = () => { progress.stopAnimation(); onDone(eventId, fielderIds); };
 
   if (!visible) return null;
 
   const barWidth = progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
+
+  const fielderSummary = fielderIds.length === 0
+    ? 'None'
+    : fielderIds.length === 1
+      ? (players.find((p) => p.id === fielderIds[0])?.displayName ?? fielderIds[0])
+      : `${players.find((p) => p.id === fielderIds[0])?.displayName?.split(' ')[0] ?? ''}${fielderIds.length > 1 ? ` +${fielderIds.length - 1}` : ''}`;
 
   return (
     <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0 }}>
@@ -270,7 +281,7 @@ function FieldingPanel({
         activeOpacity={1}
         onPress={finish}
       />
-      <Animated.View style={{ backgroundColor: theme.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 36, transform: [{ translateY: slideY }], maxHeight: 420 }}>
+      <Animated.View style={{ backgroundColor: theme.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 36, transform: [{ translateY: slideY }], maxHeight: 480 }}>
         <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: theme.border, alignSelf: 'center', marginBottom: 14 }} />
 
         <View style={{ height: 3, backgroundColor: theme.surfaceAlt, borderRadius: 2, overflow: 'hidden', marginBottom: 16 }}>
@@ -298,20 +309,33 @@ function FieldingPanel({
 
         {!hideFielders && (
           <>
-            <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '700', marginBottom: 10 }}>FIELDER (optional)</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                {players.map((p) => (
-                  <TouchableOpacity key={p.id} onPress={() => pickFielder(p.id)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: fielderId === p.id ? theme.accentDim : theme.surfaceAlt, borderWidth: 1, borderColor: fielderId === p.id ? theme.accent : theme.border }}>
-                    <Text style={{ color: fielderId === p.id ? theme.accent : theme.textSecondary, fontSize: 13 }}>{p.displayName.split(' ')[0]}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '700', flex: 1 }}>FIELDER(S) (optional)</Text>
+              {fielderIds.length > 0 && (
+                <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '600' }}>{fielderSummary}</Text>
+              )}
+            </View>
+            <ScrollView style={{ maxHeight: 160, marginBottom: 14 }} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+              {players.map((p) => {
+                const selected = fielderIds.includes(p.id);
+                return (
+                  <TouchableOpacity
+                    key={p.id}
+                    onPress={() => toggleFielder(p.id)}
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 9, paddingHorizontal: 12, borderRadius: 8, backgroundColor: selected ? theme.accentDim : theme.surfaceAlt, borderWidth: 1, borderColor: selected ? theme.accent : theme.border, marginBottom: 5 }}
+                  >
+                    <View style={{ width: 18, height: 18, borderRadius: 4, borderWidth: 2, borderColor: selected ? theme.accent : theme.textMuted, backgroundColor: selected ? theme.accent : 'transparent', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                      {selected && <Text style={{ color: '#ffffff', fontSize: 11, fontWeight: '900', lineHeight: 13 }}>✓</Text>}
+                    </View>
+                    <Text style={{ color: selected ? theme.accent : theme.textSecondary, fontSize: 14 }}>{p.displayName}</Text>
                   </TouchableOpacity>
-                ))}
-              </View>
+                );
+              })}
             </ScrollView>
           </>
         )}
 
-        <TouchableOpacity onPress={finish} style={{ backgroundColor: theme.accent, borderRadius: 10, padding: 14, alignItems: 'center', marginTop: isBoundary ? 8 : 0 }}>
+        <TouchableOpacity onPress={finish} style={{ backgroundColor: theme.accent, borderRadius: 10, padding: 14, alignItems: 'center' }}>
           <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 15 }}>Done</Text>
         </TouchableOpacity>
       </Animated.View>
@@ -992,6 +1016,164 @@ function Scorecard({
   );
 }
 
+// ─── Teams tab ───────────────────────────────────────────────────────
+
+function TeamsTab({
+  match,
+  players,
+  isAdmin,
+  matchHasStarted,
+  clubId,
+  matchId,
+  navigation,
+  showSubPicker,
+  setShowSubPicker,
+  onSubstituteAdded,
+  onSubstituteRemoved,
+}: {
+  match: Match | null;
+  players: Player[];
+  isAdmin: boolean;
+  matchHasStarted: boolean;
+  clubId: string;
+  matchId: string;
+  navigation: NativeStackNavigationProp<RootStackParamList>;
+  showSubPicker: boolean;
+  setShowSubPicker: (v: boolean) => void;
+  onSubstituteAdded: (playerId: string) => void;
+  onSubstituteRemoved: (playerId: string) => void;
+}) {
+  const theme = useThemeStore((s) => s.theme);
+  const playerMap = new Map(players.map((p) => [p.id, p.displayName]));
+  const teamA = match?.teamA ?? [];
+  const teamB = match?.teamB ?? [];
+  const captainA = match?.captainA;
+  const captainB = match?.captainB;
+  const substituteIds = match?.substitutes ?? [];
+
+  const substituteablePlayers = players.filter(
+    (p) => !substituteIds.includes(p.id)
+  );
+
+  async function handleAddSub(playerId: string) {
+    if (!match) return;
+    try {
+      await addSubstitute(clubId, matchId, playerId);
+      onSubstituteAdded(playerId);
+    } catch { /* ignore */ }
+    setShowSubPicker(false);
+  }
+
+  async function handleRemoveSub(playerId: string) {
+    if (!match) return;
+    try {
+      await removeSubstitute(clubId, matchId, playerId);
+      onSubstituteRemoved(playerId);
+    } catch { /* ignore */ }
+  }
+
+  function renderTeam(ids: string[], label: string, color: string, captainId?: string) {
+    return (
+      <View style={{ marginBottom: 20 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+          <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 12 }}>{label}</Text>
+          </View>
+          <Text style={{ color: color === '#60a5fa' ? '#2563eb' : '#f97316', fontSize: 15, fontWeight: '700' }}>
+            {label === 'A' ? (match?.homeTeam ?? 'Team A') : (match?.awayTeam ?? 'Team B')} ({ids.length})
+          </Text>
+        </View>
+        {ids.length === 0 ? (
+          <Text style={{ color: theme.textMuted, fontSize: 13, paddingLeft: 30 }}>No players assigned</Text>
+        ) : (
+          ids.map((id) => (
+            <View key={id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 12, backgroundColor: theme.surface, borderRadius: 8, marginBottom: 4, borderWidth: 1, borderColor: theme.border }}>
+              <Text style={{ flex: 1, color: theme.text, fontSize: 14 }}>{playerMap.get(id) ?? id}</Text>
+              {captainId === id && (
+                <View style={{ backgroundColor: theme.id === 'light' ? '#fef9c3' : '#3b2f0a', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, borderWidth: 1, borderColor: '#fbbf24' }}>
+                  <Text style={{ color: '#d97706', fontSize: 10, fontWeight: '700' }}>C</Text>
+                </View>
+              )}
+            </View>
+          ))
+        )}
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
+      {isAdmin && !matchHasStarted && (
+        <TouchableOpacity
+          onPress={() => navigation.navigate('TeamBuilder', { clubId, matchId, returnTo: 'LiveScoring' })}
+          style={{ backgroundColor: theme.accentDim, borderRadius: 8, padding: 12, alignItems: 'center', marginBottom: 16, borderWidth: 1, borderColor: theme.accent }}
+        >
+          <Text style={{ color: theme.accent, fontWeight: '700', fontSize: 14 }}>Edit Teams</Text>
+        </TouchableOpacity>
+      )}
+
+      {renderTeam(teamA, 'A', '#60a5fa', captainA)}
+      {renderTeam(teamB, 'B', '#f97316', captainB)}
+
+      <View style={{ borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 16 }}>
+        <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '700', marginBottom: 10 }}>SUBSTITUTES</Text>
+        {substituteIds.length === 0 && (
+          <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 10 }}>No substitutes added</Text>
+        )}
+        {substituteIds.map((id) => (
+          <View key={id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 12, backgroundColor: theme.surface, borderRadius: 8, marginBottom: 4, borderWidth: 1, borderColor: theme.border }}>
+            <Text style={{ flex: 1, color: theme.text, fontSize: 14 }}>{playerMap.get(id) ?? id}</Text>
+            <View style={{ backgroundColor: theme.id === 'light' ? '#f0fdf4' : '#0a2a1a', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, borderWidth: 1, borderColor: '#22c55e', marginRight: 8 }}>
+              <Text style={{ color: '#22c55e', fontSize: 9, fontWeight: '700' }}>SUB</Text>
+            </View>
+            {isAdmin && (
+              <TouchableOpacity onPress={() => handleRemoveSub(id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={{ color: theme.textMuted, fontSize: 16, fontWeight: '700' }}>✕</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ))}
+        {isAdmin && (
+          <TouchableOpacity
+            onPress={() => setShowSubPicker(true)}
+            style={{ borderWidth: 1, borderColor: theme.border, borderStyle: 'dashed', borderRadius: 8, padding: 12, alignItems: 'center', marginTop: 4 }}
+          >
+            <Text style={{ color: theme.accent, fontSize: 14, fontWeight: '600' }}>+ Add Substitute</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <Modal visible={showSubPicker} transparent animationType="slide" onRequestClose={() => setShowSubPicker(false)}>
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: '#00000066' }}>
+          <View style={{ backgroundColor: theme.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 36, maxHeight: '70%' }}>
+            <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700', marginBottom: 16 }}>Add Substitute</Text>
+            <ScrollView>
+              {substituteablePlayers.length === 0 ? (
+                <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 20 }}>All players are already substitutes</Text>
+              ) : (
+                substituteablePlayers.map((p) => (
+                  <TouchableOpacity
+                    key={p.id}
+                    onPress={() => handleAddSub(p.id)}
+                    style={{ flexDirection: 'row', alignItems: 'center', padding: 12, backgroundColor: theme.surfaceAlt, borderRadius: 8, marginBottom: 6 }}
+                  >
+                    <Text style={{ flex: 1, color: theme.text, fontSize: 14 }}>{p.displayName}</Text>
+                    {teamA.includes(p.id) && <Text style={{ color: '#60a5fa', fontSize: 11, fontWeight: '700' }}>Team A</Text>}
+                    {teamB.includes(p.id) && <Text style={{ color: '#f97316', fontSize: 11, fontWeight: '700' }}>Team B</Text>}
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+            <TouchableOpacity onPress={() => setShowSubPicker(false)} style={{ marginTop: 12, padding: 12, alignItems: 'center' }}>
+              <Text style={{ color: theme.textMuted, fontWeight: '600' }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </ScrollView>
+  );
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 function emptyBatterStats(): BatterStats {
@@ -1026,13 +1208,14 @@ export default function LiveScoringScreen() {
   const [firstInningsRuns, setFirstInningsRuns] = useState<number | null>(null);
   const [firstInnings, setFirstInnings] = useState<InningsState | null>(null);
   // Top-of-screen tab + which innings the scorecard shows.
-  const [tab, setTab] = useState<'scoring' | 'scorecard' | 'stats'>('scoring');
+  const [tab, setTab] = useState<'scoring' | 'scorecard' | 'stats' | 'teams'>('scoring');
   const [cardInnings, setCardInnings] = useState<1 | 2>(1);
+  const [showSubPicker, setShowSubPicker] = useState(false);
 
   // Pending ball flow
   const pendingInputRef = useRef<BallInput | null>(null);
   const pendingWagonRef = useRef<WagonShot | null>(null);
-  const pendingFieldingRef = useRef<{ eventId?: string; eventLabel?: string; fielderId?: string } | null>(null);
+  const pendingFieldingRef = useRef<{ eventId?: string; eventLabel?: string; fielderIds?: string[] } | null>(null);
   const [showWagon, setShowWagon] = useState(false);
   const [showFielding, setShowFielding] = useState(false);
   // Hide the fielder picker when the wicket sheet already captured the fielder
@@ -1335,7 +1518,7 @@ export default function LiveScoringScreen() {
     }
   }
 
-  function handleFieldingDone(eventId: string | null, fielderId: string | null) {
+  function handleFieldingDone(eventId: string | null, fielderIds: string[]) {
     // Snapshot the event label so counts survive later rule edits.
     const eventLabel = eventId
       ? clubRules?.fieldingEvents.find((e) => e.id === eventId)?.label
@@ -1343,7 +1526,7 @@ export default function LiveScoringScreen() {
     pendingFieldingRef.current = {
       eventId: eventId ?? undefined,
       eventLabel,
-      fielderId: fielderId ?? undefined,
+      fielderIds: fielderIds.length > 0 ? fielderIds : undefined,
     };
     setShowFielding(false);
     commitBall();
@@ -1370,7 +1553,7 @@ export default function LiveScoringScreen() {
     const ballEntry: BallEntry = { ...result.ballEntry };
     if (pendingWagonRef.current) ballEntry.wagon = pendingWagonRef.current;
     const fielding = pendingFieldingRef.current;
-    if (fielding && (fielding.eventId || fielding.fielderId)) {
+    if (fielding && (fielding.eventId || (fielding.fielderIds && fielding.fielderIds.length > 0))) {
       ballEntry.fielding = fielding;
     }
     pendingWagonRef.current = null;
@@ -1736,8 +1919,9 @@ export default function LiveScoringScreen() {
   const enabledDismissals = clubRules?.enabledDismissals ?? match?.rules.enabledDismissals ?? [];
   const liveCustomDismissals: CustomDismissal[] =
     clubRules?.customDismissals ?? match?.rules.customDismissals ?? [];
+  const substituteIds = match?.substitutes ?? [];
   const fieldingPlayers = innings
-    ? players.filter((p) => innings.bowlingIds.includes(p.id))
+    ? players.filter((p) => innings.bowlingIds.includes(p.id) || substituteIds.includes(p.id))
     : [];
   const enabledFieldingEvents = (clubRules?.fieldingEvents ?? []).filter((e) => e.enabled);
 
@@ -1856,14 +2040,14 @@ export default function LiveScoringScreen() {
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       {/* Top tabs */}
       <View style={{ flexDirection: 'row', backgroundColor: theme.surfaceAlt }}>
-        {(['scoring', 'scorecard', 'stats'] as const).map((t) => (
+        {(['scoring', 'scorecard', 'teams', 'stats'] as const).map((t) => (
           <TouchableOpacity
             key={t}
             onPress={() => setTab(t)}
             style={{ flex: 1, paddingVertical: 12, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: tab === t ? theme.accent : 'transparent' }}
           >
-            <Text style={{ color: tab === t ? theme.accent : theme.textMuted, fontWeight: '700', fontSize: 13 }}>
-              {t === 'scoring' ? 'SCORING' : t === 'scorecard' ? 'SCORECARD' : 'STATS'}
+            <Text style={{ color: tab === t ? theme.accent : theme.textMuted, fontWeight: '700', fontSize: 11 }}>
+              {t === 'scoring' ? 'SCORING' : t === 'scorecard' ? 'SCORECARD' : t === 'teams' ? 'TEAMS' : 'STATS'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -1890,6 +2074,20 @@ export default function LiveScoringScreen() {
             <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 40 }}>No data yet</Text>
           )}
         </View>
+      ) : tab === 'teams' ? (
+        <TeamsTab
+          match={match}
+          players={players}
+          isAdmin={isAdmin}
+          matchHasStarted={firstBallBowled}
+          clubId={clubId}
+          matchId={matchId}
+          navigation={navigation}
+          showSubPicker={showSubPicker}
+          setShowSubPicker={setShowSubPicker}
+          onSubstituteAdded={(playerId) => setMatch((m) => m ? { ...m, substitutes: [...(m.substitutes ?? []), playerId] } : m)}
+          onSubstituteRemoved={(playerId) => setMatch((m) => m ? { ...m, substitutes: (m.substitutes ?? []).filter((id) => id !== playerId) } : m)}
+        />
       ) : tab === 'stats' ? (
         <MatchStatsContent clubId={clubId} matchId={matchId} />
       ) : (

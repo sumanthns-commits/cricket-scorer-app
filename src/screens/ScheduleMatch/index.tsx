@@ -124,6 +124,8 @@ export default function ScheduleMatchScreen() {
         format === 'T20' ? 20 : format === 'ODI' ? 50 : parseInt(customOvers, 10) || undefined;
       const rules = { ...club.rules, oversPerInnings };
       const carryTeams = reusePrev && prevMatch;
+      const prevCaptainA = carryTeams && prevMatch.captainA && selectedIds.has(prevMatch.captainA) ? prevMatch.captainA : undefined;
+      const prevCaptainB = carryTeams && prevMatch.captainB && selectedIds.has(prevMatch.captainB) ? prevMatch.captainB : undefined;
       return createMatch({
         clubId,
         homeTeam: homeTeam.trim() || club.name,
@@ -135,10 +137,12 @@ export default function ScheduleMatchScreen() {
         squad: Array.from(selectedIds),
         teamA: carryTeams ? (prevMatch.teamA ?? []).filter((id) => selectedIds.has(id)) : undefined,
         teamB: carryTeams ? (prevMatch.teamB ?? []).filter((id) => selectedIds.has(id)) : undefined,
+        captainA: prevCaptainA,
+        captainB: prevCaptainB,
       });
     },
     onSuccess: (matchId) => {
-      navigation.replace('TeamBuilder', { clubId, matchId });
+      navigation.navigate('TeamBuilder', { clubId, matchId });
     },
   });
 

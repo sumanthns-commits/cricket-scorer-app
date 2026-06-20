@@ -113,8 +113,10 @@ function tallyFielding(
     }
 
     const fe = ball.fielding;
-    if (fe?.fielderId && fe.eventLabel) {
-      acc(fe.fielderId).eventPoints += eventPoints.get(fe.eventLabel) ?? 0;
+    if (fe?.eventLabel) {
+      const pts = eventPoints.get(fe.eventLabel) ?? 0;
+      const ids = fe.fielderIds ?? (fe.fielderId ? [fe.fielderId] : []);
+      for (const id of ids) acc(id).eventPoints += pts;
     }
   }
 }
