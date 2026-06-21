@@ -1421,9 +1421,11 @@ export default function LiveScoringScreen() {
   }
 
   function firstInningsBowlers(m: Match): string[] {
-    const batters = firstInningsBatters(m);
-    const all = [...(m.teamA ?? []), ...(m.teamB ?? [])];
-    return all.filter((id) => !batters.includes(id));
+    if (!m.toss) return m.teamB ?? [];
+    const tossWinnerBats =
+      (m.toss.winnerId === 'homeTeam' && m.toss.choice === 'bat') ||
+      (m.toss.winnerId === 'awayTeam' && m.toss.choice === 'field');
+    return tossWinnerBats ? (m.teamB ?? []) : (m.teamA ?? []);
   }
 
   // Teams swap for the 2nd innings: who bowled first now bats, and vice versa.
