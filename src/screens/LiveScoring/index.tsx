@@ -523,6 +523,7 @@ function WicketSheet({
   enabledDismissals,
   customDismissals,
   fieldingPlayers,
+  fieldingEvents,
   onSelect,
   onClose,
 }: {
@@ -530,15 +531,20 @@ function WicketSheet({
   enabledDismissals: StandardDismissalType[];
   customDismissals: Array<{ id: string; label: string; batterIsOut: boolean }>;
   fieldingPlayers: Player[];
-  onSelect: (type: string, fielderIds?: string[], completedRuns?: number) => void;
+  fieldingEvents: Array<{ id: string; label: string }>;
+  onSelect: (type: string, fielderIds?: string[], completedRuns?: number, eventId?: string) => void;
   onClose: () => void;
 }) {
   const [step, setStep] = useState<'type' | 'fielder'>('type');
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [pickedFielders, setPickedFielders] = useState<string[]>([]);
   const [completedRuns, setCompletedRuns] = useState(0);
+  const [catchFielderId, setCatchFielderId] = useState<string | null>(null);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const slideY = useRef(new Animated.Value(500)).current;
   const multiFielder = selectedType === 'run-out'; // run-outs can involve several fielders
+  const isCaught = selectedType === 'caught';
+  const hasCatchEvents = isCaught && fieldingEvents.length > 0;
 
   useEffect(() => {
     if (visible) {
@@ -546,6 +552,8 @@ function WicketSheet({
       setSelectedType(null);
       setPickedFielders([]);
       setCompletedRuns(0);
+      setCatchFielderId(null);
+      setSelectedEventId(null);
       Animated.spring(slideY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
     } else {
       Animated.timing(slideY, { toValue: 500, duration: 200, useNativeDriver: true }).start();
@@ -586,6 +594,11 @@ function WicketSheet({
         <Text style={{ color: '#ffffff', fontSize: 17, fontWeight: '700', marginBottom: 16 }}>
           {step === 'type' ? 'Wicket — how out?' : multiFielder ? 'Select fielders involved' : 'Select fielder'}
         </Text>
+        {step === 'fielder' && isCaught && (
+          <Text style={{ color: '#9ca3af', fontSize: 12, marginBottom: 12 }}>
+            {hasCatchEvents ? 'Select catcher, then optionally a fielding event' : 'Select catcher'}
+          </Text>
+        )}
 
         {step === 'type' ? (
           <ScrollView>
@@ -667,6 +680,69 @@ function WicketSheet({
             >
               <Text style={{ color: pickedFielders.length > 0 ? '#0a1628' : '#6b7280', fontWeight: '700', fontSize: 15 }}>
                 Done ({pickedFielders.length})
+              </Text>
+            </TouchableOpacity>
+          </>
+        ) : hasCatchEvents ? (
+          <>
+            <FlatList
+              data={fieldingPlayers}
+              keyExtractor={(p) => p.id}
+              renderItem={({ item }) => {
+                const picked = catchFielderId === item.id;
+                return (
+                  <TouchableOpacity
+                    onPress={() => { setCatchFielderId(item.id); setSelectedEventId(null); }}
+                    style={{
+                      padding: 14, borderRadius: 8, marginBottom: 8,
+                      backgroundColor: picked ? '#0d2e1a' : '#1e2d45',
+                      borderWidth: 1, borderColor: picked ? '#4ade80' : '#2d3f58',
+                      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: '#ffffff', fontSize: 15 }}>{item.displayName}</Text>
+                    {picked && <Text style={{ color: '#4ade80', fontSize: 14, fontWeight: '900' }}>✓</Text>}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+            {catchFielderId && (
+              <>
+                <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '700', marginBottom: 8, marginTop: 4 }}>
+                  FIELDING EVENT (OPTIONAL)
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                  {fieldingEvents.map((ev) => {
+                    const active = selectedEventId === ev.id;
+                    return (
+                      <TouchableOpacity
+                        key={ev.id}
+                        onPress={() => setSelectedEventId(active ? null : ev.id)}
+                        style={{
+                          paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20,
+                          backgroundColor: active ? '#4ade80' : '#1e2d45',
+                          borderWidth: 1, borderColor: active ? '#4ade80' : '#2d3f58',
+                        }}
+                      >
+                        <Text style={{ color: active ? '#0a1628' : '#d1d5db', fontSize: 13, fontWeight: '600' }}>
+                          {ev.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+            <TouchableOpacity
+              onPress={() => onSelect(selectedType!, catchFielderId ? [catchFielderId] : [], undefined, selectedEventId ?? undefined)}
+              disabled={!catchFielderId}
+              style={{
+                backgroundColor: catchFielderId ? '#4ade80' : '#2d3f58',
+                borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 4,
+              }}
+            >
+              <Text style={{ color: catchFielderId ? '#0a1628' : '#6b7280', fontWeight: '700', fontSize: 15 }}>
+                Done
               </Text>
             </TouchableOpacity>
           </>
@@ -1563,8 +1639,14 @@ export default function LiveScoringScreen() {
     // Caught: fielder + catch credit already captured in the dismissal entry —
     // no need to show the overlay for a separate event selection.
     const isCatch = !!d && d.type === 'caught';
-    if (isNoFielderWicket || isCatch || (fielderAlreadyRecorded && enabledFieldingEvents.length === 0)) {
-      // Nothing left to collect — skip the overlay entirely.
+    if (isNoFielderWicket) {
+      pendingFieldingRef.current = null;
+      commitBall();
+    } else if (isCatch) {
+      // Catch event may have been pre-set in pendingFieldingRef from WicketSheet — preserve it.
+      commitBall();
+    } else if (fielderAlreadyRecorded && enabledFieldingEvents.length === 0) {
+      // run-out / stumped with no fielding events configured — nothing to collect.
       pendingFieldingRef.current = null;
       commitBall();
     } else {
@@ -1792,9 +1874,14 @@ export default function LiveScoringScreen() {
 
   // ── Wicket ───────────────────────────────────────────────────────
 
-  function handleWicketSelect(type: string, fielderIds?: string[], completedRuns?: number) {
+  function handleWicketSelect(type: string, fielderIds?: string[], completedRuns?: number, eventId?: string) {
     setShowWicket(false);
     if (!innings) return;
+    // For caught: pre-populate the fielding event captured inline on the wicket sheet
+    if (type === 'caught' && eventId) {
+      const eventLabel = clubRules?.fieldingEvents.find((e) => e.id === eventId)?.label;
+      pendingFieldingRef.current = { eventId, eventLabel };
+    }
     startBall({
       batsmanId: innings.onStrikeId,
       bowlerId: innings.bowlerId,
@@ -2439,6 +2526,7 @@ export default function LiveScoringScreen() {
         enabledDismissals={enabledDismissals}
         customDismissals={liveCustomDismissals}
         fieldingPlayers={fieldingPlayers}
+        fieldingEvents={enabledFieldingEvents}
         onSelect={handleWicketSelect}
         onClose={() => setShowWicket(false)}
       />
