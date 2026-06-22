@@ -1250,6 +1250,9 @@ export default function LiveScoringScreen() {
   // Which end a replacement batter enters at — flips to 'offStrike' when an odd
   // number of runs is completed on a run-out (the batters crossed).
   const newBatterEndRef = useRef<'onStrike' | 'offStrike'>('onStrike');
+  // Set when a wicket falls on the last ball of an over — handleNewBatter
+  // chains to 'new-bowler' instead of 'scoring' after selecting the batter.
+  const needsNewBowlerAfterBatterRef = useRef(false);
 
   // Modals
   const [showWicket, setShowWicket] = useState(false);
@@ -1733,7 +1736,15 @@ export default function LiveScoringScreen() {
       // Replacement available. On a crossed run-out the out batter now sits at
       // the off-strike slot, so the replacement fills that end instead.
       newBatterEndRef.current = crossedOnRunOut ? 'offStrike' : 'onStrike';
-      setPhase(oversDone ? 'innings-over' : result.isOverComplete ? 'new-bowler' : 'new-batter');
+      if (oversDone) {
+        setPhase('innings-over');
+      } else if (result.isOverComplete) {
+        // Need both a new batter AND a new bowler — pick batter first, then bowler.
+        needsNewBowlerAfterBatterRef.current = true;
+        setPhase('new-batter');
+      } else {
+        setPhase('new-batter');
+      }
       return;
     }
 
@@ -1928,7 +1939,12 @@ export default function LiveScoringScreen() {
       if (!prev) return prev;
       return { ...prev, [end === 'offStrike' ? 'offStrikeId' : 'onStrikeId']: id };
     });
-    setPhase('scoring');
+    if (needsNewBowlerAfterBatterRef.current) {
+      needsNewBowlerAfterBatterRef.current = false;
+      setPhase('new-bowler');
+    } else {
+      setPhase('scoring');
+    }
   }
 
   // Mid-innings change of a batter/bowler (corrections, retirements, swaps).
