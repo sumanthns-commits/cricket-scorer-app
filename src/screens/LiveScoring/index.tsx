@@ -1528,6 +1528,13 @@ export default function LiveScoringScreen() {
     pendingWagonRef.current = null;
     pendingFieldingRef.current = null;
     setPendingRuns(input.runs + (input.extras?.runs ?? 0));
+    // Skip wagon wheel + fielding overlay for extras (wide, no-ball, bye, leg-bye)
+    // and for dot balls — no shot to plot and no fielding event to record.
+    const isDotBall = input.runs === 0 && !input.extras && !input.dismissal;
+    if (!!input.extras || isDotBall) {
+      commitBall();
+      return;
+    }
     // Stumped / hit-wicket have no shot to plot — skip the wagon wheel.
     const d = input.dismissal;
     const skipWagon = !!d && NO_WAGON.includes(d.type as StandardDismissalType);
