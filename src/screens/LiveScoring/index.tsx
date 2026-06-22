@@ -1235,6 +1235,7 @@ export default function LiveScoringScreen() {
   // Top-of-screen tab + which innings the scorecard shows.
   const [tab, setTab] = useState<'scoring' | 'scorecard' | 'stats' | 'teams'>('scoring');
   const [cardInnings, setCardInnings] = useState<1 | 2>(1);
+  useEffect(() => { setCardInnings(inningsNumber); }, [inningsNumber]);
   const [showSubPicker, setShowSubPicker] = useState(false);
 
   // Pending ball flow
