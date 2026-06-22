@@ -1864,7 +1864,17 @@ export default function LiveScoringScreen() {
     const targetOver = [...inningsOvers].reverse().find((o) => o.balls.length > 0);
     if (!targetOver) return;
 
+    const removedBall = targetOver.balls[targetOver.balls.length - 1];
     const trimmedBalls = targetOver.balls.slice(0, -1);
+
+    // Restore who was on strike BEFORE the removed ball. The ball's batsmanId
+    // is who faced it, so that's the on-striker going back. The off-striker is
+    // whoever ended up on strike after the ball (if rotation happened) or the
+    // stored off-striker (if it didn't).
+    const onStrikeBefore = removedBall.batsmanId;
+    const offStrikeBefore = targetOver.onStrikeId === onStrikeBefore
+      ? targetOver.offStrikeId   // no rotation after the ball
+      : targetOver.onStrikeId;   // rotation happened — current on-striker was off-striker before
 
     // Delete empty over docs that sit after the target — they're stale artifacts.
     const staleOvers = inningsOvers.filter(
@@ -1885,6 +1895,8 @@ export default function LiveScoringScreen() {
         bowlerId: targetOver.bowlerId,
         balls: trimmedBalls,
         isComplete: false,
+        onStrikeId: onStrikeBefore,
+        offStrikeId: offStrikeBefore,
       });
     }
     await load();
