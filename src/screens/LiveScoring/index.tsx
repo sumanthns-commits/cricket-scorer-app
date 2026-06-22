@@ -21,6 +21,7 @@ import {
   getClubPlayers,
   getMatchOvers,
   saveOver,
+  deleteOver,
   completeMatch,
   abandonMatch,
   deleteMatch,
@@ -37,6 +38,7 @@ import type {
   BallEntry,
   ClubRules,
   CustomDismissal,
+  DismissalEntry,
   ExtrasType,
   Match,
   Player,
@@ -939,6 +941,25 @@ function BowlerRow({
   );
 }
 
+// ─── Dismissal text ──────────────────────────────────────────────────
+
+function buildDismissalText(d: DismissalEntry, getName: (id: string) => string): string {
+  const bowler = d.bowlerId ? getName(d.bowlerId) : '';
+  const fielderIds = d.fielderIds ?? (d.fielderId ? [d.fielderId] : []);
+  const fielder = fielderIds.map(getName).join(' & ');
+  switch (d.type) {
+    case 'bowled': return `b ${bowler}`;
+    case 'lbw': return `lbw b ${bowler}`;
+    case 'caught': return fielder ? `c ${fielder} b ${bowler}` : `c & b ${bowler}`;
+    case 'stumped': return `st ${fielder} b ${bowler}`;
+    case 'run-out': return fielder ? `run out (${fielder})` : 'run out';
+    case 'hit-wicket': return `hit wkt b ${bowler}`;
+    case 'obstructing-field': return 'obstructing field';
+    case 'timed-out': return 'timed out';
+    default: return d.type;
+  }
+}
+
 // ─── Scorecard ───────────────────────────────────────────────────────
 
 function Scorecard({
@@ -976,7 +997,7 @@ function Scorecard({
       {batters.map((id) => {
         const s = inn.batterStats[id];
         const atCrease = id === inn.onStrikeId || id === inn.offStrikeId;
-        const status = s.isOut ? 'out' : atCrease ? 'not out' : '';
+        const status = s.isOut ? (s.dismissalText ?? 'out') : atCrease ? 'not out' : '';
         const sr = s.balls > 0 ? ((s.runs / s.balls) * 100).toFixed(0) : '–';
         return (
           <View key={id} style={{ flexDirection: 'row', paddingVertical: 6, borderTopWidth: 1, borderTopColor: theme.border }}>
@@ -1266,17 +1287,17 @@ export default function LiveScoringScreen() {
       } else if (secondOvers.length > 0) {
         // Resuming the 2nd innings (a chase).
         const firstRuns = sumInningsRuns(firstOvers);
-        setFirstInnings(reconstructInnings(firstOvers, ballsPerOver, liveMatch, 1));
+        setFirstInnings(reconstructInnings(firstOvers, ballsPerOver, liveMatch, 1, clubPlayers));
         setFirstInningsRuns(firstRuns);
         setInningsNumber(2);
-        const reconstructed = reconstructInnings(secondOvers, ballsPerOver, liveMatch, 2);
+        const reconstructed = reconstructInnings(secondOvers, ballsPerOver, liveMatch, 2, clubPlayers);
         setInnings(reconstructed);
         const chased = reconstructed.totalRuns >= firstRuns + 1;
         setPhase(chased || isInningsComplete(reconstructed, lastManStands, oversPerInnings) ? 'innings-over' : 'scoring');
       } else {
         // 1st innings (possibly already all out and awaiting the 2nd).
         setInningsNumber(1);
-        const reconstructed = reconstructInnings(firstOvers, ballsPerOver, liveMatch, 1);
+        const reconstructed = reconstructInnings(firstOvers, ballsPerOver, liveMatch, 1, clubPlayers);
         setInnings(reconstructed);
         setPhase(isInningsComplete(reconstructed, lastManStands, oversPerInnings) ? 'innings-over' : 'scoring');
       }
@@ -1318,10 +1339,11 @@ export default function LiveScoringScreen() {
 
   // ── Innings reconstruction ──────────────────────────────────────
 
-  function reconstructInnings(overs: import('../../types').OverDocument[], ballsPerOver: number, m: Match, n: number): InningsState {
+  function reconstructInnings(overs: import('../../types').OverDocument[], ballsPerOver: number, m: Match, n: number, localPlayers: Player[] = []): InningsState {
     const sorted = [...overs].sort((a, b) => a.overNumber - b.overNumber);
     const battingIds = battingForInnings(m, n);
     const bowlingIds = bowlingForInnings(m, n);
+    const localNameMap = Object.fromEntries(localPlayers.map((p) => [p.id, p.displayName]));
 
     const batterStats: Record<string, BatterStats> = {};
     const bowlerStats: Record<string, BowlerStats> = {};
@@ -1359,7 +1381,13 @@ export default function LiveScoringScreen() {
         bat.runs += ball.runs;
         if (ball.runs === 4 && !ball.extras) bat.fours++;
         if (ball.runs === 6 && !ball.extras) bat.sixes++;
-        if (isOut) bat.isOut = true;
+        if (isOut) {
+          bat.isOut = true;
+          if (ball.dismissal) {
+            const getName = (id: string) => localNameMap[id] ?? id;
+            bat.dismissalText = buildDismissalText(ball.dismissal, getName);
+          }
+        }
 
         bs.runsConceded += runs;
         if (isLegal) bs.legalBalls++;
@@ -1571,7 +1599,16 @@ export default function LiveScoringScreen() {
     if (result.isLegalDelivery) bat.balls++;
     if (input.runs === 4 && !input.extras) bat.fours++;
     if (input.runs === 6 && !input.extras) bat.sixes++;
-    if (result.batterIsOut) bat.isOut = true;
+    if (result.batterIsOut) {
+      bat.isOut = true;
+      if (input.dismissal) {
+        const getName = (id: string) => playerMap[id]?.displayName ?? id;
+        bat.dismissalText = buildDismissalText(
+          { ...input.dismissal, bowlerId: input.bowlerId },
+          getName
+        );
+      }
+    }
     newBatterStats[input.batsmanId] = bat;
 
     // Update bowler stats
@@ -1792,18 +1829,34 @@ export default function LiveScoringScreen() {
       .filter((o) => o.inningsId === innings.inningsId)
       .sort((a, b) => a.overNumber - b.overNumber);
     if (inningsOvers.length === 0) return;
-    const lastOver = inningsOvers[inningsOvers.length - 1];
-    if (lastOver.balls.length === 0) return;
-    const trimmedBalls = lastOver.balls.slice(0, -1);
-    await saveOver({
-      clubId,
-      matchId: match.id,
-      inningsId: innings.inningsId,
-      overNumber: lastOver.overNumber,
-      bowlerId: lastOver.bowlerId,
-      balls: trimmedBalls,
-      isComplete: false,
-    });
+
+    // Skip empty over docs (left behind by prior undo calls) to find the real last ball.
+    const targetOver = [...inningsOvers].reverse().find((o) => o.balls.length > 0);
+    if (!targetOver) return;
+
+    const trimmedBalls = targetOver.balls.slice(0, -1);
+
+    // Delete empty over docs that sit after the target — they're stale artifacts.
+    const staleOvers = inningsOvers.filter(
+      (o) => o.overNumber > targetOver.overNumber && o.balls.length === 0
+    );
+    await Promise.all(staleOvers.map((o) => deleteOver(clubId, match.id, o.id)));
+
+    if (trimmedBalls.length === 0) {
+      // Deleting the only ball in this over — remove the doc entirely so no
+      // zero-ball ghost blocks the next undo.
+      await deleteOver(clubId, match.id, targetOver.id);
+    } else {
+      await saveOver({
+        clubId,
+        matchId: match.id,
+        inningsId: innings.inningsId,
+        overNumber: targetOver.overNumber,
+        bowlerId: targetOver.bowlerId,
+        balls: trimmedBalls,
+        isComplete: false,
+      });
+    }
     await load();
   }
 

@@ -208,6 +208,10 @@ export async function getMatchOvers(
   return snap.docs.map((d) => d.data() as OverDocument);
 }
 
+export async function deleteOver(clubId: string, matchId: string, overId: string): Promise<void> {
+  await deleteDoc(doc(db, 'clubs', clubId, 'matches', matchId, 'overs', overId));
+}
+
 export async function saveOver(params: {
   clubId: string;
   matchId: string;
