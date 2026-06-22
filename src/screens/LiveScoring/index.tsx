@@ -996,13 +996,17 @@ function Scorecard({
       </View>
       {batters.map((id) => {
         const s = inn.batterStats[id];
-        const atCrease = id === inn.onStrikeId || id === inn.offStrikeId;
+        const onStrike = id === inn.onStrikeId;
+        const atCrease = onStrike || id === inn.offStrikeId;
         const status = s.isOut ? (s.dismissalText ?? 'out') : atCrease ? 'not out' : '';
         const sr = s.balls > 0 ? ((s.runs / s.balls) * 100).toFixed(0) : '–';
         return (
           <View key={id} style={{ flexDirection: 'row', paddingVertical: 6, borderTopWidth: 1, borderTopColor: theme.border }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: theme.text, fontSize: 13 }}>{playerMap[id]?.displayName ?? id}</Text>
+              <Text style={{ color: theme.text, fontSize: 13 }}>
+                {playerMap[id]?.displayName ?? id}
+                {onStrike ? <Text style={{ color: theme.accent, fontWeight: '700' }}> *</Text> : null}
+              </Text>
               {status ? <Text style={{ color: s.isOut ? theme.textMuted : theme.accent, fontSize: 10 }}>{status}</Text> : null}
             </View>
             <Text style={num}>{s.runs}</Text>
