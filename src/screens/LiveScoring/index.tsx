@@ -513,7 +513,7 @@ const STD_LABELS: Record<StandardDismissalType, string> = {
 
 const FIELDER_NEEDED: StandardDismissalType[] = ['caught', 'stumped', 'run-out'];
 // These dismissals have no shot to plot, so the wagon wheel is skipped.
-const NO_WAGON: StandardDismissalType[] = ['bowled', 'stumped', 'hit-wicket'];
+const NO_WAGON: StandardDismissalType[] = ['bowled', 'run-out', 'stumped', 'hit-wicket'];
 // Dismissals where a fielder is already captured on the wicket sheet, so the
 // fielding overlay shouldn't ask for the fielder again.
 const FIELDER_ALREADY_RECORDED: StandardDismissalType[] = ['caught', 'run-out', 'stumped'];
@@ -670,8 +670,35 @@ function WicketSheet({
                 );
               }}
             />
+            {pickedFielders.length > 0 && fieldingEvents.length > 0 && (
+              <>
+                <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '700', marginBottom: 8, marginTop: 4 }}>
+                  FIELDING EVENT (OPTIONAL)
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                  {fieldingEvents.map((ev) => {
+                    const active = selectedEventId === ev.id;
+                    return (
+                      <TouchableOpacity
+                        key={ev.id}
+                        onPress={() => setSelectedEventId(active ? null : ev.id)}
+                        style={{
+                          paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20,
+                          backgroundColor: active ? '#4ade80' : '#1e2d45',
+                          borderWidth: 1, borderColor: active ? '#4ade80' : '#2d3f58',
+                        }}
+                      >
+                        <Text style={{ color: active ? '#0a1628' : '#d1d5db', fontSize: 13, fontWeight: '600' }}>
+                          {ev.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
             <TouchableOpacity
-              onPress={() => onSelect(selectedType!, pickedFielders, completedRuns)}
+              onPress={() => onSelect(selectedType!, pickedFielders, completedRuns, selectedEventId ?? undefined)}
               disabled={pickedFielders.length === 0}
               style={{
                 backgroundColor: pickedFielders.length > 0 ? '#4ade80' : '#2d3f58',
@@ -1639,14 +1666,15 @@ export default function LiveScoringScreen() {
     // Caught: fielder + catch credit already captured in the dismissal entry —
     // no need to show the overlay for a separate event selection.
     const isCatch = !!d && d.type === 'caught';
+    const isRunOut = !!d && d.type === 'run-out';
     if (isNoFielderWicket) {
       pendingFieldingRef.current = null;
       commitBall();
-    } else if (isCatch) {
-      // Catch event may have been pre-set in pendingFieldingRef from WicketSheet — preserve it.
+    } else if (isCatch || isRunOut) {
+      // Fielding event (if any) was pre-set in pendingFieldingRef from WicketSheet — preserve it.
       commitBall();
     } else if (fielderAlreadyRecorded && enabledFieldingEvents.length === 0) {
-      // run-out / stumped with no fielding events configured — nothing to collect.
+      // stumped with no fielding events configured — nothing to collect.
       pendingFieldingRef.current = null;
       commitBall();
     } else {
@@ -1877,8 +1905,8 @@ export default function LiveScoringScreen() {
   function handleWicketSelect(type: string, fielderIds?: string[], completedRuns?: number, eventId?: string) {
     setShowWicket(false);
     if (!innings) return;
-    // For caught: pre-populate the fielding event captured inline on the wicket sheet
-    if (type === 'caught' && eventId) {
+    // For caught/run-out: pre-populate the fielding event captured inline on the wicket sheet
+    if ((type === 'caught' || type === 'run-out') && eventId) {
       const eventLabel = clubRules?.fieldingEvents.find((e) => e.id === eventId)?.label;
       pendingFieldingRef.current = { eventId, eventLabel };
     }
