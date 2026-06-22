@@ -85,7 +85,7 @@ export default function ScheduleMatchScreen() {
   const [format, setFormat] = useState<MatchFormat>('custom');
   const [customOvers, setCustomOvers] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [reuseMode, setReuseMode] = useState<'none' | 'squad' | 'teams'>('squad');
+  const [reuseMode, setReuseMode] = useState<'none' | 'squad' | 'teams-edit' | 'teams'>('squad');
   const [prefilled, setPrefilled] = useState(false);
 
   const { data: club } = useQuery({
@@ -120,10 +120,30 @@ export default function ScheduleMatchScreen() {
     mutationFn: async () => {
       if (!club) throw new Error('Club data not loaded');
       const matchDate = new Date(year, month, day);
+
+      // 'teams' mode: clone previous match exactly — only date is new
+      if (reuseMode === 'teams' && prevMatch) {
+        const rules = { ...club.rules, oversPerInnings: prevMatch.rules.oversPerInnings };
+        return createMatch({
+          clubId,
+          homeTeam: prevMatch.homeTeam,
+          awayTeam: prevMatch.awayTeam,
+          venue: prevMatch.venue ?? '',
+          date: matchDate,
+          format: prevMatch.format ?? 'custom',
+          rules,
+          squad: prevMatch.squad ?? [],
+          teamA: prevMatch.teamA,
+          teamB: prevMatch.teamB,
+          captainA: prevMatch.captainA,
+          captainB: prevMatch.captainB,
+        });
+      }
+
       const oversPerInnings =
         format === 'T20' ? 20 : format === 'ODI' ? 50 : parseInt(customOvers, 10) || undefined;
       const rules = { ...club.rules, oversPerInnings };
-      const carryTeams = reuseMode === 'teams' && prevMatch;
+      const carryTeams = (reuseMode === 'teams-edit') && prevMatch;
       const prevCaptainA = carryTeams && prevMatch.captainA && selectedIds.has(prevMatch.captainA) ? prevMatch.captainA : undefined;
       const prevCaptainB = carryTeams && prevMatch.captainB && selectedIds.has(prevMatch.captainB) ? prevMatch.captainB : undefined;
       return createMatch({
@@ -173,7 +193,7 @@ export default function ScheduleMatchScreen() {
   const selectAll = () => setSelectedIds(new Set(players.map((p) => p.id)));
   const clearAll = () => setSelectedIds(new Set());
 
-  const selectReuseMode = (mode: 'none' | 'squad' | 'teams') => {
+  const selectReuseMode = (mode: 'none' | 'squad' | 'teams-edit' | 'teams') => {
     setReuseMode(mode);
     if (mode === 'none') {
       clearAll();
@@ -183,7 +203,10 @@ export default function ScheduleMatchScreen() {
   };
 
   const customOversValid = format !== 'custom' || parseInt(customOvers, 10) >= 1;
-  const canSubmit = selectedIds.size >= 2 && !isPending && !!club && customOversValid;
+  const isQuickRematch = reuseMode === 'teams';
+  const canSubmit = isQuickRematch
+    ? !!prevMatch && !!club && !isPending
+    : selectedIds.size >= 2 && !isPending && !!club && customOversValid;
 
   const inputStyle = {
     backgroundColor: theme.surface,
@@ -203,91 +226,14 @@ export default function ScheduleMatchScreen() {
       contentContainerStyle={{ padding: 16 }}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 4 }}>HOME TEAM</Text>
-      <TextInput
-        value={homeTeam}
-        onChangeText={setHomeTeam}
-        placeholder={club?.name ?? 'Home team name'}
-        placeholderTextColor={theme.textMuted}
-        style={inputStyle}
-      />
-
-      <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 4 }}>AWAY TEAM</Text>
-      <TextInput
-        value={awayTeam}
-        onChangeText={setAwayTeam}
-        placeholder="Opponents"
-        placeholderTextColor={theme.textMuted}
-        style={inputStyle}
-      />
-
-      <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 4 }}>VENUE</Text>
-      <TextInput
-        value={venue}
-        onChangeText={setVenue}
-        placeholder="Ground name"
-        placeholderTextColor={theme.textMuted}
-        style={{ ...inputStyle, marginBottom: 20 }}
-      />
-
-      <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 8 }}>DATE</Text>
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
-        <SpinPicker label="Day" value={String(day)} onInc={() => adjustDay(1)} onDec={() => adjustDay(-1)} />
-        <SpinPicker label="Month" value={MONTHS[month]} onInc={() => adjustMonth(1)} onDec={() => adjustMonth(-1)} />
-        <SpinPicker label="Year" value={String(year)} onInc={() => adjustYear(1)} onDec={() => adjustYear(-1)} />
-      </View>
-
-      <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 8 }}>FORMAT</Text>
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: format === 'custom' ? 8 : 20 }}>
-        {(['T20', 'ODI', 'custom'] as MatchFormat[]).map((f) => (
-          <TouchableOpacity
-            key={f}
-            onPress={() => setFormat(f)}
-            style={{
-              flex: 1,
-              padding: 10,
-              borderRadius: 8,
-              backgroundColor: format === f ? theme.accent : theme.surface,
-              borderWidth: 1,
-              borderColor: format === f ? theme.accent : theme.border,
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ color: format === f ? '#ffffff' : theme.text, fontWeight: '600', fontSize: 14 }}>
-              {f === 'custom' ? 'Custom' : f}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      {format === 'custom' && (
-        <>
-          <TextInput
-            value={customOvers}
-            onChangeText={setCustomOvers}
-            placeholder="Overs per innings (required)"
-            placeholderTextColor={theme.textMuted}
-            keyboardType="numeric"
-            style={{
-              ...inputStyle,
-              marginBottom: customOversValid ? 20 : 4,
-              borderColor: customOversValid ? theme.border : '#dc2626',
-            }}
-          />
-          {!customOversValid && (
-            <Text style={{ color: '#dc2626', fontSize: 12, marginBottom: 20 }}>
-              Enter the number of overs per innings
-            </Text>
-          )}
-        </>
-      )}
-
       {prevMatch && (
         <>
           <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 8 }}>PREVIOUS MATCH</Text>
           {([
-            { mode: 'none' as const,  title: 'Fresh squad',    desc: 'Select players and build teams from scratch' },
-            { mode: 'squad' as const, title: 'Previous squad', desc: 'Reuse player selection, build teams in next step' },
-            { mode: 'teams' as const, title: 'Same teams',     desc: 'Carry over teams and go straight to toss' },
+            { mode: 'none' as const,       title: 'Fresh squad',         desc: 'Select players and build teams from scratch' },
+            { mode: 'squad' as const,      title: 'Previous squad',      desc: 'Reuse player selection, build teams in next step' },
+            { mode: 'teams-edit' as const, title: 'Same teams (edit)',   desc: 'Carry over teams, open team builder to adjust' },
+            { mode: 'teams' as const,      title: 'Quick rematch',       desc: 'Same setup as last match — only pick the date' },
           ]).map(({ mode, title, desc }) => {
             const active = reuseMode === mode;
             return (
@@ -318,67 +264,153 @@ export default function ScheduleMatchScreen() {
         </>
       )}
 
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-          SQUAD ({selectedIds.size} of {players.length} selected)
-        </Text>
-        <View style={{ flexDirection: 'row', gap: 12 }}>
-          <TouchableOpacity onPress={selectAll}>
-            <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>All</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={clearAll}>
-            <Text style={{ color: theme.textMuted, fontSize: 13 }}>None</Text>
-          </TouchableOpacity>
-        </View>
+      {!isQuickRematch && (
+        <>
+          <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 4 }}>HOME TEAM</Text>
+          <TextInput
+            value={homeTeam}
+            onChangeText={setHomeTeam}
+            placeholder={club?.name ?? 'Home team name'}
+            placeholderTextColor={theme.textMuted}
+            style={inputStyle}
+          />
+
+          <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 4 }}>AWAY TEAM</Text>
+          <TextInput
+            value={awayTeam}
+            onChangeText={setAwayTeam}
+            placeholder="Opponents"
+            placeholderTextColor={theme.textMuted}
+            style={inputStyle}
+          />
+
+          <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 4 }}>VENUE</Text>
+          <TextInput
+            value={venue}
+            onChangeText={setVenue}
+            placeholder="Ground name"
+            placeholderTextColor={theme.textMuted}
+            style={{ ...inputStyle, marginBottom: 20 }}
+          />
+        </>
+      )}
+
+      <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 8 }}>DATE</Text>
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
+        <SpinPicker label="Day" value={String(day)} onInc={() => adjustDay(1)} onDec={() => adjustDay(-1)} />
+        <SpinPicker label="Month" value={MONTHS[month]} onInc={() => adjustMonth(1)} onDec={() => adjustMonth(-1)} />
+        <SpinPicker label="Year" value={String(year)} onInc={() => adjustYear(1)} onDec={() => adjustYear(-1)} />
       </View>
 
-      {loadingPlayers ? (
-        <ActivityIndicator color={theme.accent} style={{ marginVertical: 20 }} />
-      ) : players.length === 0 ? (
-        <Text style={{ color: theme.textMuted, textAlign: 'center', marginVertical: 16 }}>
-          No players in club yet
-        </Text>
-      ) : (
-        players.map((player) => {
-          const selected = selectedIds.has(player.id);
-          return (
-            <TouchableOpacity
-              key={player.id}
-              onPress={() => togglePlayer(player.id)}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                backgroundColor: selected ? theme.accentDim : theme.surface,
-                borderRadius: 8,
-                padding: 12,
-                marginBottom: 8,
-                borderWidth: 1,
-                borderColor: selected ? theme.accent : theme.border,
-              }}
-            >
-              <View
+      {!isQuickRematch && (
+        <>
+          <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 8 }}>FORMAT</Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: format === 'custom' ? 8 : 20 }}>
+            {(['T20', 'ODI', 'custom'] as MatchFormat[]).map((f) => (
+              <TouchableOpacity
+                key={f}
+                onPress={() => setFormat(f)}
                 style={{
-                  width: 20, height: 20, borderRadius: 4,
-                  backgroundColor: selected ? theme.accent : 'transparent',
-                  borderWidth: 2,
-                  borderColor: selected ? theme.accent : theme.textMuted,
-                  marginRight: 12,
-                  alignItems: 'center', justifyContent: 'center',
+                  flex: 1,
+                  padding: 10,
+                  borderRadius: 8,
+                  backgroundColor: format === f ? theme.accent : theme.surface,
+                  borderWidth: 1,
+                  borderColor: format === f ? theme.accent : theme.border,
+                  alignItems: 'center',
                 }}
               >
-                {selected && (
-                  <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '900' }}>✓</Text>
-                )}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: theme.text, fontSize: 15 }}>{player.displayName}</Text>
-                <Text style={{ color: theme.textMuted, fontSize: 12, textTransform: 'capitalize' }}>
-                  {player.type}
+                <Text style={{ color: format === f ? '#ffffff' : theme.text, fontWeight: '600', fontSize: 14 }}>
+                  {f === 'custom' ? 'Custom' : f}
                 </Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })
+              </TouchableOpacity>
+            ))}
+          </View>
+          {format === 'custom' && (
+            <>
+              <TextInput
+                value={customOvers}
+                onChangeText={setCustomOvers}
+                placeholder="Overs per innings (required)"
+                placeholderTextColor={theme.textMuted}
+                keyboardType="numeric"
+                style={{
+                  ...inputStyle,
+                  marginBottom: customOversValid ? 20 : 4,
+                  borderColor: customOversValid ? theme.border : '#dc2626',
+                }}
+              />
+              {!customOversValid && (
+                <Text style={{ color: '#dc2626', fontSize: 12, marginBottom: 20 }}>
+                  Enter the number of overs per innings
+                </Text>
+              )}
+            </>
+          )}
+
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <Text style={{ color: theme.textMuted, fontSize: 12 }}>
+              SQUAD ({selectedIds.size} of {players.length} selected)
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity onPress={selectAll}>
+                <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>All</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={clearAll}>
+                <Text style={{ color: theme.textMuted, fontSize: 13 }}>None</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {loadingPlayers ? (
+            <ActivityIndicator color={theme.accent} style={{ marginVertical: 20 }} />
+          ) : players.length === 0 ? (
+            <Text style={{ color: theme.textMuted, textAlign: 'center', marginVertical: 16 }}>
+              No players in club yet
+            </Text>
+          ) : (
+            players.map((player) => {
+              const selected = selectedIds.has(player.id);
+              return (
+                <TouchableOpacity
+                  key={player.id}
+                  onPress={() => togglePlayer(player.id)}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: selected ? theme.accentDim : theme.surface,
+                    borderRadius: 8,
+                    padding: 12,
+                    marginBottom: 8,
+                    borderWidth: 1,
+                    borderColor: selected ? theme.accent : theme.border,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 20, height: 20, borderRadius: 4,
+                      backgroundColor: selected ? theme.accent : 'transparent',
+                      borderWidth: 2,
+                      borderColor: selected ? theme.accent : theme.textMuted,
+                      marginRight: 12,
+                      alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    {selected && (
+                      <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '900' }}>✓</Text>
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: theme.text, fontSize: 15 }}>{player.displayName}</Text>
+                    <Text style={{ color: theme.textMuted, fontSize: 12, textTransform: 'capitalize' }}>
+                      {player.type}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </>
       )}
 
       {error instanceof Error && (
@@ -403,7 +435,7 @@ export default function ScheduleMatchScreen() {
           <ActivityIndicator color="#ffffff" />
         ) : (
           <Text style={{ color: canSubmit ? '#ffffff' : theme.textMuted, fontSize: 16, fontWeight: '700' }}>
-            {reuseMode === 'teams' ? 'Create & Go to Toss' : 'Create & Build Teams'}
+            {reuseMode === 'teams' ? 'Quick Rematch' : 'Create & Build Teams'}
           </Text>
         )}
       </TouchableOpacity>
