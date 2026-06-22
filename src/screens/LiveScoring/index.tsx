@@ -1638,9 +1638,10 @@ export default function LiveScoringScreen() {
       commitBall();
       return;
     }
-    // Stumped / hit-wicket have no shot to plot — skip the wagon wheel.
+    // Custom dismissals and specific standard dismissals skip the wagon wheel.
     const d = input.dismissal;
-    const skipWagon = !!d && NO_WAGON.includes(d.type as StandardDismissalType);
+    const isCustomDismissal = !!d && !(d.type in STD_LABELS);
+    const skipWagon = isCustomDismissal || (!!d && NO_WAGON.includes(d.type as StandardDismissalType));
     if (skipWagon) {
       proceedAfterWagon();
     } else {
@@ -1658,16 +1659,15 @@ export default function LiveScoringScreen() {
     // Skip the fielding overlay for wickets where no fielder is involved
     // (bowled, lbw, hit-wicket, etc.) — only caught/stumped/run-out need one.
     const d = pendingInputRef.current?.dismissal;
+    const isCustomDismissal = !!d && !(d.type in STD_LABELS);
     const isNoFielderWicket =
       !!d && d.type in STD_LABELS && !FIELDER_NEEDED.includes(d.type as StandardDismissalType);
     // Caught / run-out already recorded the fielder on the wicket sheet.
     const fielderAlreadyRecorded =
       !!d && FIELDER_ALREADY_RECORDED.includes(d.type as StandardDismissalType);
-    // Caught: fielder + catch credit already captured in the dismissal entry —
-    // no need to show the overlay for a separate event selection.
     const isCatch = !!d && d.type === 'caught';
     const isRunOut = !!d && d.type === 'run-out';
-    if (isNoFielderWicket) {
+    if (isCustomDismissal || isNoFielderWicket) {
       pendingFieldingRef.current = null;
       commitBall();
     } else if (isCatch || isRunOut) {
