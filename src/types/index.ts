@@ -148,6 +148,9 @@ export interface FieldingEventConfig {
   // Whether this event appears for wicket dismissals, non-wicket balls, or both.
   // Absent on legacy events — treated as 'both'.
   scope?: 'wicket' | 'non-wicket' | 'both';
+  // When scope is 'wicket', optionally restrict to specific dismissal types
+  // (e.g. ['caught', 'run-out']). Empty or absent means all supported wicket types.
+  wicketTypes?: string[];
 }
 
 export interface ClubRules {

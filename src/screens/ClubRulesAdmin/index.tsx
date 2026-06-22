@@ -76,6 +76,7 @@ function resolveRules(raw: Partial<ClubRules>): ClubRules {
       ...e,
       polarity: e.polarity ?? 'neutral',
       scope: e.scope ?? 'both',
+      wicketTypes: e.wicketTypes ?? [],
     })),
   };
 }
@@ -212,13 +213,47 @@ function FieldingEventRow({ item, index, total, onChange, onRemove, onMoveUp, on
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => { const i = SCOPE_CYCLE.indexOf(scope); onChange({ scope: SCOPE_CYCLE[(i + 1) % SCOPE_CYCLE.length] }); }}
+          onPress={() => { const i = SCOPE_CYCLE.indexOf(scope); onChange({ scope: SCOPE_CYCLE[(i + 1) % SCOPE_CYCLE.length], wicketTypes: [] }); }}
           disabled={disabled}
           style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: scopeMeta.color, backgroundColor: scopeMeta.bg, alignItems: 'center', opacity: disabled ? 0.5 : 1 }}
         >
           <Text style={{ color: scopeMeta.color, fontSize: 12, fontWeight: '700' }}>{scopeMeta.label}</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Row 3: wicket-type association (only when scope = 'wicket') */}
+      {scope === 'wicket' && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, marginLeft: 28, flexWrap: 'wrap' }}>
+          <Text style={{ color: theme.textMuted, fontSize: 11 }}>For:</Text>
+          {(['caught', 'run-out'] as const).map((wt) => {
+            const active = (item.wicketTypes ?? []).includes(wt);
+            return (
+              <TouchableOpacity
+                key={wt}
+                onPress={() => {
+                  const current = item.wicketTypes ?? [];
+                  onChange({ wicketTypes: active ? current.filter((t) => t !== wt) : [...current, wt] });
+                }}
+                disabled={disabled}
+                style={{
+                  paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: active ? '#f59e0b' : theme.border,
+                  backgroundColor: active ? 'rgba(245,158,11,0.12)' : 'transparent',
+                  opacity: disabled ? 0.5 : 1,
+                }}
+              >
+                <Text style={{ color: active ? '#f59e0b' : theme.textMuted, fontSize: 12, fontWeight: '600' }}>
+                  {wt === 'caught' ? 'Caught' : 'Run-out'}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+          {(item.wicketTypes ?? []).length === 0 && (
+            <Text style={{ color: theme.textMuted, fontSize: 11 }}>All</Text>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -400,6 +435,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
       enabled: true,
       polarity: 'neutral',
       scope: 'both',
+      wicketTypes: [],
     };
     setField('fieldingEvents', [...draft.fieldingEvents, newItem]);
   }

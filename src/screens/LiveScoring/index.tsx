@@ -216,7 +216,7 @@ function FieldingPanel({
   visible: boolean;
   runs: number;
   players: Player[];
-  fieldingEvents: Array<{ id: string; label: string }>;
+  fieldingEvents: Array<{ id: string; label: string; wicketTypes?: string[] }>;
   hideFielders: boolean;
   onDone: (eventId: string | null, fielderIds: string[]) => void;
 }) {
@@ -531,7 +531,7 @@ function WicketSheet({
   enabledDismissals: StandardDismissalType[];
   customDismissals: Array<{ id: string; label: string; batterIsOut: boolean }>;
   fieldingPlayers: Player[];
-  fieldingEvents: Array<{ id: string; label: string }>;
+  fieldingEvents: Array<{ id: string; label: string; wicketTypes?: string[] }>;
   onSelect: (type: string, fielderIds?: string[], completedRuns?: number, eventId?: string) => void;
   onClose: () => void;
 }) {
@@ -544,8 +544,12 @@ function WicketSheet({
   const slideY = useRef(new Animated.Value(500)).current;
   const multiFielder = selectedType === 'run-out'; // run-outs can involve several fielders
   const isCaught = selectedType === 'caught';
+  // Filter events by wicketTypes association: empty/absent means all supported types.
+  const applicableEvents = fieldingEvents.filter((e) =>
+    !e.wicketTypes || e.wicketTypes.length === 0 || e.wicketTypes.includes(selectedType ?? '')
+  );
   // Only caught supports inline fielding event chip selection
-  const hasSingleFielderEvents = isCaught && fieldingEvents.length > 0;
+  const hasSingleFielderEvents = isCaught && applicableEvents.length > 0;
 
   useEffect(() => {
     if (visible) {
@@ -671,13 +675,13 @@ function WicketSheet({
                 );
               }}
             />
-            {pickedFielders.length > 0 && fieldingEvents.length > 0 && (
+            {pickedFielders.length > 0 && applicableEvents.length > 0 && (
               <>
                 <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '700', marginBottom: 8, marginTop: 4 }}>
                   FIELDING EVENT (OPTIONAL)
                 </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-                  {fieldingEvents.map((ev) => {
+                  {applicableEvents.map((ev) => {
                     const active = selectedEventId === ev.id;
                     return (
                       <TouchableOpacity
@@ -740,7 +744,7 @@ function WicketSheet({
                   FIELDING EVENT (OPTIONAL)
                 </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-                  {fieldingEvents.map((ev) => {
+                  {applicableEvents.map((ev) => {
                     const active = selectedEventId === ev.id;
                     return (
                       <TouchableOpacity
