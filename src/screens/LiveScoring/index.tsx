@@ -1421,8 +1421,14 @@ export default function LiveScoringScreen() {
     // Prefer the stored batters from the last over document (written on every
     // ball save) over the replayed values, which can diverge if openers were
     // chosen in a non-default order or if a run-out crossed the batters.
-    const storedOnStrike = lastOver?.onStrikeId;
-    const storedOffStrike = lastOver?.offStrikeId;
+    const resolvedOnStrike = lastOver?.onStrikeId ?? onStrikeId;
+    const resolvedOffStrike = lastOver?.offStrikeId ?? offStrikeId;
+
+    // A batter at the crease who hasn't faced a ball yet has no batterStats
+    // entry from the replay loop. Seed empty entries so the scorecard filter
+    // (which guards on !!s) always shows the current pair.
+    if (resolvedOnStrike && !batterStats[resolvedOnStrike]) batterStats[resolvedOnStrike] = emptyBatterStats();
+    if (resolvedOffStrike && !batterStats[resolvedOffStrike]) batterStats[resolvedOffStrike] = emptyBatterStats();
 
     return {
       inningsId: `innings-${n}`,
@@ -1434,8 +1440,8 @@ export default function LiveScoringScreen() {
         ? (lastOver.overNumber + 1)
         : (lastOver?.overNumber ?? 0),
       legalBallsInOver,
-      onStrikeId: storedOnStrike ?? onStrikeId,
-      offStrikeId: storedOffStrike ?? offStrikeId,
+      onStrikeId: resolvedOnStrike,
+      offStrikeId: resolvedOffStrike,
       bowlerId: lastOver?.bowlerId ?? bowlingIds[0] ?? '',
       batterStats,
       bowlerStats,
