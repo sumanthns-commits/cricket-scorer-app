@@ -125,13 +125,17 @@ export async function setMatchTeams(params: {
   teamB: string[];
   captainA?: string;
   captainB?: string;
+  homeTeam?: string;
+  awayTeam?: string;
 }): Promise<void> {
-  const { clubId, matchId, teamA, teamB, captainA, captainB } = params;
+  const { clubId, matchId, teamA, teamB, captainA, captainB, homeTeam, awayTeam } = params;
   await updateDoc(doc(db, 'clubs', clubId, 'matches', matchId), {
     teamA,
     teamB,
     captainA: captainA ?? null,
     captainB: captainB ?? null,
+    ...(homeTeam !== undefined && { homeTeam }),
+    ...(awayTeam !== undefined && { awayTeam }),
   });
 }
 

@@ -56,6 +56,10 @@ function MatchCard({
   const hasTeams = (match.teamA?.length ?? 0) > 0;
   const hasToss = !!match.toss;
   const isFinished = match.status === 'completed' || match.status === 'abandoned';
+  // Put the toss winner's team first in the display name
+  const matchTitle = match.toss?.winnerId === 'awayTeam'
+    ? `${match.awayTeam} vs ${match.homeTeam}`
+    : `${match.homeTeam} vs ${match.awayTeam}`;
 
   const adminActionLabel =
     match.status === 'live'
@@ -85,7 +89,7 @@ function MatchCard({
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <View style={{ flex: 1 }}>
           <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700' }}>
-            {match.homeTeam} vs {match.awayTeam}
+            {matchTitle}
           </Text>
           {match.venue ? (
             <Text style={{ color: theme.textSecondary, fontSize: 13, marginTop: 2 }}>{match.venue}</Text>

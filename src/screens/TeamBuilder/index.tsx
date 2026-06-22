@@ -135,7 +135,17 @@ export default function TeamBuilderScreen() {
   };
 
   const { mutate: confirm, isPending } = useMutation({
-    mutationFn: () => setMatchTeams({ clubId, matchId, teamA, teamB, captainA: captainA ?? undefined, captainB: captainB ?? undefined }),
+    mutationFn: () => {
+      const captainAName = captainA ? playerMap.get(captainA) : undefined;
+      const captainBName = captainB ? playerMap.get(captainB) : undefined;
+      return setMatchTeams({
+        clubId, matchId, teamA, teamB,
+        captainA: captainA ?? undefined,
+        captainB: captainB ?? undefined,
+        homeTeam: captainAName ? `Team ${captainAName}` : undefined,
+        awayTeam: captainBName ? `Team ${captainBName}` : undefined,
+      });
+    },
     onSuccess: () => {
       if (returnTo === 'LiveScoring') {
         navigation.replace('LiveScoring', { clubId, matchId });
