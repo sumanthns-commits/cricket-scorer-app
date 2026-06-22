@@ -3,7 +3,7 @@
     "name": "Crease",
     "slug": "cricket-scorer-app",
     "scheme": "cricket-scorer-app",
-    "version": "2.1.0",
+    "version": "2.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -22,7 +22,7 @@
     },
     "android": {
       "package": "com.crease.cricket",
-      "versionCode": 25,
+      "versionCode": 26,
       "adaptiveIcon": {
         "backgroundColor": "#16a34a",
         "foregroundImage": "./assets/android-icon-foreground.png",

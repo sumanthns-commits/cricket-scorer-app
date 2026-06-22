@@ -1805,7 +1805,7 @@ export default function LiveScoringScreen() {
     const crossedOnRunOut =
       result.batterIsOut &&
       input.dismissal?.type === 'run-out' &&
-      result.runsScored % 2 !== 0 &&
+      result.physicalRuns % 2 !== 0 &&
       !isLoneBatter;
 
     let newOverNumber = innings.overNumber;

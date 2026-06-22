@@ -109,12 +109,14 @@ export default function ScheduleMatchScreen() {
       .sort((a, b) => b.date.toMillis() - a.date.toMillis())[0] ?? null;
   }, [matches]);
 
+  const activePlayerIds = useMemo(() => new Set(players.map(p => p.id)), [players]);
+
   useEffect(() => {
-    if (prevMatch && reuseMode !== 'none' && !prefilled) {
-      setSelectedIds(new Set(prevMatch.squad));
+    if (prevMatch && reuseMode !== 'none' && !prefilled && !loadingPlayers) {
+      setSelectedIds(new Set(prevMatch.squad.filter(id => activePlayerIds.has(id))));
       setPrefilled(true);
     }
-  }, [prevMatch, reuseMode, prefilled]);
+  }, [prevMatch, reuseMode, prefilled, loadingPlayers, activePlayerIds]);
 
   const { mutate: submit, isPending, error } = useMutation({
     mutationFn: async () => {
@@ -132,11 +134,11 @@ export default function ScheduleMatchScreen() {
           date: matchDate,
           format: prevMatch.format ?? 'custom',
           rules,
-          squad: prevMatch.squad ?? [],
-          teamA: prevMatch.teamA,
-          teamB: prevMatch.teamB,
-          captainA: prevMatch.captainA,
-          captainB: prevMatch.captainB,
+          squad: (prevMatch.squad ?? []).filter(id => activePlayerIds.has(id)),
+          teamA: (prevMatch.teamA ?? []).filter(id => activePlayerIds.has(id)),
+          teamB: (prevMatch.teamB ?? []).filter(id => activePlayerIds.has(id)),
+          captainA: prevMatch.captainA && activePlayerIds.has(prevMatch.captainA) ? prevMatch.captainA : undefined,
+          captainB: prevMatch.captainB && activePlayerIds.has(prevMatch.captainB) ? prevMatch.captainB : undefined,
         });
       }
 
@@ -154,9 +156,9 @@ export default function ScheduleMatchScreen() {
         date: matchDate,
         format,
         rules,
-        squad: Array.from(selectedIds),
-        teamA: carryTeams ? (prevMatch.teamA ?? []).filter((id) => selectedIds.has(id)) : undefined,
-        teamB: carryTeams ? (prevMatch.teamB ?? []).filter((id) => selectedIds.has(id)) : undefined,
+        squad: Array.from(selectedIds).filter(id => activePlayerIds.has(id)),
+        teamA: carryTeams ? (prevMatch.teamA ?? []).filter((id) => selectedIds.has(id) && activePlayerIds.has(id)) : undefined,
+        teamB: carryTeams ? (prevMatch.teamB ?? []).filter((id) => selectedIds.has(id) && activePlayerIds.has(id)) : undefined,
         captainA: prevCaptainA,
         captainB: prevCaptainB,
       });
@@ -198,7 +200,7 @@ export default function ScheduleMatchScreen() {
     if (mode === 'none') {
       clearAll();
     } else if (prevMatch) {
-      setSelectedIds(new Set(prevMatch.squad));
+      setSelectedIds(new Set(prevMatch.squad.filter(id => activePlayerIds.has(id))));
     }
   };
 

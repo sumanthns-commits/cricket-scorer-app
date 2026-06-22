@@ -15,6 +15,7 @@ export interface BallInput {
 export interface BallResult {
   ballEntry: BallEntry;
   runsScored: number;
+  physicalRuns: number;
   isLegalDelivery: boolean;
   bowlerGetsWicket: boolean;
   batterIsOut: boolean;
@@ -77,8 +78,12 @@ export function recordBall(
 
   const isOverComplete = newLegalBallsInOver >= ballsPerOver;
 
+  // Wide/no-ball carry a 1-run penalty that doesn't cause physical crossing.
+  const physicalRuns = (extrasType === 'wide' || extrasType === 'no-ball')
+    ? runsScored - 1
+    : runsScored;
   // XOR: odd runs rotate strike; end of over rotates again; these cancel out
-  const oddRuns = runsScored % 2 !== 0;
+  const oddRuns = physicalRuns % 2 !== 0;
   const rotateStrike = batterIsOut ? false : oddRuns !== isOverComplete;
 
   const ballEntry: BallEntry = {
@@ -100,6 +105,7 @@ export function recordBall(
   return {
     ballEntry,
     runsScored,
+    physicalRuns,
     isLegalDelivery,
     bowlerGetsWicket,
     batterIsOut,
