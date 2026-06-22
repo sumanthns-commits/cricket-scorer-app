@@ -513,7 +513,7 @@ const STD_LABELS: Record<StandardDismissalType, string> = {
 
 const FIELDER_NEEDED: StandardDismissalType[] = ['caught', 'stumped', 'run-out'];
 // These dismissals have no shot to plot, so the wagon wheel is skipped.
-const NO_WAGON: StandardDismissalType[] = ['stumped', 'hit-wicket'];
+const NO_WAGON: StandardDismissalType[] = ['bowled', 'stumped', 'hit-wicket'];
 // Dismissals where a fielder is already captured on the wicket sheet, so the
 // fielding overlay shouldn't ask for the fielder again.
 const FIELDER_ALREADY_RECORDED: StandardDismissalType[] = ['caught', 'run-out', 'stumped'];
