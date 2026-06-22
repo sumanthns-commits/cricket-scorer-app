@@ -544,7 +544,9 @@ function WicketSheet({
   const slideY = useRef(new Animated.Value(500)).current;
   const multiFielder = selectedType === 'run-out'; // run-outs can involve several fielders
   const isCaught = selectedType === 'caught';
-  const hasCatchEvents = isCaught && fieldingEvents.length > 0;
+  const isStumped = selectedType === 'stumped';
+  // Single-fielder dismissals that support inline event chip selection
+  const hasSingleFielderEvents = (isCaught || isStumped) && fieldingEvents.length > 0;
 
   useEffect(() => {
     if (visible) {
@@ -594,9 +596,11 @@ function WicketSheet({
         <Text style={{ color: '#ffffff', fontSize: 17, fontWeight: '700', marginBottom: 16 }}>
           {step === 'type' ? 'Wicket — how out?' : multiFielder ? 'Select fielders involved' : 'Select fielder'}
         </Text>
-        {step === 'fielder' && isCaught && (
+        {step === 'fielder' && (isCaught || isStumped) && (
           <Text style={{ color: '#9ca3af', fontSize: 12, marginBottom: 12 }}>
-            {hasCatchEvents ? 'Select catcher, then optionally a fielding event' : 'Select catcher'}
+            {hasSingleFielderEvents
+              ? `Select ${isCaught ? 'catcher' : 'keeper'}, then optionally a fielding event`
+              : isCaught ? 'Select catcher' : 'Select keeper'}
           </Text>
         )}
 
@@ -710,7 +714,7 @@ function WicketSheet({
               </Text>
             </TouchableOpacity>
           </>
-        ) : hasCatchEvents ? (
+        ) : hasSingleFielderEvents ? (
           <>
             <FlatList
               data={fieldingPlayers}
@@ -1667,19 +1671,14 @@ export default function LiveScoringScreen() {
       !!d && FIELDER_ALREADY_RECORDED.includes(d.type as StandardDismissalType);
     const isCatch = !!d && d.type === 'caught';
     const isRunOut = !!d && d.type === 'run-out';
+    const isStumped = !!d && d.type === 'stumped';
     if (isCustomDismissal || isNoFielderWicket) {
       pendingFieldingRef.current = null;
       commitBall();
-    } else if (isCatch || isRunOut) {
+    } else if (isCatch || isRunOut || isStumped) {
       // Fielding event (if any) was pre-set in pendingFieldingRef from WicketSheet — preserve it.
       commitBall();
-    } else if (fielderAlreadyRecorded && enabledFieldingEvents.length === 0) {
-      // stumped with no fielding events configured — nothing to collect.
-      pendingFieldingRef.current = null;
-      commitBall();
     } else {
-      // Hide the fielder picker when it's already recorded; only offer the
-      // fielding-event chips.
       setHideFieldingFielders(fielderAlreadyRecorded);
       setShowFielding(true);
     }
@@ -1905,8 +1904,8 @@ export default function LiveScoringScreen() {
   function handleWicketSelect(type: string, fielderIds?: string[], completedRuns?: number, eventId?: string) {
     setShowWicket(false);
     if (!innings) return;
-    // For caught/run-out: pre-populate the fielding event captured inline on the wicket sheet
-    if ((type === 'caught' || type === 'run-out') && eventId) {
+    // For caught/stumped/run-out: pre-populate the fielding event captured inline on the wicket sheet
+    if ((type === 'caught' || type === 'stumped' || type === 'run-out') && eventId) {
       const eventLabel = clubRules?.fieldingEvents.find((e) => e.id === eventId)?.label;
       pendingFieldingRef.current = { eventId, eventLabel };
     }
