@@ -175,6 +175,15 @@ export default function MatchesScreen() {
     enabled: !!activeClubId && !!effectiveSeason,
   });
 
+  const sortedMatches = useMemo(() => {
+    if (!matches) return matches;
+    return [...matches].sort((a, b) => {
+      const aLive = a.status === 'live' ? 0 : 1;
+      const bLive = b.status === 'live' ? 0 : 1;
+      return aLive - bLive;
+    });
+  }, [matches]);
+
   const handleMatchPress = (match: Match) => {
     const clubId = match.clubId;
     const matchId = match.id;
@@ -286,9 +295,9 @@ export default function MatchesScreen() {
 
       {isLoading ? (
         <ActivityIndicator color={theme.accent} style={{ marginTop: 40 }} />
-      ) : matches && matches.length > 0 ? (
+      ) : sortedMatches && sortedMatches.length > 0 ? (
         <FlatList
-          data={matches}
+          data={sortedMatches}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <MatchCard
