@@ -1786,24 +1786,31 @@ export default function LiveScoringScreen() {
     const newOverBalls = [...innings.currentOverBalls, ballEntry];
 
     // Update batter stats
+    // For a non-striker run-out, input.batsmanId is the dismissed off-striker;
+    // ball-facing credits (runs, balls, fours, sixes) still belong to the on-striker.
+    const isNonStrikerRunOut = result.batterIsOut && input.dismissal?.type === 'run-out' && input.batsmanId === innings.offStrikeId;
+    const facingBatsmanId = isNonStrikerRunOut ? innings.onStrikeId : input.batsmanId;
     const newBatterStats = { ...innings.batterStats };
-    if (!newBatterStats[input.batsmanId]) newBatterStats[input.batsmanId] = emptyBatterStats();
-    const bat = { ...newBatterStats[input.batsmanId] };
+    if (!newBatterStats[facingBatsmanId]) newBatterStats[facingBatsmanId] = emptyBatterStats();
+    const bat = { ...newBatterStats[facingBatsmanId] };
     bat.runs += input.runs;
     if (result.isLegalDelivery) bat.balls++;
     if (input.runs === 4 && !input.extras) bat.fours++;
     if (input.runs === 6 && !input.extras) bat.sixes++;
+    newBatterStats[facingBatsmanId] = bat;
     if (result.batterIsOut) {
-      bat.isOut = true;
+      if (!newBatterStats[input.batsmanId]) newBatterStats[input.batsmanId] = emptyBatterStats();
+      const dismissedBat = { ...newBatterStats[input.batsmanId] };
+      dismissedBat.isOut = true;
       if (input.dismissal) {
         const getName = (id: string) => playerMap[id]?.displayName ?? id;
-        bat.dismissalText = buildDismissalText(
+        dismissedBat.dismissalText = buildDismissalText(
           { ...input.dismissal, bowlerId: input.bowlerId },
           getName
         );
       }
+      newBatterStats[input.batsmanId] = dismissedBat;
     }
-    newBatterStats[input.batsmanId] = bat;
 
     // Update bowler stats
     const newBowlerStats = { ...innings.bowlerStats };
@@ -1895,8 +1902,8 @@ export default function LiveScoringScreen() {
     }
 
     if (result.batterIsOut) {
-      const dismissedId = input.batsmanId; // the on-strike batter
-      const partnerId = innings.offStrikeId; // '' if already last man standing
+      const dismissedId = input.batsmanId;
+      const partnerId = isNonStrikerRunOut ? innings.onStrikeId : innings.offStrikeId;
       const partnerOut = partnerId ? !!newBatterStats[partnerId]?.isOut : true;
       const replacements = innings.battingIds.filter(
         (id) => id !== dismissedId && id !== partnerId && !newBatterStats[id]?.isOut
@@ -1913,9 +1920,11 @@ export default function LiveScoringScreen() {
         setPhase(oversDone ? 'innings-over' : result.isOverComplete ? 'new-bowler' : 'scoring');
         return;
       }
-      // Replacement available. On a crossed run-out the out batter now sits at
-      // the off-strike slot, so the replacement fills that end instead.
-      newBatterEndRef.current = crossedOnRunOut ? 'offStrike' : 'onStrike';
+      // Replacement end: for on-striker run-out, odd runs mean crossing so new batter
+      // fills the off-strike slot; for non-striker run-out, the logic inverts.
+      newBatterEndRef.current = isNonStrikerRunOut
+        ? (crossedOnRunOut ? 'onStrike' : 'offStrike')
+        : (crossedOnRunOut ? 'offStrike' : 'onStrike');
       if (oversDone) {
         setPhase('innings-over');
       } else if (result.isOverComplete) {
@@ -1972,10 +1981,12 @@ export default function LiveScoringScreen() {
   function handleWicketSelect(type: string, fielderIds?: string[], completedRuns?: number, eventId?: string, dismissedBatsmanId?: string) {
     setShowWicket(false);
     if (!innings) return;
-    // For caught/run-out: pre-populate the fielding event captured inline on the wicket sheet
+    // For caught/run-out: pre-populate the fielding event captured inline on the wicket sheet.
+    // Run-outs also carry fielderIds so event points are credited to the correct fielders.
     if ((type === 'caught' || type === 'run-out') && eventId) {
       const eventLabel = clubRules?.fieldingEvents.find((e) => e.id === eventId)?.label;
-      pendingFieldingRef.current = { eventId, eventLabel };
+      const eventFielderIds = type === 'run-out' && fielderIds && fielderIds.length > 0 ? fielderIds : undefined;
+      pendingFieldingRef.current = { eventId, eventLabel, fielderIds: eventFielderIds };
     }
     const extraRunOut = pendingExtraRunOut;
     if (extraRunOut) {
