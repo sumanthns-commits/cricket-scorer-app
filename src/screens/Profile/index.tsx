@@ -1,4 +1,5 @@
 import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import Constants from 'expo-constants';
 import { useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -152,6 +153,9 @@ export default function ProfileScreen() {
       >
         <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '700' }}>Sign Out</Text>
       </TouchableOpacity>
+      <Text style={{ textAlign: 'center', color: theme.textMuted, fontSize: 11, marginBottom: 16, opacity: 0.5 }}>
+        v{Constants.expoConfig?.version ?? '—'}
+      </Text>
     </View>
   );
 }

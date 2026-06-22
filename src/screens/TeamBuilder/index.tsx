@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Modal } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -7,7 +7,8 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { getMatch, getClubPlayers, setMatchTeams } from '../../services/matchService';
 import { askCricketAssistant } from '../../ai/cricketAssistant';
-import { TEAM_SELECTION_SYSTEM_PROMPT } from '../../constants/teamSelectionPrompt';
+import { TEAM_ASSIGNMENT_PROMPT, TEAM_RATIONALE_PROMPT } from '../../constants/teamSelectionPrompt';
+import { callCallableFunction } from '../../services/functionsClient';
 import { useThemeStore } from '../../store/themeStore';
 import type { TeamSelectionResult } from '../../types';
 
@@ -18,9 +19,20 @@ function parseTeamSelection(text: string): TeamSelectionResult | null {
   try {
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) return null;
-    const parsed = JSON.parse(match[0]) as Partial<TeamSelectionResult>;
+    const parsed = JSON.parse(match[0]) as Record<string, unknown>;
+
+    // New per-player format: { players: [{ id, team }], rationale, keyDecisions }
+    if (Array.isArray(parsed.players)) {
+      const rows = parsed.players as Array<{ id: string; team: string }>;
+      const team_a = rows.filter((r) => r.team === 'A').map((r) => r.id);
+      const team_b = rows.filter((r) => r.team === 'B').map((r) => r.id);
+      if (team_a.length === 0 || team_b.length === 0) return null;
+      return { team_a, team_b, rationale: (parsed.rationale as string) ?? '', keyDecisions: (parsed.keyDecisions as string[]) ?? [] };
+    }
+
+    // Legacy fallback: { team_a, team_b, rationale, keyDecisions }
     if (!Array.isArray(parsed.team_a) || !Array.isArray(parsed.team_b)) return null;
-    return { team_a: parsed.team_a, team_b: parsed.team_b, rationale: parsed.rationale ?? '', keyDecisions: parsed.keyDecisions ?? [] };
+    return { team_a: parsed.team_a as string[], team_b: parsed.team_b as string[], rationale: (parsed.rationale as string) ?? '', keyDecisions: (parsed.keyDecisions as string[]) ?? [] };
   } catch { return null; }
 }
 
@@ -81,6 +93,7 @@ export default function TeamBuilderScreen() {
   const [aiError, setAiError] = useState('');
   const [rationale, setRationale] = useState('');
   const [keyDecisions, setKeyDecisions] = useState<string[]>([]);
+  const [showRationale, setShowRationale] = useState(false);
 
   const { data: match, isLoading: loadingMatch } = useQuery({ queryKey: ['match', clubId, matchId], queryFn: () => getMatch(clubId, matchId) });
   const { data: players = [], isLoading: loadingPlayers } = useQuery({ queryKey: ['clubPlayers', clubId], queryFn: () => getClubPlayers(clubId) });
@@ -108,13 +121,48 @@ export default function TeamBuilderScreen() {
   useEffect(() => { if (captainB && !teamB.includes(captainB)) setCaptainB(null); }, [teamB, captainB]);
 
   const runAI = async () => {
-    setAiThinking(true); setAiError('');
+    setAiThinking(true); setAiError(''); setRationale(''); setKeyDecisions([]);
     try {
-      const { text } = await askCricketAssistant(`Select balanced teams for match ID: ${matchId}`, clubId, TEAM_SELECTION_SYSTEM_PROMPT);
-      const parsed = parseTeamSelection(text);
-      if (!parsed) throw new Error('Could not parse team selection from AI response');
-      setTeamA(parsed.team_a); setTeamB(parsed.team_b);
-      setRationale(parsed.rationale); setKeyDecisions(parsed.keyDecisions);
+      // Pre-fetch squad stats — avoids a Gemini tool-call round trip
+      const rawStats = await callCallableFunction('get_club_player_stats', { matchId, clubId }) as Array<Record<string, unknown>>;
+
+      // Short keys (p1, p2, …) prevent the model from confusing long Firebase IDs
+      const keyToId: Record<string, string> = {};
+      const statsWithKeys = rawStats.map((p, i) => {
+        const key = `p${i + 1}`;
+        keyToId[key] = p.id as string;
+        return { ...p, id: key };
+      });
+      const mapIds = (keys: string[]) => keys.map((k) => keyToId[k] ?? k);
+
+      // ── Pass 1: team assignments only ────────────────────────────────
+      const assignMsg = `Squad data:\n${JSON.stringify(statsWithKeys)}\n\nAssign each player to Team A or Team B.`;
+      const { text: assignText } = await askCricketAssistant(assignMsg, clubId, TEAM_ASSIGNMENT_PROMPT, { noTools: true, thinkingBudget: 0 });
+      const parsedRaw = parseTeamSelection(assignText);
+      if (!parsedRaw) throw new Error('Could not parse team selection from AI response');
+
+      const team_a = mapIds(parsedRaw.team_a);
+      const team_b = mapIds(parsedRaw.team_b);
+      setTeamA(team_a); setTeamB(team_b);
+
+      // ── Pass 2: rationale from actual assignments (async, non-blocking) ─
+      const nameFor = (id: string) => (rawStats.find((s) => s.id === id)?.displayName as string | undefined) ?? id;
+      const teamAList = team_a.map(nameFor).join(', ');
+      const teamBList = team_b.map(nameFor).join(', ');
+      const rationaleMsg = `Team A: ${teamAList}\nTeam B: ${teamBList}\n\nPlayer data:\n${JSON.stringify(statsWithKeys)}`;
+      const { text: rationaleText } = await askCricketAssistant(rationaleMsg, clubId, TEAM_RATIONALE_PROMPT, { noTools: true, thinkingBudget: 0 });
+
+      // Parse the rationale JSON
+      const rm = rationaleText.match(/\{[\s\S]*\}/);
+      if (rm) {
+        try {
+          const rp = JSON.parse(rm[0]) as { rationale?: string; keyDecisions?: string[] };
+          setRationale(rp.rationale ?? '');
+          setKeyDecisions(rp.keyDecisions ?? []);
+        } catch { setRationale(rationaleText); }
+      } else {
+        setRationale(rationaleText);
+      }
     } catch (e) {
       console.error('[AI full error]', JSON.stringify(e, Object.getOwnPropertyNames(e as object)));
       const msg = e instanceof Error ? e.message : String(e);
@@ -174,9 +222,16 @@ export default function TeamBuilderScreen() {
             </Text>
           )}
         </View>
-        <TouchableOpacity onPress={runAI} disabled={aiThinking} style={{ backgroundColor: aiThinking ? theme.surface : '#7c3aed', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          {aiThinking ? <ActivityIndicator size="small" color="#a78bfa" /> : <Text style={{ color: '#a78bfa', fontSize: 14, fontWeight: '700' }}>AI Balance</Text>}
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {rationale !== '' && (
+            <TouchableOpacity onPress={() => setShowRationale(true)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: theme.surfaceAlt, borderWidth: 1, borderColor: '#7c3aed', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: '#a78bfa', fontSize: 14, fontWeight: '700' }}>i</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={runAI} disabled={aiThinking} style={{ backgroundColor: aiThinking ? theme.surface : '#7c3aed', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {aiThinking ? <ActivityIndicator size="small" color="#a78bfa" /> : <Text style={{ color: '#a78bfa', fontSize: 14, fontWeight: '700' }}>AI Balance</Text>}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {aiError !== '' && (
@@ -185,13 +240,24 @@ export default function TeamBuilderScreen() {
         </View>
       )}
 
-      {rationale !== '' && (
-        <View style={{ backgroundColor: theme.id === 'light' ? '#f5f3ff' : '#1a1a2e', borderRadius: 8, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#7c3aed' }}>
-          <Text style={{ color: '#7c3aed', fontSize: 13, fontWeight: '600', marginBottom: 4 }}>AI Rationale</Text>
-          <Text style={{ color: '#a78bfa', fontSize: 13, lineHeight: 18 }}>{rationale}</Text>
-          {keyDecisions.length > 0 && <View style={{ marginTop: 8 }}>{keyDecisions.map((kd, i) => <Text key={i} style={{ color: '#8b5cf6', fontSize: 12, marginTop: 2 }}>• {kd}</Text>)}</View>}
-        </View>
-      )}
+      <Modal visible={showRationale} transparent animationType="fade">
+        <TouchableOpacity style={{ flex: 1, backgroundColor: '#000000aa', justifyContent: 'center', alignItems: 'center', padding: 24 }} activeOpacity={1} onPress={() => setShowRationale(false)}>
+          <TouchableOpacity activeOpacity={1} style={{ backgroundColor: theme.id === 'light' ? '#f5f3ff' : '#1a1a2e', borderRadius: 14, padding: 20, width: '100%', borderWidth: 1, borderColor: '#7c3aed' }}>
+            <Text style={{ color: '#7c3aed', fontSize: 15, fontWeight: '700', marginBottom: 10 }}>AI Rationale</Text>
+            <Text style={{ color: theme.id === 'light' ? '#4c1d95' : '#a78bfa', fontSize: 13, lineHeight: 20 }}>{rationale}</Text>
+            {keyDecisions.length > 0 && (
+              <View style={{ marginTop: 12 }}>
+                {keyDecisions.map((kd, i) => (
+                  <Text key={i} style={{ color: theme.id === 'light' ? '#6d28d9' : '#8b5cf6', fontSize: 12, marginTop: 6, lineHeight: 18 }}>• {kd}</Text>
+                ))}
+              </View>
+            )}
+            <TouchableOpacity onPress={() => setShowRationale(false)} style={{ marginTop: 16, alignSelf: 'flex-end' }}>
+              <Text style={{ color: '#7c3aed', fontSize: 13, fontWeight: '600' }}>Close</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {teamA.length > 0 && (
         <View style={{ marginBottom: 12 }}>

@@ -360,12 +360,19 @@ function ExtrasRunsModal({
   onCancel,
 }: {
   type: ExtrasType | null;
-  onConfirm: (runRuns: number) => void;
+  onConfirm: (runRuns: number, runOut: boolean) => void;
   onCancel: () => void;
 }) {
+  const [runOut, setRunOut] = useState(false);
+  useEffect(() => { if (type) setRunOut(false); }, [type]);
+
   if (!type) return null;
   const hasPenalty = type === 'wide' || type === 'no-ball';
   const prompt =
+    type === 'wide' ? 'Runs completed before run-out (+1 wide)'
+    : type === 'no-ball' ? 'Runs off the bat (+1 no-ball added)'
+    : 'Runs taken';
+  const normalPrompt =
     type === 'wide' ? 'Runs the batsmen ran (+1 wide added)'
     : type === 'no-ball' ? 'Runs off the bat (+1 no-ball added)'
     : 'Runs taken';
@@ -377,17 +384,17 @@ function ExtrasRunsModal({
       <View style={{ flex: 1, backgroundColor: '#000000cc', justifyContent: 'center', alignItems: 'center' }}>
         <View style={{ backgroundColor: '#0a1628', borderRadius: 16, padding: 20, width: 320 }}>
           <Text style={{ color: '#ffffff', fontSize: 20, fontWeight: '700', textAlign: 'center' }}>
-            {EXTRA_LABELS[type]}
+            {EXTRA_LABELS[type]}{runOut ? ' + Run-out' : ''}
           </Text>
           <Text style={{ color: '#6b7280', fontSize: 13, textAlign: 'center', marginTop: 4, marginBottom: 18 }}>
-            {prompt}
+            {runOut ? prompt : normalPrompt}
           </Text>
 
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
             {options.map((n) => (
               <TouchableOpacity
                 key={n}
-                onPress={() => onConfirm(n)}
+                onPress={() => onConfirm(n, runOut)}
                 style={{
                   width: 56, height: 52, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
                   backgroundColor: '#1e2d45', borderWidth: 1.5, borderColor: '#2d3f58',
@@ -401,8 +408,22 @@ function ExtrasRunsModal({
           </View>
 
           <TouchableOpacity
+            onPress={() => setRunOut((v) => !v)}
+            style={{
+              marginTop: 14, padding: 12, borderRadius: 10, borderWidth: 1,
+              borderColor: runOut ? '#f87171' : '#2d3f58',
+              backgroundColor: runOut ? '#2d0a0a' : 'transparent',
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: runOut ? '#f87171' : '#9ca3af', fontWeight: '600' }}>
+              {runOut ? 'Run-out  ✓' : 'Run-out?'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             onPress={onCancel}
-            style={{ marginTop: 18, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#2d3f58', alignItems: 'center' }}
+            style={{ marginTop: 10, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#2d3f58', alignItems: 'center' }}
           >
             <Text style={{ color: '#9ca3af', fontWeight: '600' }}>Cancel</Text>
           </TouchableOpacity>
@@ -526,6 +547,7 @@ function WicketSheet({
   fieldingEvents,
   onSelect,
   onClose,
+  forceRunOut,
 }: {
   visible: boolean;
   enabledDismissals: StandardDismissalType[];
@@ -534,9 +556,10 @@ function WicketSheet({
   fieldingEvents: Array<{ id: string; label: string; wicketTypes?: string[] }>;
   onSelect: (type: string, fielderIds?: string[], completedRuns?: number, eventId?: string) => void;
   onClose: () => void;
+  forceRunOut?: boolean;
 }) {
-  const [step, setStep] = useState<'type' | 'fielder'>('type');
-  const [selectedType, setSelectedType] = useState<string | null>(null);
+  const [step, setStep] = useState<'type' | 'fielder'>(forceRunOut ? 'fielder' : 'type');
+  const [selectedType, setSelectedType] = useState<string | null>(forceRunOut ? 'run-out' : null);
   const [pickedFielders, setPickedFielders] = useState<string[]>([]);
   const [completedRuns, setCompletedRuns] = useState(0);
   const [catchFielderId, setCatchFielderId] = useState<string | null>(null);
@@ -553,8 +576,8 @@ function WicketSheet({
 
   useEffect(() => {
     if (visible) {
-      setStep('type');
-      setSelectedType(null);
+      setStep(forceRunOut ? 'fielder' : 'type');
+      setSelectedType(forceRunOut ? 'run-out' : null);
       setPickedFielders([]);
       setCompletedRuns(0);
       setCatchFielderId(null);
@@ -597,7 +620,7 @@ function WicketSheet({
       >
         <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#2d3f58', alignSelf: 'center', marginBottom: 16 }} />
         <Text style={{ color: '#ffffff', fontSize: 17, fontWeight: '700', marginBottom: 16 }}>
-          {step === 'type' ? 'Wicket — how out?' : multiFielder ? 'Select fielders involved' : 'Select fielder'}
+          {step === 'type' ? 'Wicket — how out?' : forceRunOut ? 'Run-out — select fielders' : multiFielder ? 'Select fielders involved' : 'Select fielder'}
         </Text>
         {step === 'fielder' && isCaught && (
           <Text style={{ color: '#9ca3af', fontSize: 12, marginBottom: 12 }}>
@@ -638,22 +661,26 @@ function WicketSheet({
           </ScrollView>
         ) : multiFielder ? (
           <>
-            <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700', marginBottom: 10 }}>RUNS COMPLETED</Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
-              {[0, 1, 2, 3].map((r) => (
-                <TouchableOpacity
-                  key={r}
-                  onPress={() => setCompletedRuns(r)}
-                  style={{
-                    width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
-                    backgroundColor: completedRuns === r ? '#4ade80' : '#1e2d45',
-                    borderWidth: 1, borderColor: completedRuns === r ? '#4ade80' : '#2d3f58',
-                  }}
-                >
-                  <Text style={{ color: completedRuns === r ? '#0a1628' : '#d1d5db', fontSize: 16, fontWeight: '700' }}>{r}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            {!forceRunOut && (
+              <>
+                <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700', marginBottom: 10 }}>RUNS COMPLETED</Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                  {[0, 1, 2, 3].map((r) => (
+                    <TouchableOpacity
+                      key={r}
+                      onPress={() => setCompletedRuns(r)}
+                      style={{
+                        width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+                        backgroundColor: completedRuns === r ? '#4ade80' : '#1e2d45',
+                        borderWidth: 1, borderColor: completedRuns === r ? '#4ade80' : '#2d3f58',
+                      }}
+                    >
+                      <Text style={{ color: completedRuns === r ? '#0a1628' : '#d1d5db', fontSize: 16, fontWeight: '700' }}>{r}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
             <FlatList
               data={fieldingPlayers}
               keyExtractor={(p) => p.id}
@@ -1366,6 +1393,7 @@ export default function LiveScoringScreen() {
   // Modals
   const [showWicket, setShowWicket] = useState(false);
   const [pendingExtra, setPendingExtra] = useState<ExtrasType | null>(null);
+  const [pendingExtraRunOut, setPendingExtraRunOut] = useState<{ extraType: ExtrasType; extraRuns: number } | null>(null);
   const [changeTarget, setChangeTarget] = useState<'onStrike' | 'offStrike' | 'bowler' | null>(null);
   const [showEditOvers, setShowEditOvers] = useState(false);
 
@@ -1636,10 +1664,11 @@ export default function LiveScoringScreen() {
     pendingWagonRef.current = null;
     pendingFieldingRef.current = null;
     setPendingRuns(input.runs + (input.extras?.runs ?? 0));
-    // Skip wagon wheel + fielding overlay for extras (wide, no-ball, bye, leg-bye)
+    // Skip wagon wheel + fielding overlay for pure extras (wide, no-ball, bye, leg-bye)
     // and for dot balls — no shot to plot and no fielding event to record.
+    // Extras WITH a dismissal (run-out) fall through to the normal wicket path.
     const isDotBall = input.runs === 0 && !input.extras && !input.dismissal;
-    if (!!input.extras || isDotBall) {
+    if ((!!input.extras && !input.dismissal) || isDotBall) {
       commitBall();
       return;
     }
@@ -1880,18 +1909,26 @@ export default function LiveScoringScreen() {
     setPendingExtra(type);
   }
 
-  function confirmExtra(runRuns: number) {
+  function confirmExtra(runRuns: number, runOut: boolean) {
     const type = pendingExtra;
     setPendingExtra(null);
     if (!type || !innings) return;
     // wide: 1 penalty + runs ran, all as extras, none off the bat.
     // no-ball: 1 penalty extra + runs off the bat (credited to the batter).
     // bye / leg-bye: runs taken, all as extras.
-    const runsOffBat = type === 'no-ball' ? runRuns : 0;
+    const runsOffBat = type === 'no-ball' && !runOut ? runRuns : 0;
     const extraRuns =
       type === 'wide' ? 1 + runRuns
       : type === 'no-ball' ? 1
       : runRuns;
+
+    if (runOut) {
+      // Store the extra details; WicketSheet will capture fielders.
+      setPendingExtraRunOut({ extraType: type, extraRuns });
+      setShowWicket(true);
+      return;
+    }
+
     startBall({
       batsmanId: innings.onStrikeId,
       bowlerId: innings.bowlerId,
@@ -1909,6 +1946,23 @@ export default function LiveScoringScreen() {
     if ((type === 'caught' || type === 'run-out') && eventId) {
       const eventLabel = clubRules?.fieldingEvents.find((e) => e.id === eventId)?.label;
       pendingFieldingRef.current = { eventId, eventLabel };
+    }
+    const extraRunOut = pendingExtraRunOut;
+    if (extraRunOut) {
+      setPendingExtraRunOut(null);
+      // Run-out on an extra: combine the stored extra with the dismissal.
+      startBall({
+        batsmanId: innings.onStrikeId,
+        bowlerId: innings.bowlerId,
+        runs: 0,
+        extras: { type: extraRunOut.extraType, runs: extraRunOut.extraRuns },
+        dismissal: {
+          type: 'run-out',
+          fielderId: fielderIds?.[0],
+          fielderIds: fielderIds && fielderIds.length > 1 ? fielderIds : undefined,
+        },
+      });
+      return;
     }
     startBall({
       batsmanId: innings.onStrikeId,
@@ -2560,7 +2614,8 @@ export default function LiveScoringScreen() {
         fieldingPlayers={fieldingPlayers}
         fieldingEvents={wicketFieldingEvents}
         onSelect={handleWicketSelect}
-        onClose={() => setShowWicket(false)}
+        onClose={() => { setShowWicket(false); setPendingExtraRunOut(null); }}
+        forceRunOut={!!pendingExtraRunOut}
       />
 
       <ExtrasRunsModal

@@ -21,6 +21,12 @@ export interface AssistantResult {
 export interface AssistantOptions {
   history?: Content[];
   onToolCall?: (toolName: string) => void;
+  /** When true, no tools are exposed to the model — forces a single-turn response.
+   *  Use when all required data is already embedded in the message. */
+  noTools?: boolean;
+  /** Gemini 2.5 Flash thinking token budget. 0 = disable thinking (fast).
+   *  Omit to let the model decide (default = extended thinking, slow). */
+  thinkingBudget?: number;
 }
 
 export async function askCricketAssistant(
@@ -36,7 +42,10 @@ export async function askCricketAssistant(
   const model = getGenerativeModel(ai, {
     model: MODEL,
     systemInstruction: systemPrompt,
-    tools: [{ functionDeclarations }],
+    ...(options.noTools ? {} : { tools: [{ functionDeclarations }] }),
+    ...(options.thinkingBudget !== undefined
+      ? { generationConfig: { thinkingConfig: { thinkingBudget: options.thinkingBudget } } }
+      : {}),
   });
 
   const chat = model.startChat({ history: options.history ?? [] });
