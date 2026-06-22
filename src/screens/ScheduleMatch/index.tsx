@@ -85,7 +85,7 @@ export default function ScheduleMatchScreen() {
   const [format, setFormat] = useState<MatchFormat>('custom');
   const [customOvers, setCustomOvers] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [reusePrev, setReusePrev] = useState(true);
+  const [reuseMode, setReuseMode] = useState<'none' | 'squad' | 'teams'>('squad');
   const [prefilled, setPrefilled] = useState(false);
 
   const { data: club } = useQuery({
@@ -110,11 +110,11 @@ export default function ScheduleMatchScreen() {
   }, [matches]);
 
   useEffect(() => {
-    if (prevMatch && reusePrev && !prefilled) {
+    if (prevMatch && reuseMode !== 'none' && !prefilled) {
       setSelectedIds(new Set(prevMatch.squad));
       setPrefilled(true);
     }
-  }, [prevMatch, reusePrev, prefilled]);
+  }, [prevMatch, reuseMode, prefilled]);
 
   const { mutate: submit, isPending, error } = useMutation({
     mutationFn: async () => {
@@ -123,7 +123,7 @@ export default function ScheduleMatchScreen() {
       const oversPerInnings =
         format === 'T20' ? 20 : format === 'ODI' ? 50 : parseInt(customOvers, 10) || undefined;
       const rules = { ...club.rules, oversPerInnings };
-      const carryTeams = reusePrev && prevMatch;
+      const carryTeams = reuseMode === 'teams' && prevMatch;
       const prevCaptainA = carryTeams && prevMatch.captainA && selectedIds.has(prevMatch.captainA) ? prevMatch.captainA : undefined;
       const prevCaptainB = carryTeams && prevMatch.captainB && selectedIds.has(prevMatch.captainB) ? prevMatch.captainB : undefined;
       return createMatch({
@@ -142,7 +142,11 @@ export default function ScheduleMatchScreen() {
       });
     },
     onSuccess: (matchId) => {
-      navigation.navigate('TeamBuilder', { clubId, matchId });
+      if (reuseMode === 'teams') {
+        navigation.navigate('Toss', { clubId, matchId });
+      } else {
+        navigation.navigate('TeamBuilder', { clubId, matchId });
+      }
     },
   });
 
@@ -169,13 +173,12 @@ export default function ScheduleMatchScreen() {
   const selectAll = () => setSelectedIds(new Set(players.map((p) => p.id)));
   const clearAll = () => setSelectedIds(new Set());
 
-  const toggleReuse = () => {
-    if (reusePrev) {
-      setReusePrev(false);
+  const selectReuseMode = (mode: 'none' | 'squad' | 'teams') => {
+    setReuseMode(mode);
+    if (mode === 'none') {
       clearAll();
-    } else {
-      setReusePrev(true);
-      if (prevMatch) setSelectedIds(new Set(prevMatch.squad));
+    } else if (prevMatch) {
+      setSelectedIds(new Set(prevMatch.squad));
     }
   };
 
@@ -279,29 +282,40 @@ export default function ScheduleMatchScreen() {
       )}
 
       {prevMatch && (
-        <TouchableOpacity
-          onPress={toggleReuse}
-          style={{
-            flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12,
-            backgroundColor: theme.surface, borderRadius: 8, padding: 12,
-            borderWidth: 1, borderColor: reusePrev ? theme.accent : theme.border,
-          }}
-        >
-          <View style={{
-            width: 20, height: 20, borderRadius: 4,
-            backgroundColor: reusePrev ? theme.accent : 'transparent',
-            borderWidth: 2, borderColor: reusePrev ? theme.accent : theme.textMuted,
-            alignItems: 'center', justifyContent: 'center',
-          }}>
-            {reusePrev && <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '900' }}>✓</Text>}
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>Reuse previous squad &amp; teams</Text>
-            <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-              {reusePrev ? 'Teams carried over — adjust or rebuild in the next step' : 'Building a fresh squad'}
-            </Text>
-          </View>
-        </TouchableOpacity>
+        <>
+          <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 8 }}>PREVIOUS MATCH</Text>
+          {([
+            { mode: 'none' as const,  title: 'Fresh squad',    desc: 'Select players and build teams from scratch' },
+            { mode: 'squad' as const, title: 'Previous squad', desc: 'Reuse player selection, build teams in next step' },
+            { mode: 'teams' as const, title: 'Same teams',     desc: 'Carry over teams and go straight to toss' },
+          ]).map(({ mode, title, desc }) => {
+            const active = reuseMode === mode;
+            return (
+              <TouchableOpacity
+                key={mode}
+                onPress={() => selectReuseMode(mode)}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8,
+                  backgroundColor: theme.surface, borderRadius: 8, padding: 12,
+                  borderWidth: 1, borderColor: active ? theme.accent : theme.border,
+                }}
+              >
+                <View style={{
+                  width: 18, height: 18, borderRadius: 9,
+                  borderWidth: 2, borderColor: active ? theme.accent : theme.textMuted,
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {active && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: theme.accent }} />}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>{title}</Text>
+                  <Text style={{ color: theme.textMuted, fontSize: 12 }}>{desc}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+          <View style={{ height: 8 }} />
+        </>
       )}
 
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -389,7 +403,7 @@ export default function ScheduleMatchScreen() {
           <ActivityIndicator color="#ffffff" />
         ) : (
           <Text style={{ color: canSubmit ? '#ffffff' : theme.textMuted, fontSize: 16, fontWeight: '700' }}>
-            Create &amp; Build Teams
+            {reuseMode === 'teams' ? 'Create & Go to Toss' : 'Create & Build Teams'}
           </Text>
         )}
       </TouchableOpacity>
