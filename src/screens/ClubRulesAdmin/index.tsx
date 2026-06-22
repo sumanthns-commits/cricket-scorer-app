@@ -66,6 +66,7 @@ function resolveRules(raw: Partial<ClubRules>): ClubRules {
     enabledExtras: raw.enabledExtras ?? ['wide', 'no-ball', 'bye', 'leg-bye'],
     roverThrowCap: raw.roverThrowCap,
     lastManStands: raw.lastManStands ?? false,
+    autoRotateStrikeEoO: raw.autoRotateStrikeEoO ?? true,
     compulsoryRetirementAt: raw.compulsoryRetirementAt,
     maxBowlerOvers: raw.maxBowlerOvers,
     // Legacy events saved before polarity existed default to 'neutral' (no
@@ -564,6 +565,16 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
               disabled={readOnly}
               trackColor={{ false: theme.border, true: theme.accentDim }}
               thumbColor={draft.lastManStands ? theme.accent : theme.textMuted}
+            />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+            <Text style={{ color: theme.textSecondary, flex: 1, fontSize: 15 }}>Auto-rotate strike at end of over</Text>
+            <Switch
+              value={draft.autoRotateStrikeEoO}
+              onValueChange={(v) => setField('autoRotateStrikeEoO', v)}
+              disabled={readOnly}
+              trackColor={{ false: theme.border, true: theme.accentDim }}
+              thumbColor={draft.autoRotateStrikeEoO ? theme.accent : theme.textMuted}
             />
           </View>
           <NumberRow

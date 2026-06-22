@@ -155,6 +155,7 @@ export interface ClubRules {
   enabledExtras: ExtrasType[];
   roverThrowCap?: number;
   lastManStands: boolean;
+  autoRotateStrikeEoO: boolean;
   compulsoryRetirementAt?: number;
   maxBowlerOvers?: number;
   fieldingEvents: FieldingEventConfig[];

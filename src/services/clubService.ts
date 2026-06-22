@@ -39,6 +39,7 @@ const defaultRules: ClubRules = {
   enabledExtras: ['wide', 'no-ball', 'bye', 'leg-bye'],
   roverThrowCap: undefined,
   lastManStands: false,
+  autoRotateStrikeEoO: true,
   compulsoryRetirementAt: undefined,
   maxBowlerOvers: undefined,
   fieldingEvents: [],

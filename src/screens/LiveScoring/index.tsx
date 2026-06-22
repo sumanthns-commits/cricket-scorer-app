@@ -1348,6 +1348,7 @@ export default function LiveScoringScreen() {
     const battingIds = battingForInnings(m, n);
     const bowlingIds = bowlingForInnings(m, n);
     const localNameMap = Object.fromEntries(localPlayers.map((p) => [p.id, p.displayName]));
+    const autoRotateEoO = m.rules.autoRotateStrikeEoO ?? true;
 
     const batterStats: Record<string, BatterStats> = {};
     const bowlerStats: Record<string, BowlerStats> = {};
@@ -1402,14 +1403,16 @@ export default function LiveScoringScreen() {
           const nextBatter = battingIds.find((id) => !enteredBatters.has(id)) ?? '';
           if (nextBatter) enteredBatters.add(nextBatter);
           onStrikeId = nextBatter;
-        } else if ((runs % 2 !== 0) !== (legalInOver >= ballsPerOver)) {
-          [onStrikeId, offStrikeId] = [offStrikeId, onStrikeId];
+        } else {
+          const runRotate = runs % 2 !== 0;
+          const eooRotate = autoRotateEoO && legalInOver >= ballsPerOver;
+          if (runRotate !== eooRotate) [onStrikeId, offStrikeId] = [offStrikeId, onStrikeId];
         }
       }
 
       if (over.isComplete) {
         bs.completedOvers++;
-        [onStrikeId, offStrikeId] = [offStrikeId, onStrikeId]; // end-of-over rotation already baked in above
+        if (autoRotateEoO) [onStrikeId, offStrikeId] = [offStrikeId, onStrikeId];
       }
     }
 
@@ -1636,7 +1639,13 @@ export default function LiveScoringScreen() {
     let newOffStrike = innings.offStrikeId;
     // A lone (last man standing) batter always keeps strike — no partner to rotate to.
     const isLoneBatter = innings.offStrikeId === '';
-    if (result.rotateStrike && !isLoneBatter) [newOnStrike, newOffStrike] = [newOffStrike, newOnStrike];
+    const autoRotateEoO = clubRules?.autoRotateStrikeEoO ?? match?.rules.autoRotateStrikeEoO ?? true;
+    // When auto-rotate is off, flip the engine's decision for end-of-over balls
+    // so only the run-based rotation applies (not the end-of-over swap).
+    const effectiveRotate = (result.isOverComplete && !autoRotateEoO)
+      ? !result.rotateStrike
+      : result.rotateStrike;
+    if (effectiveRotate && !isLoneBatter) [newOnStrike, newOffStrike] = [newOffStrike, newOnStrike];
 
     // Run-out with an odd number of completed runs → the batters crossed, so the
     // surviving partner is now on strike and the replacement comes in off strike.
