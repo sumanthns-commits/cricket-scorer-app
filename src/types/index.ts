@@ -281,7 +281,7 @@ export interface OverDocument {
 export type MatchFormat = 'T20' | 'ODI' | 'custom';
 
 export interface MatchToss {
-  winnerId: string;
+  winnerId: 'homeTeam' | 'awayTeam';
   winnerName: string;
   choice: 'bat' | 'field';
 }

@@ -46,6 +46,7 @@ function ClubStatsCard({ entry }: { entry: PublicPlayerStats }) {
 
 function GhostRow({ ghost, selected, onToggle }: { ghost: Player; selected: boolean; onToggle: () => void }) {
   const theme = useThemeStore((s) => s.theme);
+  // TODO: route through statsResolver when claim lifecycle is implemented
   const d = computeDerivedStats(ghost.careerStats);
   return (
     <TouchableOpacity

@@ -105,6 +105,13 @@ export default function TeamBuilderScreen() {
     if (match?.captainB) setCaptainB(match.captainB);
   }, [match]);
 
+  useEffect(() => {
+    if (loadingPlayers || !match) return;
+    const validIds = new Set(players.map(p => p.id));
+    setCaptainA((prev) => prev && !validIds.has(prev) ? null : prev);
+    setCaptainB((prev) => prev && !validIds.has(prev) ? null : prev);
+  }, [loadingPlayers, players, match]);
+
   const playerMap = useMemo(() => { const m = new Map<string, string>(); for (const p of players) m.set(p.id, p.displayName); return m; }, [players]);
 
   const squad = match?.squad ?? [];

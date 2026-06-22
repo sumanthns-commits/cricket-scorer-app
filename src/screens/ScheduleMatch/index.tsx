@@ -105,7 +105,7 @@ export default function ScheduleMatchScreen() {
 
   const prevMatch = useMemo(() => {
     return matches
-      .filter((m) => (m.squad?.length ?? 0) > 0)
+      .filter((m) => (m.squad?.length ?? 0) > 0 && m.status === 'completed')
       .sort((a, b) => b.date.toMillis() - a.date.toMillis())[0] ?? null;
   }, [matches]);
 
@@ -113,7 +113,7 @@ export default function ScheduleMatchScreen() {
 
   useEffect(() => {
     if (prevMatch && reuseMode !== 'none' && !prefilled && !loadingPlayers) {
-      setSelectedIds(new Set(prevMatch.squad.filter(id => activePlayerIds.has(id))));
+      setSelectedIds(new Set((prevMatch.squad ?? []).filter(id => activePlayerIds.has(id))));
       setPrefilled(true);
     }
   }, [prevMatch, reuseMode, prefilled, loadingPlayers, activePlayerIds]);
@@ -200,7 +200,7 @@ export default function ScheduleMatchScreen() {
     if (mode === 'none') {
       clearAll();
     } else if (prevMatch) {
-      setSelectedIds(new Set(prevMatch.squad.filter(id => activePlayerIds.has(id))));
+      setSelectedIds(new Set((prevMatch.squad ?? []).filter(id => activePlayerIds.has(id))));
     }
   };
 

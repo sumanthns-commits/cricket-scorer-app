@@ -377,7 +377,7 @@ function ExtrasRunsModal({
     : type === 'no-ball' ? 'Runs off the bat (+1 no-ball added)'
     : 'Runs taken';
   // Byes/leg-byes are only signalled when runs are run, so default the picker to 1.
-  const options = hasPenalty ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4];
+  const options = hasPenalty ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6];
 
   return (
     <Modal visible transparent animationType="fade">
@@ -548,15 +548,19 @@ function WicketSheet({
   onSelect,
   onClose,
   forceRunOut,
+  onStrikePlayer,
+  offStrikePlayer,
 }: {
   visible: boolean;
   enabledDismissals: StandardDismissalType[];
   customDismissals: Array<{ id: string; label: string; batterIsOut: boolean }>;
   fieldingPlayers: Player[];
   fieldingEvents: Array<{ id: string; label: string; wicketTypes?: string[] }>;
-  onSelect: (type: string, fielderIds?: string[], completedRuns?: number, eventId?: string) => void;
+  onSelect: (type: string, fielderIds?: string[], completedRuns?: number, eventId?: string, dismissedId?: string) => void;
   onClose: () => void;
   forceRunOut?: boolean;
+  onStrikePlayer?: { id: string; name: string };
+  offStrikePlayer?: { id: string; name: string };
 }) {
   const [step, setStep] = useState<'type' | 'fielder'>(forceRunOut ? 'fielder' : 'type');
   const [selectedType, setSelectedType] = useState<string | null>(forceRunOut ? 'run-out' : null);
@@ -564,6 +568,7 @@ function WicketSheet({
   const [completedRuns, setCompletedRuns] = useState(0);
   const [catchFielderId, setCatchFielderId] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [dismissedId, setDismissedId] = useState<string | undefined>(onStrikePlayer?.id);
   const slideY = useRef(new Animated.Value(500)).current;
   const multiFielder = selectedType === 'run-out'; // run-outs can involve several fielders
   const isCaught = selectedType === 'caught';
@@ -582,6 +587,7 @@ function WicketSheet({
       setCompletedRuns(0);
       setCatchFielderId(null);
       setSelectedEventId(null);
+      setDismissedId(onStrikePlayer?.id);
       Animated.spring(slideY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
     } else {
       Animated.timing(slideY, { toValue: 500, duration: 200, useNativeDriver: true }).start();
@@ -661,6 +667,26 @@ function WicketSheet({
           </ScrollView>
         ) : multiFielder ? (
           <>
+            {onStrikePlayer && offStrikePlayer && (
+              <>
+                <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700', marginBottom: 8 }}>WHO WAS RUN OUT?</Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                  {[onStrikePlayer, offStrikePlayer].map((p) => {
+                    const active = dismissedId === p.id;
+                    return (
+                      <TouchableOpacity key={p.id} onPress={() => setDismissedId(p.id)} style={{
+                        flex: 1, padding: 10, borderRadius: 8, alignItems: 'center',
+                        backgroundColor: active ? '#2d0a0a' : '#1e2d45',
+                        borderWidth: 1, borderColor: active ? '#f87171' : '#2d3f58',
+                      }}>
+                        <Text style={{ color: active ? '#f87171' : '#d1d5db', fontSize: 13, fontWeight: '600' }}>{p.name}</Text>
+                        <Text style={{ color: active ? '#f87171' : '#6b7280', fontSize: 10, marginTop: 2 }}>{active ? 'dismissed' : p.id === onStrikePlayer.id ? 'on strike' : 'non-striker'}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
             {!forceRunOut && (
               <>
                 <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700', marginBottom: 10 }}>RUNS COMPLETED</Text>
@@ -730,7 +756,7 @@ function WicketSheet({
               </>
             )}
             <TouchableOpacity
-              onPress={() => onSelect(selectedType!, pickedFielders, completedRuns, selectedEventId ?? undefined)}
+              onPress={() => onSelect(selectedType!, pickedFielders, completedRuns, selectedEventId ?? undefined, dismissedId)}
               disabled={pickedFielders.length === 0}
               style={{
                 backgroundColor: pickedFielders.length > 0 ? '#4ade80' : '#2d3f58',
@@ -1050,7 +1076,7 @@ function BowlerRow({
   const theme = useThemeStore((s) => s.theme);
   const oversFull = stats.completedOvers + (stats.legalBalls % ballsPerOver) / 10;
   const economy = stats.legalBalls > 0
-    ? ((stats.runsConceded / stats.legalBalls) * 6).toFixed(1)
+    ? ((stats.runsConceded / stats.legalBalls) * ballsPerOver).toFixed(1)
     : '–';
   return (
     <View
@@ -1470,7 +1496,7 @@ export default function LiveScoringScreen() {
   const sealedRef = useRef(false);
   useEffect(() => {
     if (phase !== 'innings-over' || inningsNumber !== 2) return;
-    if (!innings || !match || !clubId || sealedRef.current) return;
+    if (!innings || !match || !clubId || sealedRef.current || match.status === 'completed') return;
     sealedRef.current = true;
     let result = '';
     if (firstInningsRuns != null) {
@@ -1534,7 +1560,8 @@ export default function LiveScoringScreen() {
           }
         }
 
-        bs.runsConceded += runs;
+        const byeLB = (ball.extras?.type === 'bye' || ball.extras?.type === 'leg-bye') ? (ball.extras?.runs ?? 0) : 0;
+        bs.runsConceded += runs - byeLB;
         if (isLegal) bs.legalBalls++;
         if (ball.dismissal && isOut) bs.wickets++;
 
@@ -1544,7 +1571,8 @@ export default function LiveScoringScreen() {
           if (nextBatter) enteredBatters.add(nextBatter);
           onStrikeId = nextBatter;
         } else {
-          const runRotate = runs % 2 !== 0;
+          const physRuns = (ball.extras?.type === 'wide' || ball.extras?.type === 'no-ball') ? runs - 1 : runs;
+          const runRotate = physRuns % 2 !== 0;
           const eooRotate = autoRotateEoO && legalInOver >= ballsPerOver;
           if (runRotate !== eooRotate) [onStrikeId, offStrikeId] = [offStrikeId, onStrikeId];
         }
@@ -1781,7 +1809,9 @@ export default function LiveScoringScreen() {
     const newBowlerStats = { ...innings.bowlerStats };
     if (!newBowlerStats[input.bowlerId]) newBowlerStats[input.bowlerId] = emptyBowlerStats();
     const bow = { ...newBowlerStats[input.bowlerId] };
-    bow.runsConceded += result.runsScored;
+    const extrasType = input.extras?.type;
+    const byeLB = (extrasType === 'bye' || extrasType === 'leg-bye') ? (input.extras?.runs ?? 0) : 0;
+    bow.runsConceded += result.runsScored - byeLB;
     if (result.isLegalDelivery) bow.legalBalls++;
     if (result.bowlerGetsWicket) bow.wickets++;
 
@@ -1939,7 +1969,7 @@ export default function LiveScoringScreen() {
 
   // ── Wicket ───────────────────────────────────────────────────────
 
-  function handleWicketSelect(type: string, fielderIds?: string[], completedRuns?: number, eventId?: string) {
+  function handleWicketSelect(type: string, fielderIds?: string[], completedRuns?: number, eventId?: string, dismissedBatsmanId?: string) {
     setShowWicket(false);
     if (!innings) return;
     // For caught/run-out: pre-populate the fielding event captured inline on the wicket sheet
@@ -1952,7 +1982,7 @@ export default function LiveScoringScreen() {
       setPendingExtraRunOut(null);
       // Run-out on an extra: combine the stored extra with the dismissal.
       startBall({
-        batsmanId: innings.onStrikeId,
+        batsmanId: dismissedBatsmanId ?? innings.onStrikeId,
         bowlerId: innings.bowlerId,
         runs: 0,
         extras: { type: extraRunOut.extraType, runs: extraRunOut.extraRuns },
@@ -1965,7 +1995,7 @@ export default function LiveScoringScreen() {
       return;
     }
     startBall({
-      batsmanId: innings.onStrikeId,
+      batsmanId: type === 'run-out' ? (dismissedBatsmanId ?? innings.onStrikeId) : innings.onStrikeId,
       bowlerId: innings.bowlerId,
       // Run-outs can be completed after the batters have run; those runs count.
       runs: type === 'run-out' ? completedRuns ?? 0 : 0,
@@ -2165,9 +2195,13 @@ export default function LiveScoringScreen() {
     });
   }
 
+  const maxBowlerOvers = clubRules?.maxBowlerOvers ?? match?.rules.maxBowlerOvers;
+  const isAtOverCap = (id: string) =>
+    maxBowlerOvers != null && (innings?.bowlerStats[id]?.completedOvers ?? 0) >= maxBowlerOvers;
+
   const changePlayers = !innings || !changeTarget ? [] :
     changeTarget === 'bowler'
-      ? players.filter((p) => innings.bowlingIds.includes(p.id) && p.id !== innings.bowlerId)
+      ? players.filter((p) => innings.bowlingIds.includes(p.id) && p.id !== innings.bowlerId && !isAtOverCap(p.id))
       : players.filter((p) =>
           innings.battingIds.includes(p.id) &&
           !innings.batterStats[p.id]?.isOut &&
@@ -2310,7 +2344,7 @@ export default function LiveScoringScreen() {
     innings.overNumber > 0 || innings.currentOverBalls.length > 0 ||
     innings.totalRuns > 0 || innings.totalWickets > 0;
 
-  const notBowlingPlayers = players.filter((p) => innings.bowlingIds.includes(p.id) && p.id !== innings.bowlerId);
+  const notBowlingPlayers = players.filter((p) => innings.bowlingIds.includes(p.id) && p.id !== innings.bowlerId && !isAtOverCap(p.id));
   const notBattingActiveIds = [innings.onStrikeId, innings.offStrikeId, ...Object.keys(innings.batterStats).filter((id) => innings.batterStats[id].isOut)];
   const nextBatters = players.filter((p) => innings.battingIds.includes(p.id) && !notBattingActiveIds.includes(p.id));
 
@@ -2616,6 +2650,8 @@ export default function LiveScoringScreen() {
         onSelect={handleWicketSelect}
         onClose={() => { setShowWicket(false); setPendingExtraRunOut(null); }}
         forceRunOut={!!pendingExtraRunOut}
+        onStrikePlayer={onStrikePlayer ? { id: innings.onStrikeId, name: onStrikePlayer.displayName } : undefined}
+        offStrikePlayer={offStrikePlayer && innings.offStrikeId ? { id: innings.offStrikeId, name: offStrikePlayer.displayName } : undefined}
       />
 
       <ExtrasRunsModal

@@ -102,10 +102,12 @@ function tallyFielding(
   for (const ball of over.balls) {
     const d = ball.dismissal;
     if (d) {
-      if (d.type === 'caught' && d.fielderId) {
-        acc(d.fielderId).catches++;
-      } else if (d.type === 'stumped' && d.fielderId) {
-        acc(d.fielderId).stumpings++;
+      if (d.type === 'caught') {
+        const ids = d.fielderIds ?? (d.fielderId ? [d.fielderId] : []);
+        for (const id of ids) acc(id).catches++;
+      } else if (d.type === 'stumped') {
+        const ids = d.fielderIds ?? (d.fielderId ? [d.fielderId] : []);
+        for (const id of ids) acc(id).stumpings++;
       } else if (d.type === 'run-out') {
         const ids = d.fielderIds ?? (d.fielderId ? [d.fielderId] : []);
         for (const id of ids) acc(id).runOuts++;

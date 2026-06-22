@@ -33,6 +33,7 @@ const TYPE_DOT: Record<PlayerType, string> = {
 function SquadRow({ entry, onPress }: { entry: SquadEntry; onPress: () => void }) {
   const theme = useThemeStore((s) => s.theme);
   const { player, role } = entry;
+  // TODO: route through statsResolver when claim lifecycle is implemented
   const rating = player.skillRating ?? computeSkillRating(player.careerStats);
 
   return (
@@ -86,6 +87,7 @@ function SquadRow({ entry, onPress }: { entry: SquadEntry; onPress: () => void }
             </Text>
           </View>
           <Text style={{ color: theme.textMuted, fontSize: 12 }}>
+            {/* TODO: use statsResolver when claim lifecycle is implemented */}
             {player.careerStats.matchesPlayed} matches
           </Text>
         </View>
