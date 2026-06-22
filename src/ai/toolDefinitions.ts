@@ -79,4 +79,18 @@ export const functionDeclarations: FunctionDeclaration[] = [
       },
     }),
   },
+  {
+    name: 'get_club_player_stats',
+    description: 'Get career stats AND recent form for all players in a squad in a single call. ' +
+      'Use this instead of calling get_player_stats and get_player_form individually. ' +
+      'Capped at 30 players. When matchId is provided, restricts results to that match\'s squad.',
+    parameters: Schema.object({
+      properties: {
+        matchId: Schema.string({
+          description: 'Match ID to restrict results to that match\'s squad.',
+        }),
+      },
+      optionalProperties: ['matchId'],
+    }),
+  },
 ];
