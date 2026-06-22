@@ -1560,7 +1560,10 @@ export default function LiveScoringScreen() {
     // Caught / run-out already recorded the fielder on the wicket sheet.
     const fielderAlreadyRecorded =
       !!d && FIELDER_ALREADY_RECORDED.includes(d.type as StandardDismissalType);
-    if (isNoFielderWicket || (fielderAlreadyRecorded && enabledFieldingEvents.length === 0)) {
+    // Caught: fielder + catch credit already captured in the dismissal entry —
+    // no need to show the overlay for a separate event selection.
+    const isCatch = !!d && d.type === 'caught';
+    if (isNoFielderWicket || isCatch || (fielderAlreadyRecorded && enabledFieldingEvents.length === 0)) {
       // Nothing left to collect — skip the overlay entirely.
       pendingFieldingRef.current = null;
       commitBall();
