@@ -145,6 +145,9 @@ export interface FieldingEventConfig {
   // How this event affects the fielder's rating. Admin-controlled in the rules
   // screen. Resolved to signed points at match completion (see scoring rules).
   polarity: FieldingPolarity;
+  // Whether this event appears for wicket dismissals, non-wicket balls, or both.
+  // Absent on legacy events — treated as 'both'.
+  scope?: 'wicket' | 'non-wicket' | 'both';
 }
 
 export interface ClubRules {

@@ -71,9 +71,11 @@ function resolveRules(raw: Partial<ClubRules>): ClubRules {
     maxBowlerOvers: raw.maxBowlerOvers,
     // Legacy events saved before polarity existed default to 'neutral' (no
     // rating effect) so an admin opts into good/bad deliberately.
+    // Legacy events saved before scope existed default to 'both'.
     fieldingEvents: (raw.fieldingEvents ?? []).map((e) => ({
       ...e,
       polarity: e.polarity ?? 'neutral',
+      scope: e.scope ?? 'both',
     })),
   };
 }
@@ -92,6 +94,14 @@ const POLARITY_META: Record<
   neutral: { label: '○ Neutral', color: '#9ca3af', bg: 'rgba(156,163,175,0.12)' },
 };
 const POLARITY_CYCLE: FieldingPolarity[] = ['positive', 'negative', 'neutral'];
+
+type FieldingScope = 'both' | 'wicket' | 'non-wicket';
+const SCOPE_META: Record<FieldingScope, { label: string; color: string; bg: string }> = {
+  both:        { label: 'Both',       color: '#9ca3af', bg: 'rgba(156,163,175,0.12)' },
+  wicket:      { label: 'Wicket',     color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
+  'non-wicket': { label: 'Non-wicket', color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
+};
+const SCOPE_CYCLE: FieldingScope[] = ['both', 'wicket', 'non-wicket'];
 
 // ─── Sub-components ───────────────────────────────────────────────
 
@@ -161,38 +171,54 @@ function CustomDismissalCard({ item, onChange, onRemove, onFocus, disabled }: { 
 
 function FieldingEventRow({ item, index, total, onChange, onRemove, onMoveUp, onMoveDown, onFocus, disabled }: { item: FieldingEventConfig; index: number; total: number; onChange: (patch: Partial<FieldingEventConfig>) => void; onRemove: () => void; onMoveUp: () => void; onMoveDown: () => void; onFocus?: () => void; disabled: boolean }) {
   const theme = useThemeStore((s) => s.theme);
+  const polarityMeta = POLARITY_META[item.polarity ?? 'neutral'];
+  const scope = (item.scope ?? 'both') as FieldingScope;
+  const scopeMeta = SCOPE_META[scope];
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.surfaceAlt, borderRadius: 10, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: theme.border, gap: 8 }}>
-      <TouchableOpacity
-        onPress={() => onChange({ enabled: !item.enabled })}
-        disabled={disabled}
-        style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 1.5, borderColor: item.enabled ? theme.accent : theme.textMuted, backgroundColor: item.enabled ? theme.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}
-      >
-        {item.enabled && <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '900', lineHeight: 16 }}>✓</Text>}
-      </TouchableOpacity>
+    <View style={{ backgroundColor: theme.surfaceAlt, borderRadius: 10, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: theme.border }}>
+      {/* Row 1: checkbox, label, reorder/remove */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <TouchableOpacity
+          onPress={() => onChange({ enabled: !item.enabled })}
+          disabled={disabled}
+          style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 1.5, borderColor: item.enabled ? theme.accent : theme.textMuted, backgroundColor: item.enabled ? theme.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}
+        >
+          {item.enabled && <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '900', lineHeight: 16 }}>✓</Text>}
+        </TouchableOpacity>
 
-      <TextInput
-        value={item.label} onChangeText={(t) => onChange({ label: t })} onFocus={onFocus}
-        placeholder="Event label" placeholderTextColor={theme.textMuted} editable={!disabled}
-        style={{ flex: 1, backgroundColor: disabled ? theme.bg : theme.surface, color: disabled ? theme.textMuted : theme.text, borderRadius: 6, paddingVertical: 6, paddingHorizontal: 10, fontSize: 14, borderWidth: 1, borderColor: theme.border }}
-      />
+        <TextInput
+          value={item.label} onChangeText={(t) => onChange({ label: t })} onFocus={onFocus}
+          placeholder="Event label" placeholderTextColor={theme.textMuted} editable={!disabled}
+          style={{ flex: 1, backgroundColor: disabled ? theme.bg : theme.surface, color: disabled ? theme.textMuted : theme.text, borderRadius: 6, paddingVertical: 6, paddingHorizontal: 10, fontSize: 14, borderWidth: 1, borderColor: theme.border }}
+        />
 
-      {(() => {
-        const meta = POLARITY_META[item.polarity ?? 'neutral'];
-        return (
-          <TouchableOpacity onPress={() => { const i = POLARITY_CYCLE.indexOf(item.polarity ?? 'neutral'); onChange({ polarity: POLARITY_CYCLE[(i + 1) % POLARITY_CYCLE.length] }); }} disabled={disabled} style={{ paddingHorizontal: 8, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: meta.color, backgroundColor: meta.bg, minWidth: 78, alignItems: 'center', opacity: disabled ? 0.5 : 1 }}>
-            <Text style={{ color: meta.color, fontSize: 12, fontWeight: '700' }}>{meta.label}</Text>
-          </TouchableOpacity>
-        );
-      })()}
+        {!disabled && (
+          <View style={{ flexDirection: 'row', gap: 4 }}>
+            <TouchableOpacity onPress={onMoveUp} disabled={index === 0} style={{ padding: 6, opacity: index === 0 ? 0.3 : 1 }}><Text style={{ color: theme.textMuted, fontSize: 14 }}>↑</Text></TouchableOpacity>
+            <TouchableOpacity onPress={onMoveDown} disabled={index === total - 1} style={{ padding: 6, opacity: index === total - 1 ? 0.3 : 1 }}><Text style={{ color: theme.textMuted, fontSize: 14 }}>↓</Text></TouchableOpacity>
+            <TouchableOpacity onPress={onRemove} style={{ padding: 6 }}><Text style={{ color: '#dc2626', fontSize: 14, fontWeight: '700' }}>✕</Text></TouchableOpacity>
+          </View>
+        )}
+      </View>
 
-      {!disabled && (
-        <View style={{ flexDirection: 'row', gap: 4 }}>
-          <TouchableOpacity onPress={onMoveUp} disabled={index === 0} style={{ padding: 6, opacity: index === 0 ? 0.3 : 1 }}><Text style={{ color: theme.textMuted, fontSize: 14 }}>↑</Text></TouchableOpacity>
-          <TouchableOpacity onPress={onMoveDown} disabled={index === total - 1} style={{ padding: 6, opacity: index === total - 1 ? 0.3 : 1 }}><Text style={{ color: theme.textMuted, fontSize: 14 }}>↓</Text></TouchableOpacity>
-          <TouchableOpacity onPress={onRemove} style={{ padding: 6 }}><Text style={{ color: '#dc2626', fontSize: 14, fontWeight: '700' }}>✕</Text></TouchableOpacity>
-        </View>
-      )}
+      {/* Row 2: polarity + scope toggles */}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, marginLeft: 28 }}>
+        <TouchableOpacity
+          onPress={() => { const i = POLARITY_CYCLE.indexOf(item.polarity ?? 'neutral'); onChange({ polarity: POLARITY_CYCLE[(i + 1) % POLARITY_CYCLE.length] }); }}
+          disabled={disabled}
+          style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: polarityMeta.color, backgroundColor: polarityMeta.bg, alignItems: 'center', opacity: disabled ? 0.5 : 1 }}
+        >
+          <Text style={{ color: polarityMeta.color, fontSize: 12, fontWeight: '700' }}>{polarityMeta.label}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => { const i = SCOPE_CYCLE.indexOf(scope); onChange({ scope: SCOPE_CYCLE[(i + 1) % SCOPE_CYCLE.length] }); }}
+          disabled={disabled}
+          style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: scopeMeta.color, backgroundColor: scopeMeta.bg, alignItems: 'center', opacity: disabled ? 0.5 : 1 }}
+        >
+          <Text style={{ color: scopeMeta.color, fontSize: 12, fontWeight: '700' }}>{scopeMeta.label}</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -373,6 +399,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
       label: '',
       enabled: true,
       polarity: 'neutral',
+      scope: 'both',
     };
     setField('fieldingEvents', [...draft.fieldingEvents, newItem]);
   }

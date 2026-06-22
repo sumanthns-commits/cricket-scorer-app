@@ -2151,6 +2151,10 @@ export default function LiveScoringScreen() {
     ? players.filter((p) => innings.bowlingIds.includes(p.id) || substituteIds.includes(p.id))
     : [];
   const enabledFieldingEvents = (clubRules?.fieldingEvents ?? []).filter((e) => e.enabled);
+  // Scope 'both' (and absent/legacy) appears in both contexts; 'wicket' only on the
+  // wicket sheet; 'non-wicket' only in the fielding overlay for normal balls.
+  const wicketFieldingEvents = enabledFieldingEvents.filter((e) => !e.scope || e.scope === 'both' || e.scope === 'wicket');
+  const nonWicketFieldingEvents = enabledFieldingEvents.filter((e) => !e.scope || e.scope === 'both' || e.scope === 'non-wicket');
 
   // ── Render phases ────────────────────────────────────────────────
 
@@ -2543,7 +2547,7 @@ export default function LiveScoringScreen() {
         visible={showFielding}
         runs={pendingRuns}
         players={fieldingPlayers}
-        fieldingEvents={enabledFieldingEvents}
+        fieldingEvents={nonWicketFieldingEvents}
         hideFielders={hideFieldingFielders}
         onDone={handleFieldingDone}
       />
@@ -2553,7 +2557,7 @@ export default function LiveScoringScreen() {
         enabledDismissals={enabledDismissals}
         customDismissals={liveCustomDismissals}
         fieldingPlayers={fieldingPlayers}
-        fieldingEvents={enabledFieldingEvents}
+        fieldingEvents={wicketFieldingEvents}
         onSelect={handleWicketSelect}
         onClose={() => setShowWicket(false)}
       />
