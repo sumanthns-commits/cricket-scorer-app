@@ -140,3 +140,28 @@ EXPO_PUBLIC_FIREBASE_PROJECT_ID
 EXPO_PUBLIC_MCP_URL
 API_KEY
 EXPO_PUBLIC_USE_EMULATOR=true for local dev
+
+## QA & Regression Testing
+Full scenario list lives in `docs/qa-test-scenarios.md` (14 sections, A–N, ~60 scenarios).
+
+To run a full regression suite, invoke the `cricket-app-qa-tester` agent:
+```
+@"cricket-app-qa-tester (agent)" Run the full regression suite from docs/qa-test-scenarios.md.
+Boot the Android emulator (Medium_Tablet AVD), launch com.crease.cricket, test all scenarios
+and produce a PASS/FAIL report.
+```
+
+Critical regression targets on every release (must all PASS):
+- F7/F8: Wide +0 no strike rotation; Wide +1 rotates strike
+- F11/F12: No-ball same as wide for strike rotation
+- F14/F15/G3: Bye/LB not charged to bowler economy
+- F16: Bye/LB run picker shows 1–6
+- F20/F21: Non-striker run-out toggle (WHO WAS RUN OUT? card)
+- F26: maxBowlerOvers cap excludes bowler from picker
+- C7: Abandoned match excluded from prevMatch
+- C2/C3/C4/C5/M4: Linked ghost excluded from all squad reuse paths
+- G4: BowlerRow economy uses match ballsPerOver, not hardcoded 6
+- J5: sealedRef guard prevents double match completion
+
+Emulator tap coordinate note: device is 2560×1600; screencap displayed at 2000×1250 in
+viewer — multiply displayed coords by 1.28 to get device tap coordinates.
