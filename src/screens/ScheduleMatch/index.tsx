@@ -111,12 +111,19 @@ export default function ScheduleMatchScreen() {
 
   const activePlayerIds = useMemo(() => new Set(players.map(p => p.id)), [players]);
 
+  // Map ghost IDs from old matches to the registered player who absorbed them.
+  const ghostToRegistered = useMemo(
+    () => new Map(players.flatMap(p => p.linkedGhost ? [[p.linkedGhost.ghostId, p.id]] : [])),
+    [players]
+  );
+  const resolvePlayerId = (id: string) => ghostToRegistered.get(id) ?? id;
+
   useEffect(() => {
     if (prevMatch && reuseMode !== 'none' && !prefilled && !loadingPlayers) {
-      setSelectedIds(new Set((prevMatch.squad ?? []).filter(id => activePlayerIds.has(id))));
+      setSelectedIds(new Set((prevMatch.squad ?? []).map(resolvePlayerId).filter(id => activePlayerIds.has(id))));
       setPrefilled(true);
     }
-  }, [prevMatch, reuseMode, prefilled, loadingPlayers, activePlayerIds]);
+  }, [prevMatch, reuseMode, prefilled, loadingPlayers, activePlayerIds, ghostToRegistered]);
 
   const { mutate: submit, isPending, error } = useMutation({
     mutationFn: async () => {
@@ -134,11 +141,11 @@ export default function ScheduleMatchScreen() {
           date: matchDate,
           format: prevMatch.format ?? 'custom',
           rules,
-          squad: (prevMatch.squad ?? []).filter(id => activePlayerIds.has(id)),
-          teamA: (prevMatch.teamA ?? []).filter(id => activePlayerIds.has(id)),
-          teamB: (prevMatch.teamB ?? []).filter(id => activePlayerIds.has(id)),
-          captainA: prevMatch.captainA && activePlayerIds.has(prevMatch.captainA) ? prevMatch.captainA : undefined,
-          captainB: prevMatch.captainB && activePlayerIds.has(prevMatch.captainB) ? prevMatch.captainB : undefined,
+          squad: Array.from(new Set((prevMatch.squad ?? []).map(resolvePlayerId).filter(id => activePlayerIds.has(id)))),
+          teamA: Array.from(new Set((prevMatch.teamA ?? []).map(resolvePlayerId).filter(id => activePlayerIds.has(id)))),
+          teamB: Array.from(new Set((prevMatch.teamB ?? []).map(resolvePlayerId).filter(id => activePlayerIds.has(id)))),
+          captainA: prevMatch.captainA && activePlayerIds.has(resolvePlayerId(prevMatch.captainA)) ? resolvePlayerId(prevMatch.captainA) : undefined,
+          captainB: prevMatch.captainB && activePlayerIds.has(resolvePlayerId(prevMatch.captainB)) ? resolvePlayerId(prevMatch.captainB) : undefined,
         });
       }
 
@@ -146,8 +153,8 @@ export default function ScheduleMatchScreen() {
         format === 'T20' ? 20 : format === 'ODI' ? 50 : parseInt(customOvers, 10) || undefined;
       const rules = { ...club.rules, oversPerInnings };
       const carryTeams = (reuseMode === 'teams-edit') && prevMatch;
-      const prevCaptainA = carryTeams && prevMatch.captainA && selectedIds.has(prevMatch.captainA) ? prevMatch.captainA : undefined;
-      const prevCaptainB = carryTeams && prevMatch.captainB && selectedIds.has(prevMatch.captainB) ? prevMatch.captainB : undefined;
+      const prevCaptainA = carryTeams && prevMatch.captainA && selectedIds.has(resolvePlayerId(prevMatch.captainA)) ? resolvePlayerId(prevMatch.captainA) : undefined;
+      const prevCaptainB = carryTeams && prevMatch.captainB && selectedIds.has(resolvePlayerId(prevMatch.captainB)) ? resolvePlayerId(prevMatch.captainB) : undefined;
       return createMatch({
         clubId,
         homeTeam: homeTeam.trim() || club.name,
@@ -157,8 +164,8 @@ export default function ScheduleMatchScreen() {
         format,
         rules,
         squad: Array.from(selectedIds).filter(id => activePlayerIds.has(id)),
-        teamA: carryTeams ? (prevMatch.teamA ?? []).filter((id) => selectedIds.has(id) && activePlayerIds.has(id)) : undefined,
-        teamB: carryTeams ? (prevMatch.teamB ?? []).filter((id) => selectedIds.has(id) && activePlayerIds.has(id)) : undefined,
+        teamA: carryTeams ? Array.from(new Set((prevMatch.teamA ?? []).map(resolvePlayerId).filter((id) => selectedIds.has(id) && activePlayerIds.has(id)))) : undefined,
+        teamB: carryTeams ? Array.from(new Set((prevMatch.teamB ?? []).map(resolvePlayerId).filter((id) => selectedIds.has(id) && activePlayerIds.has(id)))) : undefined,
         captainA: prevCaptainA,
         captainB: prevCaptainB,
       });
@@ -200,7 +207,7 @@ export default function ScheduleMatchScreen() {
     if (mode === 'none') {
       clearAll();
     } else if (prevMatch) {
-      setSelectedIds(new Set((prevMatch.squad ?? []).filter(id => activePlayerIds.has(id))));
+      setSelectedIds(new Set((prevMatch.squad ?? []).map(resolvePlayerId).filter(id => activePlayerIds.has(id))));
     }
   };
 

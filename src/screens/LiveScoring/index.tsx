@@ -1230,7 +1230,10 @@ function TeamsTab({
   onSubstituteRemoved: (playerId: string) => void;
 }) {
   const theme = useThemeStore((s) => s.theme);
-  const playerMap = new Map(players.map((p) => [p.id, p.displayName]));
+  const playerMap = new Map([
+    ...players.map((p): [string, string] => [p.id, p.displayName]),
+    ...players.flatMap((p): [string, string][] => p.linkedGhost ? [[p.linkedGhost.ghostId, p.displayName]] : []),
+  ]);
   const teamA = match?.teamA ?? [];
   const teamB = match?.teamB ?? [];
   const captainA = match?.captainA;
@@ -2221,7 +2224,10 @@ export default function LiveScoringScreen() {
 
   // ── Derived ──────────────────────────────────────────────────────
 
-  const playerMap = Object.fromEntries(players.map((p) => [p.id, p]));
+  const playerMap = Object.fromEntries([
+    ...players.map((p): [string, typeof p] => [p.id, p]),
+    ...players.flatMap((p): [string, typeof p][] => p.linkedGhost ? [[p.linkedGhost.ghostId, p]] : []),
+  ]);
   const onStrikeHand = innings ? (innings.handedness[innings.onStrikeId] ?? 'RHB') : 'RHB';
   const offStrikeHand = innings ? (innings.handedness[innings.offStrikeId] ?? 'RHB') : 'RHB';
 

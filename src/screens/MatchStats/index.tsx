@@ -157,8 +157,14 @@ export function MatchStatsContent({ clubId, matchId }: { clubId: string; matchId
       ]);
       return {
         match,
-        nameMap: Object.fromEntries(players.map((p) => [p.id, p.displayName])) as Record<string, string>,
-        handMap: Object.fromEntries(players.map((p) => [p.id, p.battingHand ?? 'RHB'])) as Record<string, BattingHand>,
+        nameMap: Object.fromEntries([
+          ...players.map((p) => [p.id, p.displayName]),
+          ...players.flatMap(p => p.linkedGhost ? [[p.linkedGhost.ghostId, p.displayName]] : []),
+        ]) as Record<string, string>,
+        handMap: Object.fromEntries([
+          ...players.map((p) => [p.id, p.battingHand ?? 'RHB']),
+          ...players.flatMap(p => p.linkedGhost ? [[p.linkedGhost.ghostId, p.battingHand ?? 'RHB']] : []),
+        ]) as Record<string, BattingHand>,
         innings1Overs: overs.filter((o) => o.inningsId === 'innings-1'),
         innings2Overs: overs.filter((o) => o.inningsId === 'innings-2'),
       };

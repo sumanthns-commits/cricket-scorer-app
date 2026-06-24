@@ -46,12 +46,13 @@ export async function getClubPlayers(clubId: string): Promise<Player[]> {
       const userSnap = await getDoc(doc(db, 'users', d.id));
       const userData = userSnap.exists() ? userSnap.data() : null;
       results.push({
+        ...data,
         id: d.id,
         displayName: userData?.displayName ?? d.id,
         type: (data.type as PlayerType) ?? 'registered',
         activeClaim: data.activeClaim ?? null,
         careerStats: (data.careerStats as CareerStats) ?? emptyStats,
-      });
+      } as Player);
     }
   }
 

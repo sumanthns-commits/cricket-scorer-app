@@ -261,7 +261,10 @@ export default function MatchScorecardScreen() {
       const summary = match?.inningsSummary;
       return {
         match,
-        nameMap: Object.fromEntries(players.map((p) => [p.id, p.displayName])) as Record<string, string>,
+        nameMap: Object.fromEntries([
+          ...players.map((p) => [p.id, p.displayName]),
+          ...players.flatMap(p => p.linkedGhost ? [[p.linkedGhost.ghostId, p.displayName]] : []),
+        ]) as Record<string, string>,
         card1: first.length ? buildInningsCard(first, ballsPerOver) : summary?.['1'] ?? null,
         card2: second.length ? buildInningsCard(second, ballsPerOver) : summary?.['2'] ?? null,
       };
