@@ -34,18 +34,23 @@ src/
 ## Match lifecycle (wizard flow)
 ScheduleMatch → TeamBuilder → Toss → LiveScoring
 
-- **ScheduleMatch**: creates match doc, selects squad. "Reuse previous squad & teams"
-  carries over teamA, teamB, captainA, captainB (if those players are in the new squad).
+- **ScheduleMatch**: collects match details + squad. Does NOT create a Firestore doc.
+  Passes a `MatchDraft` (JSON-serializable) through nav params to TeamBuilder/Toss.
+  "Reuse previous squad & teams" carries over teamA, teamB, captainA, captainB.
   Uses `navigation.navigate` (not replace) so back returns to the form.
 - **TeamBuilder**: assigns squad players to Team A/B, sets captains, optional AI balance.
-  Uses `navigation.navigate` to Toss. Accepts `returnTo?: 'LiveScoring'` param — when
-  set (editing teams before first ball from live screen), replaces back to LiveScoring.
-- **Toss**: coin flip, toss winner + choice (bat/field), select scorer. Sets match status → 'live'.
-- **LiveScoring**: loads match state, reconstructs innings from saved overs.
+  In draft mode (no matchId): reads teams from `matchDraft`, passes updated draft to Toss.
+  In edit mode (has matchId): writes directly to the existing match doc.
+  Accepts `returnTo?: 'LiveScoring'` param — replaces back to LiveScoring after confirm.
+- **Toss**: coin flip, toss winner + choice (bat/field), select scorer.
+  In draft mode: calls `createLiveMatch()` which writes the match doc with `status:'live'`
+  and the toss in a single shot. Match never exists in Firestore as 'scheduled'.
+  In edit mode (existing matchId): calls `setMatchToss()` as before.
+- **LiveScoring**: loads match state, reconstructs innings from ball docs.
 
 ## Match data model (`clubs/{clubId}/matches/{matchId}`)
 ```
-status: 'scheduled' | 'live' | 'completed' | 'abandoned'
+status: 'live' | 'completed' | 'abandoned'   ← never 'scheduled' for new matches
 squad: string[]        — all selected player IDs
 teamA: string[]        — Team A player IDs
 teamB: string[]        — Team B player IDs
@@ -56,19 +61,50 @@ toss?: MatchToss       — winner, choice (bat/field), scorerId
 rules: ClubRules       — snapshot at schedule time (live rules come from club doc)
 inningsSummary?        — written by onMatchCompleted Cloud Function
 ```
-Overs subcollection: `matches/{matchId}/overs/{overId}` — each doc has `balls: BallEntry[]`.
 
-## BallEntry fielding
+## Ball storage (primary — new matches)
+`matches/{matchId}/balls/{autoId}` — one doc per delivery (`BallDoc`):
+```
+seq: number              — monotonic, used for ordering
+inningsId: string        — 'innings-1' | 'innings-2'
+overNumber: number
+bowlerId: string
+batsmanId: string        — on-striker (facing batter, always)
+nonStrikerId: string     — non-striker before this delivery
+runs: number             — runs off the bat (excludes extras)
+extras?: { type, runs }
+wagon?: { sector, depth }
+fielding?: { eventId?, eventLabel?, fielderIds? }
+dismissal?: {
+  type: string
+  nonStrikerOut: boolean     — true when non-striker was dismissed
+  outBatsmanId: string       — who got out (batsmanId or nonStrikerId)
+  fielderIds?: string[]
+  nextBatsmanId?: string     — patched via updateDoc after user selects replacement
+}
+isLastBallOfOver: boolean
+```
+Innings state is reconstructed purely from the ball sequence — no state snapshot stored.
+Bowler selection is ephemeral (not stored); user re-selects if app is reopened mid-over.
+Undo = `deleteLastBall()` which removes the last doc for the innings.
+
+## Ball storage (legacy — old matches)
+`matches/{matchId}/overs/{overId}` — each doc has `balls: BallEntry[]`.
+`getMatchOvers()` checks `balls/` first; falls back to `overs/` if empty.
+`adaptToBallDoc()` in `matchService.ts` handles old MatchEvent format for backward compat
+(derives `isLastBallOfOver` from `state.isOverComplete`, skips non-ball event types).
+
+## BallEntry fielding (legacy overs/ format)
 ```
 fielding?: {
   eventId?: string
   eventLabel?: string   — snapshot label (survives rule edits)
   fielderId?: string    — legacy single fielder
-  fielderIds?: string[] — multi-select (new); fanout to all selected fielders
+  fielderIds?: string[] — multi-select; fanout to all selected fielders
 }
 ```
-The Cloud Function `onMatchCompleted` handles both `fielderId` and `fielderIds`.
-Client-side `seasonLeaderboard.ts` also fans out via `fielderIds ?? [fielderId]`.
+`onMatchCompleted` handles both `fielderId` and `fielderIds`.
+`seasonLeaderboard.ts` fans out via `fielderIds ?? [fielderId]`.
 
 ## Live scoring screen tabs
 SCORING | SCORECARD | TEAMS | STATS
@@ -111,7 +147,8 @@ UI controls which buttons show. `customDismissals` in ClubRules is the only engi
 
 ## Cloud Functions (../cricket-scorer-functions)
 Key functions:
-- `onMatchCompleted` — aggregates career stats, fielding points, wagon wheel from overs
+- `onMatchCompleted` — aggregates career stats, fielding points, wagon wheel from balls/
+  (falls back to overs/ for legacy matches). Handles both BallDoc and BallEntry formats.
 - `mirrorPlayerStats` — syncs publicPlayerStats after per-club player writes
 - `resolveJoinRequest` — ghost linking / join approval
 - `linkGhost` / `unlinkGhost` — admin callable stat merge/reversal
