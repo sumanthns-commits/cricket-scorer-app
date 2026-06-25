@@ -12,10 +12,11 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { getClub } from '../../services/clubService';
-import { getClubPlayers, createMatch, getClubMatches } from '../../services/matchService';
+import { getClubPlayers, getClubMatches } from '../../services/matchService';
+import type { MatchDraft } from '../../navigation/RootNavigator';
 import { useThemeStore } from '../../store/themeStore';
 import type { MatchFormat } from '../../types';
 
@@ -125,59 +126,49 @@ export default function ScheduleMatchScreen() {
     }
   }, [prevMatch, reuseMode, prefilled, loadingPlayers, activePlayerIds, ghostToRegistered]);
 
-  const { mutate: submit, isPending, error } = useMutation({
-    mutationFn: async () => {
-      if (!club) throw new Error('Club data not loaded');
-      const matchDate = new Date(year, month, day);
+  const handleSubmit = () => {
+    if (!club) return;
+    const matchDate = new Date(year, month, day);
 
-      // 'teams' mode: clone previous match exactly — only date is new
-      if (reuseMode === 'teams' && prevMatch) {
-        const rules = { ...club.rules, oversPerInnings: prevMatch.rules.oversPerInnings };
-        return createMatch({
-          clubId,
-          homeTeam: prevMatch.homeTeam,
-          awayTeam: prevMatch.awayTeam,
-          venue: prevMatch.venue ?? '',
-          date: matchDate,
-          format: prevMatch.format ?? 'custom',
-          rules,
-          squad: Array.from(new Set((prevMatch.squad ?? []).map(resolvePlayerId).filter(id => activePlayerIds.has(id)))),
-          teamA: Array.from(new Set((prevMatch.teamA ?? []).map(resolvePlayerId).filter(id => activePlayerIds.has(id)))),
-          teamB: Array.from(new Set((prevMatch.teamB ?? []).map(resolvePlayerId).filter(id => activePlayerIds.has(id)))),
-          captainA: prevMatch.captainA && activePlayerIds.has(resolvePlayerId(prevMatch.captainA)) ? resolvePlayerId(prevMatch.captainA) : undefined,
-          captainB: prevMatch.captainB && activePlayerIds.has(resolvePlayerId(prevMatch.captainB)) ? resolvePlayerId(prevMatch.captainB) : undefined,
-        });
-      }
-
-      const oversPerInnings =
-        format === 'T20' ? 20 : format === 'ODI' ? 50 : parseInt(customOvers, 10) || undefined;
-      const rules = { ...club.rules, oversPerInnings };
-      const carryTeams = (reuseMode === 'teams-edit') && prevMatch;
-      const prevCaptainA = carryTeams && prevMatch.captainA && selectedIds.has(resolvePlayerId(prevMatch.captainA)) ? resolvePlayerId(prevMatch.captainA) : undefined;
-      const prevCaptainB = carryTeams && prevMatch.captainB && selectedIds.has(resolvePlayerId(prevMatch.captainB)) ? resolvePlayerId(prevMatch.captainB) : undefined;
-      return createMatch({
-        clubId,
-        homeTeam: homeTeam.trim() || club.name,
-        awayTeam: awayTeam.trim() || 'Opponents',
-        venue: venue.trim(),
-        date: matchDate,
-        format,
+    if (reuseMode === 'teams' && prevMatch) {
+      // Quick rematch: clone previous match exactly — teams pre-filled, go straight to Toss
+      const rules = { ...club.rules, oversPerInnings: prevMatch.rules.oversPerInnings };
+      const draft: MatchDraft = {
+        homeTeam: prevMatch.homeTeam,
+        awayTeam: prevMatch.awayTeam,
+        venue: prevMatch.venue ?? '',
+        dateMs: matchDate.getTime(),
+        format: prevMatch.format ?? 'custom',
         rules,
-        squad: Array.from(selectedIds).filter(id => activePlayerIds.has(id)),
-        teamA: carryTeams ? Array.from(new Set((prevMatch.teamA ?? []).map(resolvePlayerId).filter((id) => selectedIds.has(id) && activePlayerIds.has(id)))) : undefined,
-        teamB: carryTeams ? Array.from(new Set((prevMatch.teamB ?? []).map(resolvePlayerId).filter((id) => selectedIds.has(id) && activePlayerIds.has(id)))) : undefined,
-        captainA: prevCaptainA,
-        captainB: prevCaptainB,
-      });
-    },
-    onSuccess: (matchId) => {
-      if (reuseMode === 'teams') {
-        navigation.navigate('Toss', { clubId, matchId });
-      } else {
-        navigation.navigate('TeamBuilder', { clubId, matchId });
-      }
-    },
-  });
+        squad: Array.from(new Set((prevMatch.squad ?? []).map(resolvePlayerId).filter(id => activePlayerIds.has(id)))),
+        teamA: Array.from(new Set((prevMatch.teamA ?? []).map(resolvePlayerId).filter(id => activePlayerIds.has(id)))),
+        teamB: Array.from(new Set((prevMatch.teamB ?? []).map(resolvePlayerId).filter(id => activePlayerIds.has(id)))),
+        captainA: prevMatch.captainA && activePlayerIds.has(resolvePlayerId(prevMatch.captainA)) ? resolvePlayerId(prevMatch.captainA) : undefined,
+        captainB: prevMatch.captainB && activePlayerIds.has(resolvePlayerId(prevMatch.captainB)) ? resolvePlayerId(prevMatch.captainB) : undefined,
+      };
+      navigation.navigate('Toss', { clubId, matchDraft: draft });
+      return;
+    }
+
+    const oversPerInnings =
+      format === 'T20' ? 20 : format === 'ODI' ? 50 : parseInt(customOvers, 10) || undefined;
+    const rules = { ...club.rules, oversPerInnings };
+    const carryTeams = reuseMode === 'teams-edit' && !!prevMatch;
+    const draft: MatchDraft = {
+      homeTeam: homeTeam.trim() || club.name,
+      awayTeam: awayTeam.trim() || 'Opponents',
+      venue: venue.trim(),
+      dateMs: matchDate.getTime(),
+      format,
+      rules,
+      squad: Array.from(selectedIds).filter(id => activePlayerIds.has(id)),
+      teamA: carryTeams ? Array.from(new Set((prevMatch!.teamA ?? []).map(resolvePlayerId).filter(id => selectedIds.has(id) && activePlayerIds.has(id)))) : undefined,
+      teamB: carryTeams ? Array.from(new Set((prevMatch!.teamB ?? []).map(resolvePlayerId).filter(id => selectedIds.has(id) && activePlayerIds.has(id)))) : undefined,
+      captainA: carryTeams && prevMatch!.captainA && selectedIds.has(resolvePlayerId(prevMatch!.captainA)) ? resolvePlayerId(prevMatch!.captainA) : undefined,
+      captainB: carryTeams && prevMatch!.captainB && selectedIds.has(resolvePlayerId(prevMatch!.captainB)) ? resolvePlayerId(prevMatch!.captainB) : undefined,
+    };
+    navigation.navigate('TeamBuilder', { clubId, matchDraft: draft });
+  };
 
   const adjustDay = (delta: number) => {
     const max = daysInMonth(month, year);
@@ -214,8 +205,8 @@ export default function ScheduleMatchScreen() {
   const customOversValid = format !== 'custom' || parseInt(customOvers, 10) >= 1;
   const isQuickRematch = reuseMode === 'teams';
   const canSubmit = isQuickRematch
-    ? !!prevMatch && !!club && !isPending
-    : selectedIds.size >= 2 && !isPending && !!club && customOversValid;
+    ? !!prevMatch && !!club
+    : selectedIds.size >= 2 && !!club && customOversValid;
 
   const inputStyle = {
     backgroundColor: theme.surface,
@@ -422,12 +413,8 @@ export default function ScheduleMatchScreen() {
         </>
       )}
 
-      {error instanceof Error && (
-        <Text style={{ color: '#dc2626', textAlign: 'center', marginTop: 8 }}>{error.message}</Text>
-      )}
-
       <TouchableOpacity
-        onPress={() => submit()}
+        onPress={handleSubmit}
         disabled={!canSubmit}
         style={{
           backgroundColor: canSubmit ? theme.accent : theme.surface,
@@ -440,13 +427,9 @@ export default function ScheduleMatchScreen() {
           borderColor: theme.border,
         }}
       >
-        {isPending ? (
-          <ActivityIndicator color="#ffffff" />
-        ) : (
-          <Text style={{ color: canSubmit ? '#ffffff' : theme.textMuted, fontSize: 16, fontWeight: '700' }}>
-            {reuseMode === 'teams' ? 'Quick Rematch' : 'Create & Build Teams'}
-          </Text>
-        )}
+        <Text style={{ color: canSubmit ? '#ffffff' : theme.textMuted, fontSize: 16, fontWeight: '700' }}>
+          {reuseMode === 'teams' ? 'Quick Rematch' : 'Build Teams'}
+        </Text>
       </TouchableOpacity>
     </ScrollView>
     </KeyboardAvoidingView>

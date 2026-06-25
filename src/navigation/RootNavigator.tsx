@@ -2,6 +2,7 @@ import { View, Text, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import type { ClubRules, MatchFormat } from '../types';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import TabNavigator, { type TabParamList } from './TabNavigator';
@@ -23,6 +24,23 @@ import RequesterProfileScreen from '../screens/RequesterProfile';
 import EditProfileScreen from '../screens/EditProfile';
 import ClubDetailScreen from '../screens/ClubDetail';
 
+// All match-setup data collected before the match exists in Firestore.
+// Passed through ScheduleMatch → TeamBuilder → Toss; the Toss screen
+// creates the match doc when the user confirms the toss.
+export type MatchDraft = {
+  homeTeam: string;
+  awayTeam: string;
+  venue: string;
+  dateMs: number;       // Date.getTime() — JSON-serializable
+  format: MatchFormat;
+  rules: ClubRules;
+  squad: string[];
+  teamA?: string[];
+  teamB?: string[];
+  captainA?: string;
+  captainB?: string;
+};
+
 export type RootStackParamList = {
   SignIn: undefined;
   Tabs: NavigatorScreenParams<TabParamList>;
@@ -30,8 +48,10 @@ export type RootStackParamList = {
   EditClub: { clubId: string };
   ClubRulesAdmin: { clubId: string };
   ScheduleMatch: { clubId: string };
-  TeamBuilder: { clubId: string; matchId: string; returnTo?: 'LiveScoring' };
-  Toss: { clubId: string; matchId: string };
+  // matchId: editing an existing match's teams; matchDraft: new match setup in progress
+  TeamBuilder: { clubId: string; matchId?: string; returnTo?: 'LiveScoring'; matchDraft?: MatchDraft };
+  // matchId: existing match; matchDraft: new match (created at toss time)
+  Toss: { clubId: string; matchId?: string; matchDraft?: MatchDraft };
   LiveScoring: { clubId: string; matchId: string };
   PlayerProfile: { clubId: string; playerId: string };
   MatchScorecard: { clubId: string; matchId: string };

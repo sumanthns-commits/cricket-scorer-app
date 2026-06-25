@@ -275,10 +275,34 @@ export interface OverDocument {
   bowlerId: string;
   balls: BallEntry[];
   isComplete: boolean;
-  // Current batters at the end of this over (written on every ball save so
-  // reconstruction after sign-out gets the correct pair without replaying rotations).
   onStrikeId?: string;
   offStrikeId?: string;
+}
+
+// One Firestore doc per ball in matches/{matchId}/balls/{autoId}.
+// Self-contained: all facts about a single delivery are on this document.
+// nonStrikerId + dismissal.nextBatsmanId let the app reconstruct crease state
+// purely from ball documents — no separate batsman-in or bowler-in events.
+export interface BallDoc {
+  id: string;
+  seq: number;                    // monotonic, used for ordering
+  inningsId: string;
+  overNumber: number;
+  bowlerId: string;
+  batsmanId: string;              // on-striker (always the facing batter)
+  nonStrikerId: string;           // non-striker before this delivery
+  runs: number;                   // runs off the bat (excludes extras)
+  extras?: { type: string; runs: number };
+  wagon?: WagonShot;
+  fielding?: { eventId?: string; eventLabel?: string; fielderIds?: string[] };
+  dismissal?: {
+    type: string;
+    nonStrikerOut: boolean;       // true when it was the non-striker who was dismissed
+    outBatsmanId: string;         // who got out (batsmanId or nonStrikerId)
+    fielderIds?: string[];
+    nextBatsmanId?: string;       // set via updateDoc after user selects replacement
+  };
+  isLastBallOfOver: boolean;
 }
 
 export type MatchFormat = 'T20' | 'ODI' | 'custom';

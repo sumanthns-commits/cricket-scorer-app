@@ -5,7 +5,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
-import { getMatch, setMatchToss } from '../../services/matchService';
+import { getMatch, setMatchToss, createLiveMatch } from '../../services/matchService';
 import { getRegisteredClubMembers } from '../../services/clubService';
 import { useThemeStore } from '../../store/themeStore';
 
@@ -15,7 +15,7 @@ type Route = RouteProp<RootStackParamList, 'Toss'>;
 export default function TossScreen() {
   const navigation = useNavigation<Nav>();
   const { params } = useRoute<Route>();
-  const { clubId, matchId } = params;
+  const { clubId, matchId, matchDraft } = params;
   const theme = useThemeStore((s) => s.theme);
 
   const [winnerId, setWinnerId] = useState<'homeTeam' | 'awayTeam' | null>(null);
@@ -30,7 +30,8 @@ export default function TossScreen() {
 
   const { data: match, isLoading } = useQuery({
     queryKey: ['match', clubId, matchId],
-    queryFn: () => getMatch(clubId, matchId),
+    queryFn: () => getMatch(clubId, matchId!),
+    enabled: !!matchId,
   });
 
   const { data: members = [] } = useQuery({
@@ -58,20 +59,46 @@ export default function TossScreen() {
   const rotateY = flipAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '3240deg'] });
 
   const { mutate: confirm, isPending, error } = useMutation({
-    mutationFn: () => {
-      if (!winnerId || !choice || !match) throw new Error('Select toss winner and choice');
-      const winnerName = winnerId === 'homeTeam' ? match.homeTeam : match.awayTeam;
+    mutationFn: async () => {
+      if (!winnerId || !choice) throw new Error('Select toss winner and choice');
       const scorer = selectedScorer ? { scorerId: selectedScorer.id, scorerName: selectedScorer.displayName } : undefined;
-      return setMatchToss(clubId, matchId, { winnerId, winnerName, choice }, scorer);
+
+      if (matchDraft) {
+        // Draft mode: create match and set toss in a single shot
+        const winnerName = winnerId === 'homeTeam' ? matchDraft.homeTeam : matchDraft.awayTeam;
+        return createLiveMatch({
+          clubId,
+          homeTeam: matchDraft.homeTeam,
+          awayTeam: matchDraft.awayTeam,
+          venue: matchDraft.venue,
+          date: new Date(matchDraft.dateMs),
+          format: matchDraft.format,
+          rules: matchDraft.rules,
+          squad: matchDraft.squad,
+          teamA: matchDraft.teamA ?? [],
+          teamB: matchDraft.teamB ?? [],
+          captainA: matchDraft.captainA,
+          captainB: matchDraft.captainB,
+          toss: { winnerId, winnerName, choice },
+          ...scorer,
+        });
+      }
+
+      // Existing match
+      if (!match) throw new Error('Match not loaded');
+      const winnerName = winnerId === 'homeTeam' ? match.homeTeam : match.awayTeam;
+      await setMatchToss(clubId, matchId!, { winnerId, winnerName, choice }, scorer);
+      return matchId!;
     },
-    onSuccess: () => navigation.replace('LiveScoring', { clubId, matchId }),
+    onSuccess: (resolvedMatchId) => navigation.replace('LiveScoring', { clubId, matchId: resolvedMatchId }),
   });
 
   const canConfirm = !!winnerId && !!choice && !isPending;
-  const homeTeam = match?.homeTeam ?? 'Team A';
-  const awayTeam = match?.awayTeam ?? 'Team B';
+  const homeTeam = matchDraft ? matchDraft.homeTeam : (match?.homeTeam ?? 'Team A');
+  const awayTeam = matchDraft ? matchDraft.awayTeam : (match?.awayTeam ?? 'Team B');
+  const venue = matchDraft ? matchDraft.venue : match?.venue;
 
-  if (isLoading) {
+  if (isLoading && !!matchId) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator size="large" color={theme.accent} />
@@ -84,8 +111,8 @@ export default function TossScreen() {
       <Text style={{ color: theme.text, fontSize: 20, fontWeight: '700', textAlign: 'center', marginTop: 12, marginBottom: 4 }}>
         {homeTeam} vs {awayTeam}
       </Text>
-      {match?.venue ? (
-        <Text style={{ color: theme.textMuted, fontSize: 14, textAlign: 'center', marginBottom: 28 }}>{match.venue}</Text>
+      {venue ? (
+        <Text style={{ color: theme.textMuted, fontSize: 14, textAlign: 'center', marginBottom: 28 }}>{venue}</Text>
       ) : (
         <View style={{ marginBottom: 28 }} />
       )}

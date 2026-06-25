@@ -4,7 +4,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import type { RootStackParamList } from '../../navigation/RootNavigator';
+import type { MatchDraft, RootStackParamList } from '../../navigation/RootNavigator';
 import { getMatch, getClubPlayers, setMatchTeams } from '../../services/matchService';
 import { askCricketAssistant } from '../../ai/cricketAssistant';
 import { TEAM_ASSIGNMENT_PROMPT, TEAM_RATIONALE_PROMPT } from '../../constants/teamSelectionPrompt';
@@ -82,7 +82,7 @@ function PlayerRow({ name, badge, shared, isCaptain, onSetCaptain, onMoveA, onMo
 export default function TeamBuilderScreen() {
   const navigation = useNavigation<Nav>();
   const { params } = useRoute<Route>();
-  const { clubId, matchId, returnTo } = params;
+  const { clubId, matchId, returnTo, matchDraft } = params;
   const theme = useThemeStore((s) => s.theme);
 
   const [teamA, setTeamA] = useState<string[]>([]);
@@ -95,15 +95,30 @@ export default function TeamBuilderScreen() {
   const [keyDecisions, setKeyDecisions] = useState<string[]>([]);
   const [showRationale, setShowRationale] = useState(false);
 
-  const { data: match, isLoading: loadingMatch } = useQuery({ queryKey: ['match', clubId, matchId], queryFn: () => getMatch(clubId, matchId) });
+  const { data: match, isLoading: loadingMatch } = useQuery({
+    queryKey: ['match', clubId, matchId],
+    queryFn: () => getMatch(clubId, matchId!),
+    enabled: !!matchId,
+  });
   const { data: players = [], isLoading: loadingPlayers } = useQuery({ queryKey: ['clubPlayers', clubId], queryFn: () => getClubPlayers(clubId) });
 
+  // Existing match: pre-fill teams from Firestore
   useEffect(() => {
     if (match?.teamA?.length) setTeamA(match.teamA);
     if (match?.teamB?.length) setTeamB(match.teamB);
     if (match?.captainA) setCaptainA(match.captainA);
     if (match?.captainB) setCaptainB(match.captainB);
   }, [match]);
+
+  // Draft mode: pre-fill teams from matchDraft (carried from previous reuse mode)
+  useEffect(() => {
+    if (!matchDraft) return;
+    if (matchDraft.teamA?.length) setTeamA(matchDraft.teamA);
+    if (matchDraft.teamB?.length) setTeamB(matchDraft.teamB);
+    if (matchDraft.captainA) setCaptainA(matchDraft.captainA);
+    if (matchDraft.captainB) setCaptainB(matchDraft.captainB);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (loadingPlayers || !match) return;
@@ -114,7 +129,7 @@ export default function TeamBuilderScreen() {
 
   const playerMap = useMemo(() => { const m = new Map<string, string>(); for (const p of players) m.set(p.id, p.displayName); return m; }, [players]);
 
-  const squad = match?.squad ?? [];
+  const squad = matchDraft ? matchDraft.squad : (match?.squad ?? []);
   const unassigned = squad.filter((id) => !teamA.includes(id) && !teamB.includes(id));
   const allowShared = squad.length % 2 === 1;
 
@@ -130,8 +145,11 @@ export default function TeamBuilderScreen() {
   const runAI = async () => {
     setAiThinking(true); setAiError(''); setRationale(''); setKeyDecisions([]);
     try {
-      // Pre-fetch squad stats — avoids a Gemini tool-call round trip
-      const rawStats = await callCallableFunction('get_club_player_stats', { matchId, clubId }) as Array<Record<string, unknown>>;
+      // Pre-fetch squad stats — avoids a Gemini tool-call round trip.
+      // In draft mode (no matchId) fetch all club players and filter by squad client-side.
+      const allStats = await callCallableFunction('get_club_player_stats', matchId ? { matchId, clubId } : { clubId }) as Array<Record<string, unknown>>;
+      const squadSet = new Set(squad);
+      const rawStats = matchId ? allStats : allStats.filter(p => squadSet.has(p.id as string));
 
       // Short keys (p1, p2, …) prevent the model from confusing long Firebase IDs
       const keyToId: Record<string, string> = {};
@@ -194,7 +212,7 @@ export default function TeamBuilderScreen() {
       const captainAName = captainA ? playerMap.get(captainA) : undefined;
       const captainBName = captainB ? playerMap.get(captainB) : undefined;
       return setMatchTeams({
-        clubId, matchId, teamA, teamB,
+        clubId, matchId: matchId!, teamA, teamB,
         captainA: captainA ?? undefined,
         captainB: captainB ?? undefined,
         homeTeam: captainAName ? `Team ${captainAName}` : undefined,
@@ -203,16 +221,36 @@ export default function TeamBuilderScreen() {
     },
     onSuccess: () => {
       if (returnTo === 'LiveScoring') {
-        navigation.replace('LiveScoring', { clubId, matchId });
+        navigation.replace('LiveScoring', { clubId, matchId: matchId! });
       } else {
-        navigation.navigate('Toss', { clubId, matchId });
+        navigation.navigate('Toss', { clubId, matchId: matchId! });
       }
     },
   });
 
+  const handleConfirm = () => {
+    if (matchDraft) {
+      // Draft mode: no Firestore write needed — pass teams to Toss via nav params
+      const captainAName = captainA ? playerMap.get(captainA) : undefined;
+      const captainBName = captainB ? playerMap.get(captainB) : undefined;
+      const updatedDraft: MatchDraft = {
+        ...matchDraft,
+        teamA,
+        teamB,
+        captainA: captainA ?? undefined,
+        captainB: captainB ?? undefined,
+        homeTeam: captainAName ? `Team ${captainAName}` : matchDraft.homeTeam,
+        awayTeam: captainBName ? `Team ${captainBName}` : matchDraft.awayTeam,
+      };
+      navigation.navigate('Toss', { clubId, matchDraft: updatedDraft });
+    } else {
+      confirm();
+    }
+  };
+
   const canConfirm = teamA.length > 0 && teamB.length > 0 && !!captainA && !!captainB && !isPending;
 
-  if (loadingMatch || loadingPlayers) {
+  if ((loadingMatch && !!matchId) || loadingPlayers) {
     return <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator size="large" color={theme.accent} /></View>;
   }
 
@@ -300,7 +338,7 @@ export default function TeamBuilderScreen() {
       {squad.length === 0 && <Text style={{ color: theme.textMuted, textAlign: 'center', marginTop: 32 }}>No squad selected for this match</Text>}
 
       <TouchableOpacity
-        onPress={() => confirm()} disabled={!canConfirm}
+        onPress={handleConfirm} disabled={!canConfirm}
         style={{ backgroundColor: canConfirm ? theme.accent : theme.surface, borderRadius: 10, padding: 16, alignItems: 'center', marginTop: 8, marginBottom: 40, borderWidth: canConfirm ? 0 : 1, borderColor: theme.border }}
       >
         {isPending ? <ActivityIndicator color="#ffffff" /> : <Text style={{ color: canConfirm ? '#ffffff' : theme.textMuted, fontSize: 16, fontWeight: '700' }}>Confirm Teams</Text>}

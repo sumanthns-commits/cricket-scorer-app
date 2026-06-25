@@ -14,7 +14,7 @@ import {
   arrayRemove,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { BallEntry, ClubRules, Match, MatchFormat, MatchToss, OverDocument, Player, PlayerType, CareerStats } from '../types';
+import type { BallDoc, BallEntry, ClubRules, Match, MatchFormat, MatchToss, OverDocument, Player, PlayerType, CareerStats } from '../types';
 
 const emptyStats: CareerStats = {
   totalRuns: 0,
@@ -165,6 +165,47 @@ export async function setMatchToss(
   });
 }
 
+// Creates a match that is immediately live (used when deferring creation to the Toss step).
+export async function createLiveMatch(params: {
+  clubId: string;
+  homeTeam: string;
+  awayTeam: string;
+  venue: string;
+  date: Date;
+  format: MatchFormat;
+  rules: ClubRules;
+  squad: string[];
+  teamA: string[];
+  teamB: string[];
+  captainA?: string;
+  captainB?: string;
+  toss: MatchToss;
+  scorerId?: string;
+  scorerName?: string;
+}): Promise<string> {
+  const matchRef = doc(collection(db, 'clubs', params.clubId, 'matches'));
+  const matchId = matchRef.id;
+  await setDoc(matchRef, {
+    id: matchId,
+    clubId: params.clubId,
+    homeTeam: params.homeTeam,
+    awayTeam: params.awayTeam,
+    venue: params.venue,
+    date: Timestamp.fromDate(params.date),
+    format: params.format,
+    status: 'live',
+    rules: params.rules,
+    squad: params.squad,
+    teamA: params.teamA,
+    teamB: params.teamB,
+    ...(params.captainA ? { captainA: params.captainA } : {}),
+    ...(params.captainB ? { captainB: params.captainB } : {}),
+    toss: params.toss,
+    ...(params.scorerId ? { scorerId: params.scorerId, scorerName: params.scorerName } : {}),
+  });
+  return matchId;
+}
+
 export async function completeMatch(
   clubId: string,
   matchId: string,
@@ -203,18 +244,177 @@ export async function deleteMatch(clubId: string, matchId: string): Promise<void
   await deleteDoc(doc(db, 'clubs', clubId, 'matches', matchId));
 }
 
+// ── Per-ball document store ────────────────────────────────────────
+
+// Returns a new DocumentReference with a client-generated ID.
+// Callers store the ref.id in lastBallIdRef BEFORE calling setDoc so
+// handleNewBatter can updateDoc the same doc without waiting for addDoc.
+export function newBallRef(clubId: string, matchId: string) {
+  return doc(collection(db, 'clubs', clubId, 'matches', matchId, 'balls'));
+}
+
+export async function saveBallDoc(
+  ref: ReturnType<typeof doc>,
+  ball: Omit<BallDoc, 'id'>,
+): Promise<void> {
+  await setDoc(ref, ball);
+}
+
+// Patches dismissal.nextBatsmanId onto the ball doc once the user selects
+// a replacement after a wicket. The ball doc itself is the source of truth.
+export async function updateBallNextBatsman(
+  clubId: string,
+  matchId: string,
+  ballId: string,
+  nextBatsmanId: string,
+): Promise<void> {
+  await updateDoc(
+    doc(db, 'clubs', clubId, 'matches', matchId, 'balls', ballId),
+    { 'dismissal.nextBatsmanId': nextBatsmanId },
+  );
+}
+
+export async function getMatchBalls(
+  clubId: string,
+  matchId: string,
+): Promise<BallDoc[]> {
+  const snap = await getDocs(collection(db, 'clubs', clubId, 'matches', matchId, 'balls'));
+  return snap.docs
+    .map((d) => adaptToBallDoc(d.id, d.data()))
+    .filter((b): b is BallDoc => b !== null)
+    .sort((a, b) => a.seq - b.seq);
+}
+
+// Adapts either a new BallDoc or an old MatchEvent ball doc to BallDoc format.
+// Returns null for non-ball event types (batsman-in, bowler-in).
+function adaptToBallDoc(id: string, data: Record<string, unknown>): BallDoc | null {
+  // Old non-ball event types — skip them
+  if (data.type === 'batsman-in' || data.type === 'bowler-in') return null;
+
+  // For old MatchEvent ball format: 'state' carries isOverComplete; new BallDoc has 'isLastBallOfOver'
+  const oldState = data.state as Record<string, unknown> | undefined;
+  const dismissal = data.dismissal as Record<string, unknown> | undefined;
+
+  return {
+    id,
+    seq: data.seq as number,
+    inningsId: data.inningsId as string,
+    overNumber: data.overNumber as number,
+    bowlerId: data.bowlerId as string,
+    batsmanId: (data.batsmanId as string) ?? '',
+    nonStrikerId: (data.nonStrikerId as string) ?? '',
+    runs: (data.runs as number) ?? 0,
+    extras: data.extras as BallDoc['extras'],
+    wagon: data.wagon as BallDoc['wagon'],
+    fielding: data.fielding as BallDoc['fielding'],
+    dismissal: dismissal
+      ? {
+          type: dismissal.type as string,
+          nonStrikerOut: (dismissal.nonStrikerOut as boolean) ?? false,
+          outBatsmanId: (dismissal.outBatsmanId as string) ?? (data.batsmanId as string) ?? '',
+          fielderIds: dismissal.fielderIds as string[] | undefined,
+          nextBatsmanId: dismissal.nextBatsmanId as string | undefined,
+        }
+      : undefined,
+    isLastBallOfOver:
+      (data.isLastBallOfOver as boolean) ?? (oldState?.isOverComplete as boolean) ?? false,
+  };
+}
+
+// Deletes the last ball document for the given innings.
+export async function deleteLastBall(
+  clubId: string,
+  matchId: string,
+  inningsId: string,
+): Promise<BallDoc | undefined> {
+  const all = await getMatchBalls(clubId, matchId);
+  const forInnings = all.filter((b) => b.inningsId === inningsId);
+  const last = forInnings[forInnings.length - 1];
+  if (!last) return undefined;
+  await deleteDoc(doc(db, 'clubs', clubId, 'matches', matchId, 'balls', last.id));
+  const remaining = forInnings.slice(0, -1);
+  return remaining.length > 0 ? remaining[remaining.length - 1] : undefined;
+}
+
+// Converts BallDocs to synthetic OverDocuments so scorecard/stats consumers
+// work unchanged for both old (overs) and new (balls) matches.
+function ballDocsToOverDocs(balls: BallDoc[], matchId: string): OverDocument[] {
+  const overMap = new Map<string, OverDocument>();
+  for (const ball of balls) {
+    const key = `${ball.inningsId}_${ball.overNumber}`;
+    if (!overMap.has(key)) {
+      overMap.set(key, {
+        id: key,
+        matchId,
+        inningsId: ball.inningsId,
+        overNumber: ball.overNumber,
+        bowlerId: ball.bowlerId,
+        balls: [],
+        isComplete: false,
+      });
+    }
+    const over = overMap.get(key)!;
+    // For non-striker run-outs: set batsmanId to the dismissed player
+    // so buildInningsCard correctly marks them as out.
+    const entryBatsmanId = ball.dismissal?.nonStrikerOut ? ball.nonStrikerId : ball.batsmanId;
+    const entry: BallEntry = {
+      batsmanId: entryBatsmanId,
+      runs: ball.runs,
+      extras: ball.extras as BallEntry['extras'],
+      dismissal: ball.dismissal
+        ? {
+            type: ball.dismissal.type,
+            fielderIds: ball.dismissal.fielderIds,
+          }
+        : undefined,
+      wagon: ball.wagon,
+      fielding: ball.fielding,
+      // Set onStrikeId for non-striker run-outs so runs credit goes to the actual facing batter.
+      onStrikeId: ball.dismissal?.nonStrikerOut ? ball.batsmanId : undefined,
+    };
+    over.balls.push(entry);
+    if (ball.isLastBallOfOver) over.isComplete = true;
+  }
+  return Array.from(overMap.values()).sort((a, b) => a.overNumber - b.overNumber);
+}
+
+// Returns OverDocuments for all consumers (scorecard, stats, leaderboard).
+// Checks the new per-ball 'balls' collection first; falls back to legacy 'overs'.
 export async function getMatchOvers(
   clubId: string,
   matchId: string,
 ): Promise<OverDocument[]> {
-  const snap = await getDocs(
-    collection(db, 'clubs', clubId, 'matches', matchId, 'overs'),
-  );
+  const ballsSnap = await getDocs(collection(db, 'clubs', clubId, 'matches', matchId, 'balls'));
+  if (!ballsSnap.empty) {
+    const balls = ballsSnap.docs
+      .map((d) => adaptToBallDoc(d.id, d.data() as Record<string, unknown>))
+      .filter((b): b is BallDoc => b !== null)
+      .sort((a, b) => a.seq - b.seq);
+    if (balls.length > 0) return ballDocsToOverDocs(balls, matchId);
+    // All docs were non-ball events (old format); fall through to overs/
+  }
+  const snap = await getDocs(collection(db, 'clubs', clubId, 'matches', matchId, 'overs'));
   return snap.docs.map((d) => d.data() as OverDocument);
 }
 
 export async function deleteOver(clubId: string, matchId: string, overId: string): Promise<void> {
   await deleteDoc(doc(db, 'clubs', clubId, 'matches', matchId, 'overs', overId));
+}
+
+export async function updateOverBatters(params: {
+  clubId: string;
+  matchId: string;
+  inningsId: string;
+  overNumber: number;
+  onStrikeId: string;
+  offStrikeId: string;
+}): Promise<void> {
+  const { clubId, matchId, inningsId, overNumber, onStrikeId, offStrikeId } = params;
+  const overKey = `${inningsId}_${overNumber}`;
+  await updateDoc(
+    doc(db, 'clubs', clubId, 'matches', matchId, 'overs', overKey),
+    { onStrikeId, offStrikeId },
+  );
 }
 
 export async function saveOver(params: {
