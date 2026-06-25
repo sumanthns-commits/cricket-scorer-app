@@ -1793,6 +1793,8 @@ export default function LiveScoringScreen() {
     // ball-facing credits (runs, balls, fours, sixes) still belong to the on-striker.
     const isNonStrikerRunOut = result.batterIsOut && input.dismissal?.type === 'run-out' && input.batsmanId === innings.offStrikeId;
     const facingBatsmanId = isNonStrikerRunOut ? innings.onStrikeId : input.batsmanId;
+    // Stamp the actual on-striker so undo can restore the correct end.
+    if (isNonStrikerRunOut) ballEntry.onStrikeId = innings.onStrikeId;
     const newBatterStats = { ...innings.batterStats };
     if (!newBatterStats[facingBatsmanId]) newBatterStats[facingBatsmanId] = emptyBatterStats();
     const bat = { ...newBatterStats[facingBatsmanId] };
@@ -1848,6 +1850,14 @@ export default function LiveScoringScreen() {
       result.physicalRuns % 2 !== 0 &&
       !isLoneBatter;
 
+    // End-of-over swap applies to wicket balls just as it does to normal balls.
+    // XOR chain: non-striker surviving puts them off-strike; crossing flips it;
+    // end-of-over flips it again. Result: where the survivor ends up for next ball.
+    const eooSwap = result.isOverComplete && autoRotateEoO && !isLoneBatter;
+    const survivorIsOnStrike = (isNonStrikerRunOut !== crossedOnRunOut) !== eooSwap;
+    const survivorId = isNonStrikerRunOut ? innings.onStrikeId : innings.offStrikeId;
+    const dismissedSlotId = isNonStrikerRunOut ? innings.offStrikeId : innings.onStrikeId;
+
     let newOverNumber = innings.overNumber;
     let newLegalBalls = result.newLegalBallsInOver;
     let newCurrentOverBalls = newOverBalls;
@@ -1868,8 +1878,8 @@ export default function LiveScoringScreen() {
       totalWickets: newWickets,
       overNumber: newOverNumber,
       legalBallsInOver: newLegalBalls,
-      onStrikeId: result.batterIsOut ? (crossedOnRunOut ? innings.offStrikeId : innings.onStrikeId) : newOnStrike,
-      offStrikeId: result.batterIsOut ? (crossedOnRunOut ? innings.onStrikeId : innings.offStrikeId) : newOffStrike,
+      onStrikeId: result.batterIsOut ? (survivorIsOnStrike ? survivorId : dismissedSlotId) : newOnStrike,
+      offStrikeId: result.batterIsOut ? (survivorIsOnStrike ? dismissedSlotId : survivorId) : newOffStrike,
       batterStats: newBatterStats,
       bowlerStats: newBowlerStats,
       currentOverBalls: newCurrentOverBalls,
@@ -1923,11 +1933,7 @@ export default function LiveScoringScreen() {
         setPhase(oversDone ? 'innings-over' : result.isOverComplete ? 'new-bowler' : 'scoring');
         return;
       }
-      // Replacement end: for on-striker run-out, odd runs mean crossing so new batter
-      // fills the off-strike slot; for non-striker run-out, the logic inverts.
-      newBatterEndRef.current = isNonStrikerRunOut
-        ? (crossedOnRunOut ? 'onStrike' : 'offStrike')
-        : (crossedOnRunOut ? 'offStrike' : 'onStrike');
+      newBatterEndRef.current = survivorIsOnStrike ? 'offStrike' : 'onStrike';
       if (oversDone) {
         setPhase('innings-over');
       } else if (result.isOverComplete) {
@@ -2091,11 +2097,10 @@ export default function LiveScoringScreen() {
     const removedBall = targetOver.balls[targetOver.balls.length - 1];
     const trimmedBalls = targetOver.balls.slice(0, -1);
 
-    // Restore who was on strike BEFORE the removed ball. The ball's batsmanId
-    // is who faced it, so that's the on-striker going back. The off-striker is
-    // whoever ended up on strike after the ball (if rotation happened) or the
-    // stored off-striker (if it didn't).
-    const onStrikeBefore = removedBall.batsmanId;
+    // Restore who was on strike BEFORE the removed ball. Normally batsmanId is
+    // the facing batsman. For non-striker run-outs batsmanId is the dismissed
+    // non-striker, so the ball entry carries an explicit onStrikeId instead.
+    const onStrikeBefore = removedBall.onStrikeId ?? removedBall.batsmanId;
     const offStrikeBefore = targetOver.onStrikeId === onStrikeBefore
       ? targetOver.offStrikeId   // no rotation after the ball
       : targetOver.onStrikeId;   // rotation happened — current on-striker was off-striker before

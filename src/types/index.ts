@@ -257,6 +257,9 @@ export interface WagonShot {
 export interface BallEntry {
   runs: number;
   batsmanId: string;
+  // Set only for non-striker run-outs, where batsmanId is the dismissed non-striker
+  // rather than the batsman who faced the ball. Undo uses this to restore correct on-strike.
+  onStrikeId?: string;
   extras?: { type: ExtrasType; runs: number };
   dismissal?: DismissalEntry;
   wagon?: WagonShot;

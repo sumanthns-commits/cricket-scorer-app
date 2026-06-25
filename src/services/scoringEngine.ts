@@ -84,7 +84,7 @@ export function recordBall(
     : runsScored;
   // XOR: odd runs rotate strike; end of over rotates again; these cancel out
   const oddRuns = physicalRuns % 2 !== 0;
-  const rotateStrike = batterIsOut ? false : oddRuns !== isOverComplete;
+  const rotateStrike = oddRuns !== isOverComplete;
 
   const ballEntry: BallEntry = {
     runs: input.runs,
