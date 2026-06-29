@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.crease.cricket",
+      "bundleIdentifier": "com.crease.app",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -47,7 +47,7 @@
       "expo-localization",
       "expo-font",
       ["@react-native-google-signin/google-signin", {
-        "iosUrlScheme": "com.googleusercontent.apps.29441644794-mstiu484f6hhod5glni0e1hr4clavnt0"
+        "iosUrlScheme": "com.googleusercontent.apps.29441644794-5937grt2lqfvgg0r9i29mmpdcpgrog9n"
       }],
       "./plugins/withReleaseSigningConfig"
     ],
