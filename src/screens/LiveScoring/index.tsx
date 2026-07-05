@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -226,6 +227,7 @@ function FieldingPanel({
   onDone: (eventId: string | null, fielderIds: string[]) => void;
 }) {
   const theme = useThemeStore((s) => s.theme);
+  const insets = useSafeAreaInsets();
   const slideY = useRef(new Animated.Value(400)).current;
   const progress = useRef(new Animated.Value(1)).current;
   const [eventId, setEventId] = useState<string | null>(null);
@@ -288,7 +290,7 @@ function FieldingPanel({
         activeOpacity={1}
         onPress={finish}
       />
-      <Animated.View style={{ backgroundColor: theme.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 36, transform: [{ translateY: slideY }], maxHeight: 480 }}>
+      <Animated.View style={{ backgroundColor: theme.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 20 + insets.bottom, transform: [{ translateY: slideY }], maxHeight: 480 }}>
         <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: theme.border, alignSelf: 'center', marginBottom: 14 }} />
 
         <View style={{ height: 3, backgroundColor: theme.surfaceAlt, borderRadius: 2, overflow: 'hidden', marginBottom: 16 }}>
@@ -574,6 +576,7 @@ function WicketSheet({
   const [catchFielderId, setCatchFielderId] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [dismissedId, setDismissedId] = useState<string | undefined>(onStrikePlayer?.id);
+  const insets = useSafeAreaInsets();
   const slideY = useRef(new Animated.Value(500)).current;
   const multiFielder = selectedType === 'run-out'; // run-outs can involve several fielders
   const isCaught = selectedType === 'caught';
@@ -624,7 +627,7 @@ function WicketSheet({
           borderTopLeftRadius: 20,
           borderTopRightRadius: 20,
           padding: 20,
-          paddingBottom: 36,
+          paddingBottom: 20 + insets.bottom,
           transform: [{ translateY: slideY }],
           maxHeight: '70%',
         }}
@@ -875,12 +878,13 @@ function SelectPlayerModal({
   onSelect: (id: string) => void;
   onClose?: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const available = players.filter((p) => !excludeIds.includes(p.id));
   return (
     <Modal visible={visible} transparent animationType="slide">
       <View style={{ flex: 1, backgroundColor: '#000000cc', justifyContent: 'flex-end' }}>
         {onClose && <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />}
-        <View style={{ backgroundColor: '#0f1e35', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40, maxHeight: '60%' }}>
+        <View style={{ backgroundColor: '#0f1e35', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 24 + insets.bottom, maxHeight: '60%' }}>
           <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#2d3f58', alignSelf: 'center', marginBottom: 16 }} />
           <Text style={{ color: '#ffffff', fontSize: 17, fontWeight: '700', marginBottom: 16 }}>{title}</Text>
           <FlatList
@@ -1235,6 +1239,7 @@ function TeamsTab({
   onSubstituteRemoved: (playerId: string) => void;
 }) {
   const theme = useThemeStore((s) => s.theme);
+  const insets = useSafeAreaInsets();
   const playerMap = new Map([
     ...players.map((p): [string, string] => [p.id, p.displayName]),
     ...players.flatMap((p): [string, string][] => p.linkedGhost ? [[p.linkedGhost.ghostId, p.displayName]] : []),
@@ -1296,7 +1301,7 @@ function TeamsTab({
   }
 
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 16 + insets.bottom }}>
       {isAdmin && !matchHasStarted && (
         <TouchableOpacity
           onPress={() => navigation.navigate('TeamBuilder', { clubId, matchId, returnTo: 'LiveScoring' })}
@@ -1339,7 +1344,7 @@ function TeamsTab({
 
       <Modal visible={showSubPicker} transparent animationType="slide" onRequestClose={() => setShowSubPicker(false)}>
         <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: '#00000066' }}>
-          <View style={{ backgroundColor: theme.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 36, maxHeight: '70%' }}>
+          <View style={{ backgroundColor: theme.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 20 + insets.bottom, maxHeight: '70%' }}>
             <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700', marginBottom: 16 }}>Add Substitute</Text>
             <ScrollView>
               {substituteablePlayers.length === 0 ? (
