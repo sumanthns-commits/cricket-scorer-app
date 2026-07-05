@@ -165,6 +165,10 @@ export interface ClubRules {
   compulsoryRetirementAt?: number;
   maxBowlerOvers?: number;
   fieldingEvents: FieldingEventConfig[];
+  // When true, the fielding overlay auto-opens after every non-wicket ball.
+  // When false (default), it's skipped for normal runs to keep scoring quick —
+  // fielders are still always selected when a wicket falls.
+  fieldingOverlayEveryBall: boolean;
 }
 
 export interface Club {

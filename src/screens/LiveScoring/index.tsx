@@ -539,7 +539,7 @@ const STD_LABELS: Record<StandardDismissalType, string> = {
 
 const FIELDER_NEEDED: StandardDismissalType[] = ['caught', 'stumped', 'run-out'];
 // These dismissals have no shot to plot, so the wagon wheel is skipped.
-const NO_WAGON: StandardDismissalType[] = ['bowled', 'run-out', 'stumped', 'hit-wicket'];
+const NO_WAGON: StandardDismissalType[] = ['bowled', 'caught', 'run-out', 'stumped', 'hit-wicket'];
 // Dismissals where a fielder is already captured on the wicket sheet, so the
 // fielding overlay shouldn't ask for the fielder again.
 const FIELDER_ALREADY_RECORDED: StandardDismissalType[] = ['caught', 'run-out', 'stumped'];
@@ -1429,6 +1429,17 @@ export default function LiveScoringScreen() {
   // ID of the last saved ball doc — used by handleNewBatter to updateDoc
   // with nextBatsmanId without needing to re-fetch from Firestore.
   const lastBallIdRef = useRef<string | null>(null);
+  // Guards against writing status:'completed' more than once for this match
+  // (e.g. re-focusing the screen while phase is still 'innings-over').
+  const sealedRef = useRef(false);
+  // Set right before an undo that deletes the sole ball of the active over,
+  // landing back on the previous over's last ball. Firestore has no memory of
+  // *why* the last ball is isLastBallOfOver=true, so without this the reload
+  // would re-show the bowler-selection overlay even though we're undoing, not
+  // advancing. Consumed once by the next load() to resume 'scoring' with the
+  // same bowler instead — the overlay reappears normally once the scorer
+  // re-completes the over going forward.
+  const undoBowlerOverrideRef = useRef<string | null>(null);
 
   // Modals
   const [showWicket, setShowWicket] = useState(false);
@@ -1483,14 +1494,14 @@ export default function LiveScoringScreen() {
         setFirstInningsRuns(firstInn.totalRuns);
         setInningsNumber(2);
         const reconstructed = buildInningsFromBalls(secondBalls, liveMatch, 2, clubPlayers, autoRotateEoO);
-        setInnings(reconstructed);
         const chased = reconstructed.totalRuns >= firstInn.totalRuns + 1;
-        setPhase(resumePhaseFromBalls(secondBalls, reconstructed, chased || isInningsComplete(reconstructed, lastManStands, oversPerInnings)));
+        const resolvedPhase = resumePhaseFromBalls(secondBalls, reconstructed, chased || isInningsComplete(reconstructed, lastManStands, oversPerInnings));
+        applyResolvedPhase(reconstructed, resolvedPhase);
       } else {
         setInningsNumber(1);
         const reconstructed = buildInningsFromBalls(firstBalls, liveMatch, 1, clubPlayers, autoRotateEoO);
-        setInnings(reconstructed);
-        setPhase(resumePhaseFromBalls(firstBalls, reconstructed, isInningsComplete(reconstructed, lastManStands, oversPerInnings)));
+        const resolvedPhase = resumePhaseFromBalls(firstBalls, reconstructed, isInningsComplete(reconstructed, lastManStands, oversPerInnings));
+        applyResolvedPhase(reconstructed, resolvedPhase);
       }
     } catch {
       setPhase('no-match');
@@ -1498,6 +1509,21 @@ export default function LiveScoringScreen() {
   }, [clubId, matchId]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // A new matchId means a different match instance — allow it to be sealed too.
+  useEffect(() => { sealedRef.current = false; }, [clubId, matchId]);
+
+  // Second innings complete (all out / overs done / target chased) → the match
+  // itself is over. Persist status:'completed' so onMatchCompleted can
+  // aggregate career stats — previously this only ever changed local phase
+  // state, leaving matches stuck as 'live' in Firestore forever.
+  useEffect(() => {
+    if (phase !== 'innings-over' || inningsNumber !== 2 || !match || sealedRef.current) return;
+    sealedRef.current = true;
+    completeMatch(clubId, match.id, computeResultLine() || undefined).catch(() => {
+      sealedRef.current = false;
+    });
+  }, [phase, inningsNumber, match, clubId]);
 
   function isInningsComplete(inn: InningsState, lastManStands: boolean, oversPerInnings?: number): boolean {
     const wicketsToEnd = inn.battingIds.length - (lastManStands ? 0 : 1);
@@ -1523,6 +1549,21 @@ export default function LiveScoringScreen() {
     }
     if (last.isLastBallOfOver) return 'new-bowler';
     return 'scoring';
+  }
+
+  // Commits a reconstructed innings + resumed phase, applying the pending
+  // undo-bowler-override (if any) so undoing back into a completed over
+  // doesn't re-prompt for a bowler (see undoBowlerOverrideRef).
+  function applyResolvedPhase(reconstructed: InningsState, resolvedPhase: Phase) {
+    const overrideBowlerId = undoBowlerOverrideRef.current;
+    undoBowlerOverrideRef.current = null;
+    if (resolvedPhase === 'new-bowler' && overrideBowlerId) {
+      setInnings({ ...reconstructed, bowlerId: overrideBowlerId });
+      setPhase('scoring');
+      return;
+    }
+    setInnings(reconstructed);
+    setPhase(resolvedPhase);
   }
 
   // Builds InningsState from BallDocs.
@@ -1705,6 +1746,25 @@ export default function LiveScoringScreen() {
     return n === 1 ? firstInningsBowlers(m) : firstInningsBatters(m);
   }
 
+  // 2nd-innings match result, e.g. "Team <captain name> won by 12 runs 🏆".
+  // Falls back to the home/away team name when no captain is set. Shared by
+  // the innings-over screen and the auto-complete effect (written to match.result).
+  function computeResultLine(): string {
+    if (!match || firstInningsRuns == null || !innings) return '';
+    if (innings.totalRuns === firstInningsRuns) return 'Match tied';
+    const secondInningsWon = innings.totalRuns > firstInningsRuns;
+    const winningTeamIds = secondInningsWon ? battingForInnings(match, 2) : battingForInnings(match, 1);
+    const winningIsTeamA = winningTeamIds === match.teamA;
+    const captainId = winningIsTeamA ? match.captainA : match.captainB;
+    const captainName = captainId ? playerMap[captainId]?.displayName : undefined;
+    const teamLabel = captainName
+      ? `Team ${captainName}`
+      : (winningIsTeamA ? match.homeTeam : match.awayTeam) || 'Winning team';
+    return secondInningsWon
+      ? `${teamLabel} won 🏆`
+      : `${teamLabel} won by ${firstInningsRuns - innings.totalRuns} run${firstInningsRuns - innings.totalRuns !== 1 ? 's' : ''} 🏆`;
+  }
+
   // ── Setup handlers ───────────────────────────────────────────────
 
   // Start an innings with the crease BLANK — the scorer picks the openers and
@@ -1790,15 +1850,18 @@ export default function LiveScoringScreen() {
     const isCatch = !!d && d.type === 'caught';
     const isRunOut = !!d && d.type === 'run-out';
     const isStumped = !!d && d.type === 'stumped';
+    const fieldingOverlayEveryBall = clubRules?.fieldingOverlayEveryBall ?? match?.rules.fieldingOverlayEveryBall ?? false;
     if (isCustomDismissal || isNoFielderWicket || isStumped) {
       pendingFieldingRef.current = null;
       commitBall();
     } else if (isCatch || isRunOut) {
       // Fielding event (if any) was pre-set in pendingFieldingRef from WicketSheet — preserve it.
       commitBall();
-    } else {
+    } else if (fieldingOverlayEveryBall) {
       setHideFieldingFielders(fielderAlreadyRecorded);
       setShowFielding(true);
+    } else {
+      commitBall();
     }
   }
 
@@ -2175,6 +2238,14 @@ export default function LiveScoringScreen() {
     }
 
     // Cross-session fallback: delete from Firestore and reload.
+    // If the ball being deleted is the only one bowled in the active over,
+    // undoing it lands back on the previous over's last ball — reconstruction
+    // would otherwise read that as "over just completed" and re-prompt for a
+    // bowler. Capture the current bowler so the reload can resume scoring
+    // with it instead (see undoBowlerOverrideRef).
+    if (innings.currentOverBalls.length === 1 && innings.bowlerId) {
+      undoBowlerOverrideRef.current = innings.bowlerId;
+    }
     deleteLastBall(clubId, match.id, innings.inningsId)
       .then(() => load())
       .catch(() => {});
@@ -2327,16 +2398,7 @@ export default function LiveScoringScreen() {
     const overs = `${innings.overNumber}.${innings.legalBallsInOver}`;
     const isFirstInnings = inningsNumber === 1;
     // 2nd-innings result.
-    let resultLine = '';
-    if (!isFirstInnings && firstInningsRuns != null) {
-      if (innings.totalRuns > firstInningsRuns) {
-        resultLine = 'Team batting second won 🏆';
-      } else if (innings.totalRuns === firstInningsRuns) {
-        resultLine = 'Match tied';
-      } else {
-        resultLine = `Team batting first won by ${firstInningsRuns - innings.totalRuns} run${firstInningsRuns - innings.totalRuns !== 1 ? 's' : ''} 🏆`;
-      }
-    }
+    const resultLine = isFirstInnings ? '' : computeResultLine();
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
         <Text style={{ color: theme.accent, fontSize: 14, fontWeight: '700', letterSpacing: 1, marginBottom: 12 }}>

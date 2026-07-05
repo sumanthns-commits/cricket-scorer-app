@@ -43,6 +43,7 @@ const defaultRules: ClubRules = {
   compulsoryRetirementAt: undefined,
   maxBowlerOvers: undefined,
   fieldingEvents: [],
+  fieldingOverlayEveryBall: false,
 };
 
 const emptyStats: CareerStats = {

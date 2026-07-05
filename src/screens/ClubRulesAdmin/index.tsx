@@ -78,6 +78,7 @@ function resolveRules(raw: Partial<ClubRules>): ClubRules {
       scope: e.scope ?? 'both',
       wicketTypes: e.wicketTypes ?? [],
     })),
+    fieldingOverlayEveryBall: raw.fieldingOverlayEveryBall ?? false,
   };
 }
 
@@ -617,6 +618,19 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
             min={0}
             onFocus={handleInputFocus}
           />
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+            <Text style={{ color: theme.textSecondary, flex: 1, fontSize: 15 }}>Fielding overlay on every run</Text>
+            <Switch
+              value={draft.fieldingOverlayEveryBall}
+              onValueChange={(v) => setField('fieldingOverlayEveryBall', v)}
+              disabled={readOnly}
+              trackColor={{ false: theme.border, true: theme.accentDim }}
+              thumbColor={draft.fieldingOverlayEveryBall ? theme.accent : theme.textMuted}
+            />
+          </View>
+          <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: -8, marginBottom: 14, lineHeight: 17 }}>
+            Off by default to keep scoring quick. Fielders are always selected when a wicket falls, regardless of this setting.
+          </Text>
 
           {/* ── BATTING ── */}
           <SectionHeader title="BATTING" />
