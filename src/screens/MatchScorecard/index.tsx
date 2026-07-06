@@ -6,8 +6,10 @@ import { useQuery } from '@tanstack/react-query';
 import ViewShot, { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
-import { getMatch, getMatchOvers, getClubPlayers } from '../../services/matchService';
+import { getMatch, getMatchOvers, getMatchBalls, getClubPlayers } from '../../services/matchService';
 import { buildInningsCard, formatDismissal, type InningsCard } from '../../services/scorecard';
+import { buildCommentary } from '../../services/commentary';
+import Commentary from '../../components/Commentary';
 import { useThemeStore } from '../../store/themeStore';
 import type { CustomDismissal, Match } from '../../types';
 
@@ -240,7 +242,7 @@ export default function MatchScorecardScreen() {
   const { params } = useRoute<Route>();
   const { clubId, matchId } = params;
   const [innings, setInnings] = useState<1 | 2>(1);
-  const [tab, setTab] = useState<'scorecard' | 'teams'>('scorecard');
+  const [tab, setTab] = useState<'scorecard' | 'commentary' | 'teams'>('scorecard');
   const [sharing, setSharing] = useState(false);
   const theme = useThemeStore((s) => s.theme);
   const snapshotRef = useRef<ViewShot>(null);
@@ -248,9 +250,12 @@ export default function MatchScorecardScreen() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['scorecard', clubId, matchId],
     queryFn: async () => {
-      const [match, overs, players] = await Promise.all([
+      const [match, overs, balls, players] = await Promise.all([
         getMatch(clubId, matchId),
         getMatchOvers(clubId, matchId),
+        // Only populated for matches scored with per-ball docs — older
+        // overs/-only matches fall back to no commentary (see Commentary tab).
+        getMatchBalls(clubId, matchId).catch(() => [] as import('../../types').BallDoc[]),
         // Non-members may not have permission to read the players subcollection;
         // fall back to an empty map so the scorecard still renders with IDs.
         getClubPlayers(clubId).catch(() => [] as import('../../types').Player[]),
@@ -265,6 +270,12 @@ export default function MatchScorecardScreen() {
           ...players.map((p) => [p.id, p.displayName]),
           ...players.flatMap(p => p.linkedGhost ? [[p.linkedGhost.ghostId, p.displayName]] : []),
         ]) as Record<string, string>,
+        handMap: Object.fromEntries([
+          ...players.map((p) => [p.id, p.battingHand]),
+          ...players.flatMap(p => p.linkedGhost ? [[p.linkedGhost.ghostId, p.battingHand]] : []),
+        ]) as Record<string, 'RHB' | 'LHB' | undefined>,
+        ball1: balls.filter((b) => b.inningsId === 'innings-1'),
+        ball2: balls.filter((b) => b.inningsId === 'innings-2'),
         card1: first.length ? buildInningsCard(first, ballsPerOver) : summary?.['1'] ?? null,
         card2: second.length ? buildInningsCard(second, ballsPerOver) : summary?.['2'] ?? null,
       };
@@ -311,12 +322,15 @@ export default function MatchScorecardScreen() {
     );
   }
 
-  const { match, nameMap, card1, card2 } = data;
+  const { match, nameMap, handMap, ball1, ball2, card1, card2 } = data;
   const nameOf = (id: string) => nameMap[id] ?? id;
+  const handOf = (id: string) => handMap[id];
   const hasBoth = !!card1 && !!card2;
   const card = innings === 1 ? card1 : card2;
-  const captains = new Set([match?.captainA, match?.captainB].filter(Boolean) as string[]);
+  const commentaryBalls = innings === 1 ? ball1 : ball2;
   const customDismissals = match?.rules.customDismissals ?? [];
+  const commentaryEntries = buildCommentary(commentaryBalls, nameOf, handOf, customDismissals);
+  const captains = new Set([match?.captainA, match?.captainB].filter(Boolean) as string[]);
 
   const teamA = match?.teamA ?? [];
   const teamB = match?.teamB ?? [];
@@ -359,20 +373,48 @@ export default function MatchScorecardScreen() {
 
       {/* Tab bar */}
       <View style={{ flexDirection: 'row', backgroundColor: theme.surfaceAlt, borderBottomWidth: 1, borderBottomColor: theme.border }}>
-        {(['scorecard', 'teams'] as const).map((t) => (
+        {(['scorecard', 'commentary', 'teams'] as const).map((t) => (
           <TouchableOpacity
             key={t}
             onPress={() => setTab(t)}
             style={{ flex: 1, paddingVertical: 11, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: tab === t ? theme.accent : 'transparent' }}
           >
             <Text style={{ color: tab === t ? theme.accent : theme.textMuted, fontWeight: '700', fontSize: 12 }}>
-              {t === 'scorecard' ? 'SCORECARD' : 'TEAMS'}
+              {t === 'scorecard' ? 'SCORECARD' : t === 'commentary' ? 'COMMENTARY' : 'TEAMS'}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      {tab === 'teams' ? (
+      {tab === 'commentary' ? (
+        <View style={{ flex: 1 }}>
+          {/* Gated on raw balls (what commentary actually reads), not card1/
+              card2 — those can both be populated via inningsSummary even when
+              this match predates per-ball docs and has no commentary data. */}
+          {ball1.length > 0 && ball2.length > 0 && (
+            <View style={{ flexDirection: 'row', padding: 8, gap: 8 }}>
+              {([1, 2] as const).map((n) => (
+                <TouchableOpacity
+                  key={n}
+                  onPress={() => setInnings(n)}
+                  style={{ flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: innings === n ? theme.accentDim : theme.surface, borderWidth: 1, borderColor: innings === n ? theme.accent : theme.border, alignItems: 'center' }}
+                >
+                  <Text style={{ color: innings === n ? theme.accent : theme.textMuted, fontWeight: '600' }}>Innings {n}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          {commentaryBalls.length > 0 ? (
+            <Commentary entries={commentaryEntries} />
+          ) : (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+              <Text style={{ color: theme.textMuted, fontSize: 14, textAlign: 'center' }}>
+                Commentary isn't available for this match.
+              </Text>
+            </View>
+          )}
+        </View>
+      ) : tab === 'teams' ? (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
           {([['A', '#60a5fa', match?.homeTeam ?? 'Team A', teamA, match?.captainA], ['B', '#f97316', match?.awayTeam ?? 'Team B', teamB, match?.captainB]] as const).map(([label, color, name, ids, captain]) => (
             <View key={label} style={{ marginBottom: 20 }}>

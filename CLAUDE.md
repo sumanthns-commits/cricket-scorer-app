@@ -48,6 +48,13 @@ ScheduleMatch → TeamBuilder → Toss → LiveScoring
   In edit mode (existing matchId): calls `setMatchToss()` as before.
 - **LiveScoring**: loads match state, reconstructs innings from ball docs.
 
+## Matches list screen
+Each card shows date + time (`createdAt`, local time, 12h with AM/PM — falls back to no
+time shown for pre-`createdAt` matches, never crashes). Sort is live-first, then `date`
+descending, then `createdAt` descending as a tiebreak for same-day matches (see `createdAt`
+note below). `ScheduleMatch`'s "previous match" lookup (for squad reuse / quick rematch) uses
+the same `date`-then-`createdAt` sort to find the true most-recently-created match.
+
 ## Match data model (`clubs/{clubId}/matches/{matchId}`)
 ```
 status: 'live' | 'completed' | 'abandoned'   ← never 'scheduled' for new matches
@@ -60,7 +67,39 @@ substitutes?: string[] — mid-match substitute player IDs (arrayUnion/arrayRemo
 toss?: MatchToss       — winner, choice (bat/field), scorerId
 rules: ClubRules       — snapshot at schedule time (live rules come from club doc)
 inningsSummary?        — written by onMatchCompleted Cloud Function
+createdAt?: Timestamp  — set at creation (createMatch/createLiveMatch). `date` is only a
+                         calendar day (no time-of-day), so same-day quick rematches share
+                         one `date` value — createdAt is the tiebreaker for sort order and
+                         for finding the true "previous match" to reuse a squad from.
+firstInningsEnded?: boolean — set when the scorer manually confirms "End Innings" (see
+                         Manual innings/match end below). Absent/false ⇒ 1st innings
+                         reconstructed-complete state is still 'end-pending', not sealed.
 ```
+
+## Manual innings/match end (LiveScoring)
+Reaching an end condition (all out / overs done / target chased) no longer auto-advances
+to the sealed summary screen — it lands on phase `'end-pending'`: the scoring screen stays
+up (run/extras/wicket buttons disabled) with an "End Innings"/"End Match" button, and
+**Undo is still available** so the scorer can fix the last ball before sealing it. Tapping
+End shows a confirm Alert ("can't be undone after this"), then:
+- 1st innings: writes `firstInningsEnded: true` on the match (via `endFirstInnings()`),
+  phase → `'innings-over'` (shows the "Start 2nd innings" summary).
+- 2nd innings/match: phase → `'innings-over'` triggers the existing effect that calls
+  `completeMatch()` (unchanged) — status flips to `'completed'`, which is itself the
+  persisted "sealed" marker (a reload of an already-completed match never reaches
+  LiveScoring's ball-reconstruction code at all — see the `status` guard in `load()`).
+On reload, `resumePhaseFromBalls(..., sealed)` resumes to `'end-pending'` (not
+`'innings-over'`) whenever the relevant seal flag isn't set, so undo survives app restarts
+too, right up until the scorer explicitly seals it.
+
+## Run-out crossing (commitBall / computeNextBatsmen)
+Batsmen are **always assumed to have crossed** on the run that got someone out — true even
+at 0 completed runs (very common: a single is attempted, they cross, one is sent back and
+run out short). This flips the usual "odd completed runs ⇒ crossed" parity: `crossedOnRunOut
+= completedRuns % 2 === 0` for run-outs specifically (not `!== 0`). Must stay identical in
+both `commitBall` (live) and `computeNextBatsmen` (replay from stored balls on reload/undo),
+and must NOT apply to non-run-out dismissals (they never carry nonzero `runs`, so the parity
+flip would otherwise wrongly imply crossing on an ordinary bowled/caught ball).
 
 ## Ball storage (primary — new matches)
 `matches/{matchId}/balls/{autoId}` — one doc per delivery (`BallDoc`):
@@ -107,17 +146,37 @@ fielding?: {
 `seasonLeaderboard.ts` fans out via `fielderIds ?? [fielderId]`.
 
 ## Live scoring screen tabs
-SCORING | SCORECARD | TEAMS | STATS
+SCORING | SCORECARD | COMMENTARY | TEAMS | STATS
 
 - **SCORING**: ball-by-ball entry, wagon wheel, fielding overlay, wicket sheet
 - **SCORECARD**: batting + bowling tables, innings switcher in 2nd innings
+- **COMMENTARY**: ball-by-ball text feed, newest ball first — see Commentary below.
 - **TEAMS**: shows Team A/B rosters with captain badge (C); substitutes section
   with add/remove (admin only). "Edit Teams" button shown before first ball.
   Substitutes from any team/player pool can be added; they appear in fielding overlay.
 - **STATS**: MatchStatsContent component (worm, wagon wheel, per-over stats)
 
+Tab bar is a horizontally-scrollable `ScrollView` (equal fixed-width tabs, not `flex:1`) —
+accent-colored circular chevron buttons appear at whichever edge(s) still have more tabs to
+scroll to, and call `scrollTo` on the tab ScrollView's ref; they hide once fully scrolled.
+
 Fielding overlay: multi-select vertical checklist (scrollable, maxHeight 160).
 Panel auto-dismisses after 6 s of inactivity. Selected fielder(s) shown in summary line.
+
+## Commentary (`services/commentary.ts` + `components/Commentary.tsx`)
+`buildCommentary(balls, getName, handOf, customDismissals)` is a pure function that turns one
+innings' `BallDoc[]` into ball-by-ball text lines ("0.4 Anand to Hegde. Out! Caught by Jai in
+point.") plus "End of over N" divider entries, in chronological order — callers reverse for
+newest-first display. Shown in LiveScoring's COMMENTARY tab (backed by new `activeBalls`/
+`firstInningsBalls` state, kept in sync with `commitBall`/`handleUndo`/`startSecondInnings` so
+it updates live) and in MatchScorecard's commentary tab for completed matches (via
+`getMatchBalls`, not `getMatchOvers`'s `BallEntry` conversion — legacy `overs/`-only matches
+with no `balls/` subcollection show "Commentary isn't available for this match" instead).
+
+Wagon-wheel position names for commentary come from `src/constants/wagonPositions.ts`
+(`RHB_WAGON_LABELS`/`LHB_WAGON_LABELS`/`wagonLabelFor`) — the **same canonical table** the
+wagon wheel capture UI in LiveScoring uses. These must never diverge into a second table;
+a scorer taps a position on the wheel and commentary must name it back the same way.
 
 ## Domain: player types
 - ghost      — imported from PDF/CSV (or seeded), no auth
@@ -128,6 +187,10 @@ Panel auto-dismisses after 6 s of inactivity. Selected fielder(s) shown in summa
 Players: `clubs/{clubId}/players/{playerId}` with `type`, `role`, `careerStats`.
 LEGACY top-level `players` collection backs onStatsImport + fuzzyMatcher only — unused elsewhere.
 Build new code against the subcollection.
+
+`PlayerProfileView`'s NAME field (admin-editable for any player, incl. ghosts) is a small
+overlay modal with its own explicit Save button — not an always-editable inline field —
+so it's unambiguous when the rename has actually been committed.
 
 ## Ghost linking (IMPLEMENTED)
 Admin links ghost → member via `resolveJoinRequest({ ..., linkGhostId })`:

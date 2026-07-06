@@ -26,6 +26,7 @@ import {
   getMatchBalls,
   deleteLastBall,
   completeMatch,
+  endFirstInnings,
   abandonMatch,
   deleteMatch,
   updateMatchOvers,
@@ -36,6 +37,9 @@ import { getClub, getClubMember } from '../../services/clubService';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import { recordBall } from '../../services/scoringEngine';
+import { buildCommentary } from '../../services/commentary';
+import Commentary from '../../components/Commentary';
+import { RHB_WAGON_LABELS, LHB_WAGON_LABELS } from '../../constants/wagonPositions';
 import { MatchStatsContent } from '../MatchStats';
 import type {
   BallDoc,
@@ -97,18 +101,8 @@ const WC = WHEEL / 2;
 const OUTER_R = 126;
 const RINGS = [42, 84, 126];
 
-// Canonical fielding positions, clockwise from 0 = straight (toward bowler).
-// Keeper's view (batsman at bottom): RHB off side = right (sectors 1–5),
-// leg side = left (sectors 7–11).
-const RHB_LABELS = [
-  'Straight', 'Mid-off', 'Cover', 'Point', 'Gully', 'Third man',
-  'Behind', 'Fine leg', 'Bwd sq leg', 'Sq. leg', 'Midwicket', 'Mid-on',
-];
-// LHB: mirror of RHB across the vertical axis (sector i ↔ 12 − i).
-const LHB_LABELS = [
-  'Straight', 'Mid-on', 'Midwicket', 'Sq. leg', 'Bwd sq leg', 'Fine leg',
-  'Behind', 'Third man', 'Gully', 'Point', 'Cover', 'Mid-off',
-];
+// Canonical fielding position labels live in constants/wagonPositions so the
+// wheel UI here and commentary text can never diverge on naming.
 
 // depth: 0 = infield, 1 = mid, 2 = boundary. Radius bands = the ring radii.
 const DEPTH_LABELS = ['Infield', 'Mid', 'Boundary'];
@@ -133,7 +127,7 @@ function tapToSel(x: number, y: number): WheelSel | null {
 function WagonWheelModal({ visible, isLHB, runs, onDone }: { visible: boolean; isLHB: boolean; runs: number; onDone: (shot: WagonShot | null) => void }) {
   const theme = useThemeStore((s) => s.theme);
   const [sel, setSel] = useState<WheelSel | null>(null);
-  const labels = isLHB ? LHB_LABELS : RHB_LABELS;
+  const labels = isLHB ? LHB_WAGON_LABELS : RHB_WAGON_LABELS;
 
   useEffect(() => { if (visible) setSel(null); }, [visible]);
 
@@ -397,6 +391,22 @@ function ExtrasRunsModal({
             {runOut ? prompt : normalPrompt}
           </Text>
 
+          {/* Above the run buttons: tapping a run number below confirms and
+              closes this sheet immediately, so run-out must be set first. */}
+          <TouchableOpacity
+            onPress={() => setRunOut((v) => !v)}
+            style={{
+              marginBottom: 14, padding: 12, borderRadius: 10, borderWidth: 1,
+              borderColor: runOut ? '#f87171' : '#2d3f58',
+              backgroundColor: runOut ? '#2d0a0a' : 'transparent',
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: runOut ? '#f87171' : '#9ca3af', fontWeight: '600' }}>
+              {runOut ? 'Run-out  ✓' : 'Run-out?'}
+            </Text>
+          </TouchableOpacity>
+
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
             {options.map((n) => (
               <TouchableOpacity
@@ -413,20 +423,6 @@ function ExtrasRunsModal({
               </TouchableOpacity>
             ))}
           </View>
-
-          <TouchableOpacity
-            onPress={() => setRunOut((v) => !v)}
-            style={{
-              marginTop: 14, padding: 12, borderRadius: 10, borderWidth: 1,
-              borderColor: runOut ? '#f87171' : '#2d3f58',
-              backgroundColor: runOut ? '#2d0a0a' : 'transparent',
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ color: runOut ? '#f87171' : '#9ca3af', fontWeight: '600' }}>
-              {runOut ? 'Run-out  ✓' : 'Run-out?'}
-            </Text>
-          </TouchableOpacity>
 
           <TouchableOpacity
             onPress={onCancel}
@@ -1385,7 +1381,7 @@ function emptyBowlerStats(): BowlerStats {
 
 // ─── Main screen ─────────────────────────────────────────────────────
 
-type Phase = 'loading' | 'no-match' | 'scoring' | 'new-bowler' | 'new-batter' | 'innings-over';
+type Phase = 'loading' | 'no-match' | 'scoring' | 'new-bowler' | 'new-batter' | 'end-pending' | 'innings-over';
 
 export default function LiveScoringScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'LiveScoring'>>();
@@ -1406,9 +1402,20 @@ export default function LiveScoringScreen() {
   const [inningsNumber, setInningsNumber] = useState<1 | 2>(1);
   const [firstInningsRuns, setFirstInningsRuns] = useState<number | null>(null);
   const [firstInnings, setFirstInnings] = useState<InningsState | null>(null);
-  // Top-of-screen tab + which innings the scorecard shows.
-  const [tab, setTab] = useState<'scoring' | 'scorecard' | 'stats' | 'teams'>('scoring');
+  // Raw ball docs backing the COMMENTARY tab — frozen for innings 1 once the
+  // chase starts, mirroring firstInnings/innings above. Kept in sync with
+  // Firestore writes in commitBall/handleUndo rather than re-fetched per ball.
+  const [firstInningsBalls, setFirstInningsBalls] = useState<BallDoc[]>([]);
+  const [activeBalls, setActiveBalls] = useState<BallDoc[]>([]);
+  // Top-of-screen tab + which innings the scorecard/commentary shows.
+  const [tab, setTab] = useState<'scoring' | 'scorecard' | 'commentary' | 'stats' | 'teams'>('scoring');
   const [cardInnings, setCardInnings] = useState<1 | 2>(1);
+  // Tracks whether the tab bar's content overflows its visible width, and how
+  // far it's been scrolled, so the "more tabs" edge hints only show when true.
+  const [tabsBarWidth, setTabsBarWidth] = useState(0);
+  const [tabsContentWidth, setTabsContentWidth] = useState(0);
+  const [tabsScrollX, setTabsScrollX] = useState(0);
+  const tabsScrollRef = useRef<ScrollView>(null);
   useEffect(() => { setCardInnings(inningsNumber); }, [inningsNumber]);
   const [showSubPicker, setShowSubPicker] = useState(false);
 
@@ -1480,6 +1487,8 @@ export default function LiveScoringScreen() {
 
       if (allBalls.length === 0) {
         setInningsNumber(1);
+        setFirstInningsBalls([]);
+        setActiveBalls([]);
         beginInnings(liveMatch, 1);
         return;
       }
@@ -1497,15 +1506,34 @@ export default function LiveScoringScreen() {
         const firstInn = buildInningsFromBalls(firstBalls, liveMatch, 1, clubPlayers, autoRotateEoO);
         setFirstInnings(firstInn);
         setFirstInningsRuns(firstInn.totalRuns);
+        setFirstInningsBalls(firstBalls);
+        setActiveBalls(secondBalls);
         setInningsNumber(2);
         const reconstructed = buildInningsFromBalls(secondBalls, liveMatch, 2, clubPlayers, autoRotateEoO);
         const chased = reconstructed.totalRuns >= firstInn.totalRuns + 1;
-        const resolvedPhase = resumePhaseFromBalls(secondBalls, reconstructed, chased || isInningsComplete(reconstructed, lastManStands, oversPerInnings));
+        // `load()` only reaches here when status is still 'live'/'scheduled' (see
+        // the guard above) — completeMatch() flips status to 'completed' the
+        // moment the scorer seals it, at which point a reload shows 'no-match'
+        // instead. So a complete 2nd innings reaching this point is always
+        // unsealed — resume to 'end-pending', never straight to 'innings-over'.
+        const resolvedPhase = resumePhaseFromBalls(
+          secondBalls,
+          reconstructed,
+          chased || isInningsComplete(reconstructed, lastManStands, oversPerInnings),
+          false
+        );
         applyResolvedPhase(reconstructed, resolvedPhase);
       } else {
         setInningsNumber(1);
+        setFirstInningsBalls([]);
+        setActiveBalls(firstBalls);
         const reconstructed = buildInningsFromBalls(firstBalls, liveMatch, 1, clubPlayers, autoRotateEoO);
-        const resolvedPhase = resumePhaseFromBalls(firstBalls, reconstructed, isInningsComplete(reconstructed, lastManStands, oversPerInnings));
+        const resolvedPhase = resumePhaseFromBalls(
+          firstBalls,
+          reconstructed,
+          isInningsComplete(reconstructed, lastManStands, oversPerInnings),
+          !!liveMatch.firstInningsEnded
+        );
         applyResolvedPhase(reconstructed, resolvedPhase);
       }
     } catch {
@@ -1537,9 +1565,12 @@ export default function LiveScoringScreen() {
     return allOut || oversDone;
   }
 
-  // Determines the phase to resume after reloading ball docs.
-  function resumePhaseFromBalls(balls: BallDoc[], inn: InningsState, isComplete: boolean): Phase {
-    if (isComplete) return 'innings-over';
+  // Determines the phase to resume after reloading ball docs. `sealed` is the
+  // persisted marker that the scorer already tapped "End Innings"/"End Match"
+  // in a previous session — until then a complete innings resumes into
+  // 'end-pending' so the last ball can still be undone.
+  function resumePhaseFromBalls(balls: BallDoc[], inn: InningsState, isComplete: boolean, sealed: boolean): Phase {
+    if (isComplete) return sealed ? 'innings-over' : 'end-pending';
     const last = balls[balls.length - 1];
     if (!last) return 'scoring';
     if (last.dismissal) {
@@ -1707,7 +1738,13 @@ export default function LiveScoringScreen() {
 
     if (ball.dismissal && !isLoneBatter) {
       const isNonStrikerOut = ball.dismissal.nonStrikerOut;
-      const crossedOnRunOut = physRuns % 2 !== 0;
+      // Run-outs: must mirror commitBall's crossedOnRunOut exactly — always
+      // assume the batsmen crossed on the run that got them out, so an even
+      // completedRuns count (including 0) means crossed, odd means not. Other
+      // dismissal types never involve crossing (and never carry nonzero runs).
+      const crossedOnRunOut = ball.dismissal.type === 'run-out'
+        ? physRuns % 2 === 0
+        : physRuns % 2 !== 0;
       const eooSwap = ball.isLastBallOfOver && autoRotateEoO;
       const survivorIsOnStrike = (isNonStrikerOut !== crossedOnRunOut) !== eooSwap;
       const survivorId = isNonStrikerOut ? ball.batsmanId : ball.nonStrikerId;
@@ -1765,9 +1802,15 @@ export default function LiveScoringScreen() {
     const teamLabel = captainName
       ? `Team ${captainName}`
       : (winningIsTeamA ? match.homeTeam : match.awayTeam) || 'Winning team';
-    return secondInningsWon
-      ? `${teamLabel} won 🏆`
-      : `${teamLabel} won by ${firstInningsRuns - innings.totalRuns} run${firstInningsRuns - innings.totalRuns !== 1 ? 's' : ''} 🏆`;
+    if (secondInningsWon) {
+      // Wickets in hand = how many more could have fallen before all out,
+      // minus how many actually fell chasing the target.
+      const lastManStandsRule = clubRules?.lastManStands ?? match.rules.lastManStands;
+      const wicketsToEnd = innings.battingIds.length - (lastManStandsRule ? 0 : 1);
+      const wicketsRemaining = Math.max(0, wicketsToEnd - innings.totalWickets);
+      return `${teamLabel} won by ${wicketsRemaining} wicket${wicketsRemaining !== 1 ? 's' : ''} 🏆`;
+    }
+    return `${teamLabel} won by ${firstInningsRuns - innings.totalRuns} run${firstInningsRuns - innings.totalRuns !== 1 ? 's' : ''} 🏆`;
   }
 
   // ── Setup handlers ───────────────────────────────────────────────
@@ -1802,6 +1845,8 @@ export default function LiveScoringScreen() {
     if (!match) return;
     setFirstInnings(firstInn);
     setFirstInningsRuns(firstInn.totalRuns);
+    setFirstInningsBalls(activeBalls);
+    setActiveBalls([]);
     setInningsNumber(2);
     setHistory([]);
     beginInnings(match, 2);
@@ -1967,13 +2012,16 @@ export default function LiveScoringScreen() {
       : result.rotateStrike;
     if (effectiveRotate && !isLoneBatter) [newOnStrike, newOffStrike] = [newOffStrike, newOnStrike];
 
-    // Run-out with an odd number of completed runs → the batters crossed, so the
-    // surviving partner is now on strike and the replacement comes in off strike.
+    // Always assume the batsmen crossed during the (incomplete) run that got
+    // someone out — true even at 0 completed runs (they set off, crossed,
+    // then one was sent back and run out short). That extra crossing flips
+    // the usual "odd runs = crossed" parity: an even completedRuns count
+    // (including 0) means crossed; odd means not.
     const crossedOnRunOut =
       result.batterIsOut &&
       input.dismissal?.type === 'run-out' &&
-      result.physicalRuns % 2 !== 0 &&
-      !isLoneBatter;
+      !isLoneBatter &&
+      result.physicalRuns % 2 === 0;
 
     // End-of-over swap applies to wicket balls just as it does to normal balls.
     // XOR chain: non-striker surviving puts them off-strike; crossing flips it;
@@ -2044,17 +2092,21 @@ export default function LiveScoringScreen() {
         }),
       };
       saveBallDoc(ref, ballDoc).catch(() => {});
+      setActiveBalls((prev) => [...prev, { id: ref.id, ...ballDoc }]);
     }
 
     // Decide what happens next. End-of-innings checks take priority, in order:
-    // chase complete → all out → overs exhausted.
+    // chase complete → all out → overs exhausted. Reaching one of these no
+    // longer jumps straight to the sealed 'innings-over' summary — it lands on
+    // 'end-pending' so the scorer can still undo this ball, and must tap
+    // "End Innings"/"End Match" to seal it (see handleEndInnings).
     const target = inningsNumber === 2 && firstInningsRuns != null ? firstInningsRuns + 1 : null;
     const oversPerInnings = match.rules.oversPerInnings;
     const oversDone =
       result.isOverComplete && oversPerInnings != null && newOverNumber >= oversPerInnings;
 
     if (target != null && newTotalRuns >= target) {
-      setPhase('innings-over');
+      setPhase('end-pending');
       return;
     }
 
@@ -2068,18 +2120,18 @@ export default function LiveScoringScreen() {
       const allOut = replacements.length === 0 && !(match.rules.lastManStands && partnerId && !partnerOut);
 
       if (allOut) {
-        setPhase('innings-over');
+        setPhase('end-pending');
         return;
       }
       if (replacements.length === 0) {
         // Last man stands: the surviving partner bats on alone (unless overs are done).
         setInnings((li) => (li ? { ...li, onStrikeId: partnerId, offStrikeId: '' } : li));
-        setPhase(oversDone ? 'innings-over' : result.isOverComplete ? 'new-bowler' : 'scoring');
+        setPhase(oversDone ? 'end-pending' : result.isOverComplete ? 'new-bowler' : 'scoring');
         return;
       }
       newBatterEndRef.current = survivorIsOnStrike ? 'offStrike' : 'onStrike';
       if (oversDone) {
-        setPhase('innings-over');
+        setPhase('end-pending');
       } else if (result.isOverComplete) {
         // Need both a new batter AND a new bowler — pick batter first, then bowler.
         needsNewBowlerAfterBatterRef.current = true;
@@ -2090,7 +2142,7 @@ export default function LiveScoringScreen() {
       return;
     }
 
-    if (oversDone) setPhase('innings-over');
+    if (oversDone) setPhase('end-pending');
     else if (result.isOverComplete) setPhase('new-bowler');
   }
 
@@ -2186,6 +2238,32 @@ export default function LiveScoringScreen() {
     });
   }
 
+  // Seals the 'end-pending' state the scorer has been sitting in since the
+  // last ball met an end-of-innings/match condition. Before this point the
+  // last ball can still be undone (see handleUndo); after it, phase moves to
+  // 'innings-over' which renders the summary screen with no Undo control.
+  function handleEndInnings() {
+    if (!match || !clubId) return;
+    const isMatchEnd = inningsNumber === 2;
+    Alert.alert(
+      isMatchEnd ? 'End match?' : 'End innings?',
+      `Once ${isMatchEnd ? 'the match is' : 'the innings is'} ended, the last ball can no longer be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: isMatchEnd ? 'End Match' : 'End Innings',
+          style: 'destructive',
+          onPress: () => {
+            if (!isMatchEnd) {
+              endFirstInnings(clubId, match.id).catch(() => {});
+            }
+            setPhase('innings-over');
+          },
+        },
+      ]
+    );
+  }
+
   function handleAbandon() {
     if (!match || !clubId) return;
     Alert.alert(
@@ -2237,6 +2315,7 @@ export default function LiveScoringScreen() {
       setInnings(prevInnings as InningsState);
       lastBallIdRef.current = _ballId;
       setPhase('scoring');
+      setActiveBalls((prevBalls) => prevBalls.slice(0, -1));
       deleteLastBall(clubId, match.id, innings.inningsId).catch(() => {});
       seqRef.current--;
       return;
@@ -2469,8 +2548,13 @@ export default function LiveScoringScreen() {
   const notBattingActiveIds = [innings.onStrikeId, innings.offStrikeId, ...Object.keys(innings.batterStats).filter((id) => innings.batterStats[id].isOut)];
   const nextBatters = players.filter((p) => innings.battingIds.includes(p.id) && !notBattingActiveIds.includes(p.id));
 
-  // Which innings the scorecard tab shows (innings 1 lives in firstInnings once the chase starts).
+  // Which innings the scorecard/commentary tabs show (innings 1 lives in
+  // firstInnings/firstInningsBalls once the chase starts).
   const scorecardInn = inningsNumber === 2 ? (cardInnings === 1 ? firstInnings : innings) : innings;
+  const commentaryBalls = inningsNumber === 2 ? (cardInnings === 1 ? firstInningsBalls : activeBalls) : activeBalls;
+  const getPlayerName = (id: string) => playerMap[id]?.displayName ?? id;
+  const handOf = (id: string) => playerMap[id]?.battingHand;
+  const commentaryEntries = buildCommentary(commentaryBalls, getPlayerName, handOf, match?.rules.customDismissals ?? []);
 
   // Overs can only be edited while the 1st innings is in progress, and never
   // below the overs already bowled (a part-bowled over counts as one).
@@ -2479,22 +2563,83 @@ export default function LiveScoringScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      {/* Top tabs */}
-      <View style={{ flexDirection: 'row', backgroundColor: theme.surfaceAlt }}>
-        {(['scoring', 'scorecard', 'teams', 'stats'] as const).map((t) => (
-          <TouchableOpacity
-            key={t}
-            onPress={() => setTab(t)}
-            style={{ flex: 1, paddingVertical: 12, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: tab === t ? theme.accent : 'transparent' }}
-          >
-            <Text style={{ color: tab === t ? theme.accent : theme.textMuted, fontWeight: '700', fontSize: 11 }}>
-              {t === 'scoring' ? 'SCORING' : t === 'scorecard' ? 'SCORECARD' : t === 'teams' ? 'TEAMS' : 'STATS'}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      {/* Top tabs — horizontally scrollable with equal-width tabs (rather than
+          flex:1) so labels like COMMENTARY aren't squeezed. A chevron hints
+          at more tabs off-screen in whichever direction still has any. */}
+      <View style={{ backgroundColor: theme.surfaceAlt, position: 'relative' }}>
+        <ScrollView
+          ref={tabsScrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          onLayout={(e) => setTabsBarWidth(e.nativeEvent.layout.width)}
+          onContentSizeChange={(w) => setTabsContentWidth(w)}
+          onScroll={(e) => setTabsScrollX(e.nativeEvent.contentOffset.x)}
+          scrollEventThrottle={16}
+        >
+          {(['scoring', 'scorecard', 'commentary', 'teams', 'stats'] as const).map((t) => (
+            <TouchableOpacity
+              key={t}
+              onPress={() => setTab(t)}
+              style={{ width: 104, paddingVertical: 12, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: tab === t ? theme.accent : 'transparent' }}
+            >
+              <Text style={{ color: tab === t ? theme.accent : theme.textMuted, fontWeight: '700', fontSize: 11 }}>
+                {t === 'scoring' ? 'SCORING' : t === 'scorecard' ? 'SCORECARD' : t === 'commentary' ? 'COMMENTARY' : t === 'teams' ? 'TEAMS' : 'STATS'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        {tabsScrollX > 4 && (
+          <View style={{ position: 'absolute', left: 2, top: 0, bottom: 0, justifyContent: 'center' }}>
+            <TouchableOpacity
+              onPress={() => tabsScrollRef.current?.scrollTo({ x: Math.max(0, tabsScrollX - 150), animated: true })}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={{
+                width: 24, height: 24, borderRadius: 12, backgroundColor: theme.accent,
+                alignItems: 'center', justifyContent: 'center',
+                shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
+                elevation: 4,
+              }}
+            >
+              <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '900', marginLeft: -1 }}>‹</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {tabsContentWidth - tabsScrollX - tabsBarWidth > 4 && (
+          <View style={{ position: 'absolute', right: 2, top: 0, bottom: 0, justifyContent: 'center' }}>
+            <TouchableOpacity
+              onPress={() => tabsScrollRef.current?.scrollTo({ x: Math.min(tabsContentWidth - tabsBarWidth, tabsScrollX + 150), animated: true })}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={{
+                width: 24, height: 24, borderRadius: 12, backgroundColor: theme.accent,
+                alignItems: 'center', justifyContent: 'center',
+                shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
+                elevation: 4,
+              }}
+            >
+              <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '900', marginLeft: 1 }}>›</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
-      {tab === 'scorecard' ? (
+      {tab === 'commentary' ? (
+        <View style={{ flex: 1 }}>
+          {inningsNumber === 2 && (
+            <View style={{ flexDirection: 'row', padding: 8, gap: 8 }}>
+              {([1, 2] as const).map((n) => (
+                <TouchableOpacity
+                  key={n}
+                  onPress={() => setCardInnings(n)}
+                  style={{ flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: cardInnings === n ? theme.accentDim : theme.surface, borderWidth: 1, borderColor: cardInnings === n ? theme.accent : theme.border, alignItems: 'center' }}
+                >
+                  <Text style={{ color: cardInnings === n ? theme.accent : theme.textMuted, fontWeight: '600' }}>Innings {n}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          <Commentary entries={commentaryEntries} />
+        </View>
+      ) : tab === 'scorecard' ? (
         <View style={{ flex: 1 }}>
           {inningsNumber === 2 && (
             <View style={{ flexDirection: 'row', padding: 8, gap: 8 }}>
@@ -2651,63 +2796,92 @@ export default function LiveScoringScreen() {
 
       {isAdmin ? (
         <>
-        {/* Run buttons */}
-        <View pointerEvents={scoringReady ? 'auto' : 'none'} style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8, marginBottom: 10, opacity: scoringReady ? 1 : 0.4 }}>
-          {[0, 1, 2, 3, 4, 6].map((r) => (
+        {phase === 'end-pending' ? (
+          /* End condition reached but not yet sealed — the last ball can
+             still be undone below. Ending is a deliberate, separate tap. */
+          <View style={{ paddingHorizontal: 12, marginBottom: 10 }}>
+            <View style={{
+              backgroundColor: theme.id === 'light' ? '#fffbeb' : '#3a2a0a',
+              borderWidth: 1.5, borderColor: '#d97706', borderRadius: 10,
+              paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center', marginBottom: 10,
+            }}>
+              <Text style={{ color: '#d97706', fontSize: 14, fontWeight: '700' }}>
+                {inningsNumber === 1 ? '1ST INNINGS COMPLETE' : 'MATCH COMPLETE'}
+              </Text>
+              <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
+                Check the last ball before ending — Undo is still available below.
+              </Text>
+            </View>
             <TouchableOpacity
-              key={r}
-              onPress={() =>
-                startBall({ batsmanId: innings.onStrikeId, bowlerId: innings.bowlerId, runs: r })
-              }
-              style={{
-                flex: 1, paddingVertical: 16, borderRadius: 10,
-                backgroundColor: r === 4 ? theme.accentDim : r === 6 ? (theme.id === 'light' ? '#ede9fe' : '#2d1a5f') : theme.surface,
-                borderWidth: 1.5,
-                borderColor: r === 4 ? theme.accent : r === 6 ? '#a78bfa' : theme.border,
-                alignItems: 'center',
-              }}
+              onPress={handleEndInnings}
+              style={{ backgroundColor: theme.accent, borderRadius: 10, paddingVertical: 14, alignItems: 'center' }}
             >
-              <Text style={{
-                color: r === 4 ? theme.accent : r === 6 ? '#a78bfa' : theme.text,
-                fontSize: 20, fontWeight: '800',
-              }}>
-                {r}
+              <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '700' }}>
+                {inningsNumber === 1 ? 'End Innings' : 'End Match'}
               </Text>
             </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Extras row */}
-        {enabledExtras.length > 0 && (
+          </View>
+        ) : (
+          <>
+          {/* Run buttons */}
           <View pointerEvents={scoringReady ? 'auto' : 'none'} style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8, marginBottom: 10, opacity: scoringReady ? 1 : 0.4 }}>
-            {enabledExtras.map((type) => (
+            {[0, 1, 2, 3, 4, 6].map((r) => (
               <TouchableOpacity
-                key={type}
-                onPress={() => handleExtra(type)}
+                key={r}
+                onPress={() =>
+                  startBall({ batsmanId: innings.onStrikeId, bowlerId: innings.bowlerId, runs: r })
+                }
                 style={{
-                  flex: 1, paddingVertical: 10, borderRadius: 8,
-                  backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
+                  flex: 1, paddingVertical: 16, borderRadius: 10,
+                  backgroundColor: r === 4 ? theme.accentDim : r === 6 ? (theme.id === 'light' ? '#ede9fe' : '#2d1a5f') : theme.surface,
+                  borderWidth: 1.5,
+                  borderColor: r === 4 ? theme.accent : r === 6 ? '#a78bfa' : theme.border,
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' }}>
-                  {type === 'no-ball' ? 'NB' : type === 'leg-bye' ? 'LB' : type === 'wide' ? 'Wd' : 'Bye'}
+                <Text style={{
+                  color: r === 4 ? theme.accent : r === 6 ? '#a78bfa' : theme.text,
+                  fontSize: 20, fontWeight: '800',
+                }}>
+                  {r}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
+
+          {/* Extras row */}
+          {enabledExtras.length > 0 && (
+            <View pointerEvents={scoringReady ? 'auto' : 'none'} style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8, marginBottom: 10, opacity: scoringReady ? 1 : 0.4 }}>
+              {enabledExtras.map((type) => (
+                <TouchableOpacity
+                  key={type}
+                  onPress={() => handleExtra(type)}
+                  style={{
+                    flex: 1, paddingVertical: 10, borderRadius: 8,
+                    backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' }}>
+                    {type === 'no-ball' ? 'NB' : type === 'leg-bye' ? 'LB' : type === 'wide' ? 'Wd' : 'Bye'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          </>
         )}
 
         {/* Wicket + Undo */}
         <View style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8 }}>
           <TouchableOpacity
-            onPress={() => scoringReady && setShowWicket(true)}
-            disabled={!scoringReady}
+            onPress={() => scoringReady && phase !== 'end-pending' && setShowWicket(true)}
+            disabled={!scoringReady || phase === 'end-pending'}
             style={{
               flex: 3, paddingVertical: 14, borderRadius: 10,
               backgroundColor: theme.id === 'light' ? '#fef2f2' : '#2d1515',
               borderWidth: 1.5, borderColor: '#dc2626',
-              alignItems: 'center', opacity: scoringReady ? 1 : 0.4,
+              alignItems: 'center', opacity: (scoringReady && phase !== 'end-pending') ? 1 : 0.4,
             }}
           >
             <Text style={{ color: '#dc2626', fontSize: 16, fontWeight: '800' }}>Wicket ▼</Text>

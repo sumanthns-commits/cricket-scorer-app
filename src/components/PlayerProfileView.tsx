@@ -307,11 +307,37 @@ export default function PlayerProfileView({
       .catch(() => {});
   };
 
+  // Name edits happen in a small overlay with its own explicit Save button
+  // (rather than an always-editable inline field) so it's unambiguous when
+  // the change has actually been committed.
+  const [showEditName, setShowEditName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
-  useEffect(() => { if (player) setNameDraft(player.displayName); }, [player?.displayName]);
+  const [savingName, setSavingName] = useState(false);
+  const [nameError, setNameError] = useState(false);
+
+  const openEditName = () => {
+    setNameDraft(player?.displayName ?? '');
+    setNameError(false);
+    setShowEditName(true);
+  };
   const saveName = () => {
     const next = nameDraft.trim();
-    if (next && next !== player?.displayName) saveAttr({ displayName: next });
+    if (!next || next === player?.displayName) {
+      setShowEditName(false);
+      return;
+    }
+    setSavingName(true);
+    setNameError(false);
+    updatePlayerAttributes(clubId, playerId, { displayName: next })
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ['player', clubId, playerId] });
+        setSavingName(false);
+        setShowEditName(false);
+      })
+      .catch(() => {
+        setSavingName(false);
+        setNameError(true);
+      });
   };
 
   const [keepingDraft, setKeepingDraft] = useState<WicketKeepingAbility | undefined>(undefined);
@@ -637,19 +663,18 @@ export default function PlayerProfileView({
       {canEdit ? (
         <>
           <Section title="NAME">
-            <TextInput
-              value={nameDraft}
-              onChangeText={setNameDraft}
-              onBlur={saveName}
-              onSubmitEditing={saveName}
-              placeholder="Player name"
-              placeholderTextColor={theme.textMuted}
+            <TouchableOpacity
+              onPress={openEditName}
               style={{
-                backgroundColor: theme.surface, color: theme.text, borderRadius: 8,
-                paddingHorizontal: 12, paddingVertical: 10, fontSize: 15,
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                backgroundColor: theme.surface, borderRadius: 8,
+                paddingHorizontal: 12, paddingVertical: 10,
                 borderWidth: 1, borderColor: theme.border,
               }}
-            />
+            >
+              <Text style={{ color: theme.text, fontSize: 15 }}>{player.displayName}</Text>
+              <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>Edit</Text>
+            </TouchableOpacity>
           </Section>
           <Section title="BATTING HAND">
             <ChipRow options={BATTING_HANDS} selected={player.battingHand} onSelect={(v) => saveAttr({ battingHand: v })} />
@@ -911,6 +936,57 @@ export default function PlayerProfileView({
           </View>
         </TouchableOpacity>
       </TouchableOpacity>
+    </Modal>
+
+    <Modal visible={showEditName} transparent animationType="fade" onRequestClose={() => setShowEditName(false)}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: '#00000088', justifyContent: 'center', padding: 24 }}
+          activeOpacity={1}
+          onPress={() => setShowEditName(false)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View style={{ backgroundColor: theme.surface, borderRadius: 16, padding: 20, gap: 14 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ color: theme.text, fontSize: 17, fontWeight: '800' }}>Edit name</Text>
+                <TouchableOpacity onPress={() => setShowEditName(false)}>
+                  <Text style={{ color: theme.textMuted, fontSize: 20, lineHeight: 22 }}>✕</Text>
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                value={nameDraft}
+                onChangeText={setNameDraft}
+                onSubmitEditing={saveName}
+                autoFocus
+                placeholder="Player name"
+                placeholderTextColor={theme.textMuted}
+                style={{
+                  backgroundColor: theme.surfaceAlt, color: theme.text, borderRadius: 8,
+                  paddingHorizontal: 12, paddingVertical: 10, fontSize: 15,
+                  borderWidth: 1, borderColor: nameError ? '#dc2626' : theme.border,
+                }}
+              />
+              {nameError && (
+                <Text style={{ color: '#dc2626', fontSize: 12 }}>Couldn't save. Please try again.</Text>
+              )}
+              <TouchableOpacity
+                onPress={saveName}
+                disabled={savingName || !nameDraft.trim()}
+                style={{
+                  backgroundColor: theme.accent, borderRadius: 10, paddingVertical: 14, alignItems: 'center',
+                  opacity: (savingName || !nameDraft.trim()) ? 0.6 : 1,
+                }}
+              >
+                {savingName ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '700' }}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </KeyboardAvoidingView>
     </Modal>
 
     </KeyboardAvoidingView>

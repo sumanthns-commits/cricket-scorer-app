@@ -52,6 +52,12 @@ function MatchCard({
     month: 'short',
     year: 'numeric',
   });
+  // `date` itself has no time-of-day (always local midnight — see
+  // ScheduleMatch). `createdAt` is the closest thing to an actual match time,
+  // but older matches were created before that field existed, so it's optional.
+  const timeStr = match.createdAt
+    ? match.createdAt.toDate().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+    : null;
 
   const hasTeams = (match.teamA?.length ?? 0) > 0;
   const hasToss = !!match.toss;
@@ -95,7 +101,7 @@ function MatchCard({
             <Text style={{ color: theme.textSecondary, fontSize: 13, marginTop: 2 }}>{match.venue}</Text>
           ) : null}
           <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 4 }}>
-            {dateStr}
+            {dateStr}{timeStr ? `, ${timeStr}` : ''}
             {match.format
               ? ` · ${match.format === 'custom' ? `${match.rules.oversPerInnings ?? '?'} ov` : match.format}`
               : ''}
@@ -184,7 +190,13 @@ export default function MatchesScreen() {
     return [...matches].sort((a, b) => {
       const aLive = a.status === 'live' ? 0 : 1;
       const bLive = b.status === 'live' ? 0 : 1;
-      return aLive - bLive;
+      if (aLive !== bLive) return aLive - bLive;
+      const dateDiff = b.date.toMillis() - a.date.toMillis();
+      if (dateDiff !== 0) return dateDiff;
+      // `date` is only a calendar day (no time-of-day) — back-to-back quick
+      // rematches on the same day tie here, so fall back to actual creation
+      // order to keep them in strict descending order.
+      return (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0);
     });
   }, [matches]);
 

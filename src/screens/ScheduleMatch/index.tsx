@@ -107,7 +107,13 @@ export default function ScheduleMatchScreen() {
   const prevMatch = useMemo(() => {
     return matches
       .filter((m) => (m.squad?.length ?? 0) > 0 && m.status === 'completed')
-      .sort((a, b) => b.date.toMillis() - a.date.toMillis())[0] ?? null;
+      .sort((a, b) => {
+        const dateDiff = b.date.toMillis() - a.date.toMillis();
+        if (dateDiff !== 0) return dateDiff;
+        // `date` is only a calendar day — back-to-back quick rematches share
+        // one, so fall back to creation order to find the true most recent.
+        return (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0);
+      })[0] ?? null;
   }, [matches]);
 
   const activePlayerIds = useMemo(() => new Set(players.map(p => p.id)), [players]);

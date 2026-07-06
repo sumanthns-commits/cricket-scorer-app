@@ -82,6 +82,7 @@ export async function createMatch(params: {
     awayTeam: params.awayTeam,
     venue: params.venue,
     date: Timestamp.fromDate(params.date),
+    createdAt: Timestamp.now(),
     format: params.format,
     status: 'scheduled',
     rules: params.rules,
@@ -192,6 +193,7 @@ export async function createLiveMatch(params: {
     awayTeam: params.awayTeam,
     venue: params.venue,
     date: Timestamp.fromDate(params.date),
+    createdAt: Timestamp.now(),
     format: params.format,
     status: 'live',
     rules: params.rules,
@@ -215,6 +217,16 @@ export async function completeMatch(
     status: 'completed',
     result: result ?? null,
     completedAt: Timestamp.now(),
+  });
+}
+
+// Persists the scorer's manual "End Innings" confirmation for the 1st innings.
+// Match status stays 'live' (2nd innings hasn't started) — this flag is the
+// only record that the scorer has sealed it, so a reload before the 2nd
+// innings' first ball still knows not to offer undo again.
+export async function endFirstInnings(clubId: string, matchId: string): Promise<void> {
+  await updateDoc(doc(db, 'clubs', clubId, 'matches', matchId), {
+    firstInningsEnded: true,
   });
 }
 

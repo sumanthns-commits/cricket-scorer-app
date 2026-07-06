@@ -356,6 +356,10 @@ export interface Match {
   awayTeam: string;
   venue?: string;
   date: Timestamp;
+  // Set at creation time. `date` is only a calendar day (no time-of-day) the
+  // scorer picked, so same-day rematches share an identical `date` — this is
+  // the tiebreaker that recovers actual creation order for sorting/reuse.
+  createdAt?: Timestamp;
   format?: MatchFormat;
   status: 'scheduled' | 'live' | 'completed' | 'abandoned';
   rules: ClubRules;
@@ -371,4 +375,5 @@ export interface Match {
   scorerId?: string;
   scorerName?: string;
   substitutes?: string[];
+  firstInningsEnded?: boolean;
 }
