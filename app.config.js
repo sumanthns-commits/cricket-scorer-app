@@ -45,6 +45,7 @@ module.exports = ({ config }) => {
     ios: {
       ...config.ios,
       googleServicesFile: process.env.GOOGLE_SERVICES_PLIST ?? './GoogleService-Info.plist',
+      appleTeamId: process.env.APPLE_TEAM_ID ?? config.ios?.appleTeamId,
     },
   };
 

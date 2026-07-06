@@ -4,7 +4,14 @@
 
 set -e
 
+# Guard against a leftover `expo start` / sourced .env in this shell silently
+# shadowing .env.production — Expo's env loader never overrides a variable
+# that's already set in the process environment.
+for var in $(compgen -e | grep '^EXPO_PUBLIC_'); do unset "$var"; done
+unset API_KEY
+
 export APP_ENV=production
+export NODE_ENV=production
 export GOOGLE_SERVICES_PLIST="./GoogleService-Info.plist"
 
 WORKSPACE="ios/Crease.xcworkspace"
@@ -26,7 +33,7 @@ echo "==> Patching Podfile (use_modular_headers!)..."
 sed -i '' 's/^prepare_react_native_project!$/use_modular_headers!\n\nprepare_react_native_project!/' ios/Podfile
 
 echo "==> Installing CocoaPods..."
-cd ios && pod install && cd ..
+(cd ios && pod install)
 
 mkdir -p build
 
@@ -37,6 +44,7 @@ xcodebuild \
   -configuration Release \
   -destination "generic/platform=iOS" \
   -archivePath "$ARCHIVE_PATH" \
+  -allowProvisioningUpdates \
   archive
 
 echo "==> Writing ExportOptions.plist..."
