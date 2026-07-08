@@ -18,6 +18,7 @@ WORKSPACE="ios/Crease.xcworkspace"
 SCHEME="Crease"
 ARCHIVE_PATH="build/Crease.xcarchive"
 EXPORT_PATH="build/ios-export"
+DERIVED_DATA_PATH="build/DerivedData"
 
 source ./build-secrets.sh
 
@@ -37,6 +38,13 @@ echo "==> Installing CocoaPods..."
 
 mkdir -p build
 
+# A DerivedData cache shared with `expo run:ios` / Xcode.app can leave behind
+# arm64 build products from a simulator run; on Apple Silicon that arch string
+# matches device arm64 too, so Xcode's incremental build can silently link the
+# archive against simulator-built frameworks (e.g. Hermes) instead of device
+# ones. Force a clean, isolated DerivedData dir for every archive build.
+rm -rf "$DERIVED_DATA_PATH"
+
 echo "==> Archiving..."
 xcodebuild \
   -workspace "$WORKSPACE" \
@@ -44,8 +52,45 @@ xcodebuild \
   -configuration Release \
   -destination "generic/platform=iOS" \
   -archivePath "$ARCHIVE_PATH" \
+  -derivedDataPath "$DERIVED_DATA_PATH" \
   -allowProvisioningUpdates \
   archive
+
+echo "==> Verifying production environment was embedded in the bundle..."
+BUNDLE_JS="$ARCHIVE_PATH/Products/Applications/${SCHEME}.app/main.jsbundle"
+PROD_PROJECT_ID=$(grep '^EXPO_PUBLIC_FIREBASE_PROJECT_ID=' .env.production | cut -d= -f2)
+DEV_PROJECT_ID=$(grep '^EXPO_PUBLIC_FIREBASE_PROJECT_ID=' .env | cut -d= -f2)
+
+if [ ! -f "$BUNDLE_JS" ]; then
+  echo "ERROR: Couldn't find bundled JS at $BUNDLE_JS to verify."
+  exit 1
+fi
+
+if [ -z "$PROD_PROJECT_ID" ] || ! grep -q "$PROD_PROJECT_ID" "$BUNDLE_JS"; then
+  echo "ERROR: Production Firebase project id ('$PROD_PROJECT_ID') not found in the bundle."
+  echo "        The archive was built with the wrong environment. Aborting before export."
+  exit 1
+fi
+
+if [ -n "$DEV_PROJECT_ID" ] && [ "$DEV_PROJECT_ID" != "$PROD_PROJECT_ID" ] && grep -q "$DEV_PROJECT_ID" "$BUNDLE_JS"; then
+  echo "ERROR: Dev/staging Firebase project id ('$DEV_PROJECT_ID') found in the bundle."
+  echo "        .env leaked into a production build. Aborting before export."
+  exit 1
+fi
+
+if grep -q "Emulator sign-in failed" "$BUNDLE_JS"; then
+  echo "ERROR: Emulator sign-in code is present in the bundle — EXPO_PUBLIC_USE_EMULATOR"
+  echo "        was not inlined to false. Aborting before export."
+  exit 1
+fi
+
+if ! grep -q "Sign in with Google" "$BUNDLE_JS"; then
+  echo "ERROR: 'Sign in with Google' button not found in the bundle — the emulator"
+  echo "        sign-in branch is showing instead. Aborting before export."
+  exit 1
+fi
+
+echo "    OK — production environment correctly embedded."
 
 echo "==> Writing ExportOptions.plist..."
 cat > build/ExportOptions.plist << EOF
