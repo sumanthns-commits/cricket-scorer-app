@@ -35,16 +35,25 @@ const STATUS_COLORS: Record<Match['status'], string> = {
   abandoned: '#dc2626',
 };
 
+// Legacy matches predating the scorerId field (no scorer ever recorded) fall
+// back to true so they aren't locked out of the old "anyone can open
+// LiveScoring" behavior.
+function isMatchScorer(match: Match, uid: string | undefined): boolean {
+  return !match.scorerId || match.scorerId === uid;
+}
+
 function MatchCard({
   match,
   onPress,
   onDelete,
   isAdmin,
+  isScorer,
 }: {
   match: Match;
   onPress: () => void;
   onDelete?: () => void;
   isAdmin: boolean;
+  isScorer: boolean;
 }) {
   const theme = useThemeStore((s) => s.theme);
   const dateObj = match.date.toDate();
@@ -58,16 +67,17 @@ function MatchCard({
   const hasToss = !!match.toss;
   const isFinished = match.status === 'completed' || match.status === 'abandoned';
 
+  const liveLabel = isScorer ? 'Live' : 'Watch';
   const adminActionLabel =
     match.status === 'live'
-      ? 'Live'
+      ? liveLabel
       : hasToss
       ? 'View'
       : hasTeams
       ? 'Toss'
       : 'Build Teams';
 
-  const viewerActionLabel = match.status === 'live' ? 'Live' : isFinished ? 'View' : null;
+  const viewerActionLabel = match.status === 'live' ? liveLabel : isFinished ? 'View' : null;
   const actionLabel = isAdmin ? adminActionLabel : viewerActionLabel;
   const statusColor = STATUS_COLORS[match.status];
 
@@ -217,7 +227,16 @@ export default function ClubDetailScreen({ navigation }: Props) {
       nav.navigate('MatchScorecard', { clubId, matchId });
       return;
     }
-    if (match.status === 'live' || hasToss) {
+    if (match.status === 'live') {
+      // Only the scorer gets the ball-entry screen — everyone else watches
+      // via MatchScorecard's real-time subscription.
+      nav.navigate(
+        isMatchScorer(match, user?.uid) ? 'LiveScoring' : 'MatchScorecard',
+        { clubId, matchId }
+      );
+      return;
+    }
+    if (hasToss) {
       nav.navigate('LiveScoring', { clubId, matchId });
       return;
     }
@@ -352,6 +371,7 @@ export default function ClubDetailScreen({ navigation }: Props) {
             <MatchCard
               match={item}
               isAdmin={isAdmin}
+              isScorer={isMatchScorer(item, user?.uid)}
               onPress={() => handleMatchPress(item)}
               onDelete={
                 isAdmin && (item.status === 'scheduled' || item.status === 'live')

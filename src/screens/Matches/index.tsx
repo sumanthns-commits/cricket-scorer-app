@@ -34,16 +34,25 @@ const STATUS_COLORS: Record<Match['status'], string> = {
   abandoned: '#dc2626',
 };
 
+// Legacy matches predating the scorerId field (no scorer ever recorded) fall
+// back to true so they aren't locked out of the old "anyone can open
+// LiveScoring" behavior.
+function isMatchScorer(match: Match, uid: string | undefined): boolean {
+  return !match.scorerId || match.scorerId === uid;
+}
+
 function MatchCard({
   match,
   onPress,
   onDelete,
   isAdmin,
+  isScorer,
 }: {
   match: Match;
   onPress: () => void;
   onDelete?: () => void;
   isAdmin: boolean;
+  isScorer: boolean;
 }) {
   const theme = useThemeStore((s) => s.theme);
   const dateObj = match.date.toDate();
@@ -67,16 +76,17 @@ function MatchCard({
     ? `${match.awayTeam} vs ${match.homeTeam}`
     : `${match.homeTeam} vs ${match.awayTeam}`;
 
+  const liveLabel = isScorer ? 'Live' : 'Watch';
   const adminActionLabel =
     match.status === 'live'
-      ? 'Live'
+      ? liveLabel
       : hasToss
       ? 'View'
       : hasTeams
       ? 'Toss'
       : 'Build Teams';
 
-  const memberActionLabel = match.status === 'live' ? 'Live' : isFinished ? 'View' : null;
+  const memberActionLabel = match.status === 'live' ? liveLabel : isFinished ? 'View' : null;
   const actionLabel = isAdmin ? adminActionLabel : memberActionLabel;
   const statusColor = STATUS_COLORS[match.status];
 
@@ -210,7 +220,18 @@ export default function MatchesScreen() {
       navigation.navigate('MatchScorecard', { clubId, matchId });
       return;
     }
-    if (match.status === 'live' || hasToss) {
+    if (match.status === 'live') {
+      // Only the scorer gets the ball-entry screen — everyone else
+      // (including other admins) watches via MatchScorecard's real-time
+      // subscription, so two devices don't both end up with live scoring
+      // controls open on the same match.
+      navigation.navigate(
+        isMatchScorer(match, user?.uid) ? 'LiveScoring' : 'MatchScorecard',
+        { clubId, matchId }
+      );
+      return;
+    }
+    if (hasToss) {
       navigation.navigate('LiveScoring', { clubId, matchId });
       return;
     }
@@ -319,6 +340,7 @@ export default function MatchesScreen() {
             <MatchCard
               match={item}
               isAdmin={isAdmin}
+              isScorer={isMatchScorer(item, user?.uid)}
               onPress={() => handleMatchPress(item)}
               onDelete={
                 isAdmin && (item.status === 'scheduled' || item.status === 'live')
