@@ -130,11 +130,16 @@ cat > build/ExportOptions.plist << EOF
 EOF
 
 echo "==> Exporting IPA..."
+# -allowProvisioningUpdates here too (not just on archive) — otherwise export
+# reuses whatever provisioning profile is already cached/registered instead of
+# letting Xcode regenerate one that includes the aps-environment entitlement,
+# which is what triggers "doesn't include the aps-environment entitlement".
 xcodebuild \
   -exportArchive \
   -archivePath "$ARCHIVE_PATH" \
   -exportPath "$EXPORT_PATH" \
-  -exportOptionsPlist "build/ExportOptions.plist"
+  -exportOptionsPlist "build/ExportOptions.plist" \
+  -allowProvisioningUpdates
 
 echo ""
 echo "==> Done! IPA is at:"
