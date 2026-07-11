@@ -178,6 +178,18 @@ Wagon-wheel position names for commentary come from `src/constants/wagonPosition
 wagon wheel capture UI in LiveScoring uses. These must never diverge into a second table;
 a scorer taps a position on the wheel and commentary must name it back the same way.
 
+## MatchScorecard (spectator view)
+Real-time for `status:'live'` matches only — `subscribeMatch`/`subscribeMatchBalls`
+(`matchService.ts`) via `onSnapshot`, so a spectator sees the score update as the scorer
+plays it, not just on reopen. Completed/abandoned matches use a plain one-shot fetch (no
+listeners held open for static data) — which of the two paths is picked is decided once, at
+mount, from a cheap one-shot "gate" read of the match doc's `status`. When the match-doc
+listener reports the status has left `'live'`, both listeners are torn down and one
+authoritative `getMatchBalls()` re-fetch runs immediately after — the balls listener's own
+final snapshot isn't guaranteed to have landed before the "completed" snapshot did (two
+independent listeners, no ordering guarantee), so this closes that race rather than risking
+the last ball(s) never rendering.
+
 ## Domain: player types
 - ghost      — imported from PDF/CSV (or seeded), no auth
 - registered — has Firebase auth, a club member
@@ -212,13 +224,49 @@ UI controls which buttons show. `customDismissals` in ClubRules is the only engi
 Key functions:
 - `onMatchCompleted` — aggregates career stats, fielding points, wagon wheel from balls/
   (falls back to overs/ for legacy matches). Handles both BallDoc and BallEntry formats.
+  Also sends the "match finished" push notification (both its normal exit and its
+  empty-squad early-return path).
 - `mirrorPlayerStats` — syncs publicPlayerStats after per-club player writes
-- `resolveJoinRequest` — ghost linking / join approval
+- `resolveJoinRequest` — ghost linking / join approval; also sends the "join approved"
+  push notification to the requester
+- `onJoinRequestCreated` — notifies a club's admins of a new join request
+- `onMatchLive` — notifies registered members (minus the scorer) when a match goes live
+- `onMatchAbandoned` — notifies registered members (minus the scorer) when a match is
+  abandoned (kept separate from `onMatchCompleted`, whose guard never fires for 'abandoned')
 - `linkGhost` / `unlinkGhost` — admin callable stat merge/reversal
 - AI callables: `getAvailablePlayers`, `getPlayerStats`, `getPlayerForm`,
   `getBattingInsights`, `getBowlingInsights`, `getHeadToHead`, `getMatchContext`
 
 Deploy: `firebase deploy --only functions` from `functions/` subdirectory.
+
+## Push notifications
+Expo push notifications (`expo-notifications` client-side, `expo-server-sdk` v5 — pinned
+below v6 because v6+ is ESM-only and the functions repo compiles to CommonJS). Four triggers:
+new join request → club admins; join request approved → the requester; match goes live →
+registered members minus the scorer; match finishes (completed or abandoned) → registered
+members minus the scorer. Only the two match-related sends respect the per-user opt-out
+(`users/{uid}.notificationPrefs.matchNotifications`, default on, toggled in Profile) —
+join-request/approval notifications always send.
+
+Client: `src/services/pushTokenService.ts` registers the device's Expo push token onto
+`users/{uid}.expoPushTokens` on sign-in (`useAuthListener.ts`, fire-and-forget) and removes
+it on sign-out (`authService.ts`'s `signOut()`) — this app's real usage pattern is a shared
+scorer's device passed between club volunteers, so without the sign-out cleanup one account's
+token would linger and leak that account's notifications to whoever signs in next on the
+same device.
+
+Tap-to-navigate: no React Navigation `linking` config exists, so a tap is routed manually —
+`src/navigation/navigationRef.ts` + `src/services/notificationNavigation.ts`
+(`handleNotificationResponse`, `navigateToPending`). A tap that arrives before navigation is
+possible (signed out, or a cold start racing `onAuthStateChanged`) queues into
+`src/store/pendingNotificationStore.ts`; `replayPendingNavigation()` is the single choke
+point that flushes it, called both from an auth-change effect in `RootNavigator.tsx` and
+from `NavigationContainer`'s `onReady` in `App.tsx` — needed both ways round, since either
+"auth resolves" or "nav becomes ready" can be the one that happens second.
+
+Push delivery cannot be exercised in the iOS Simulator at all, and needs a native rebuild
+(`expo-notifications` bundles native code) plus, for iOS, a one-time APNs key via
+`eas credentials`.
 
 ## AI tools — DATA ONLY, no reasoning in tools
 Tools return structured JSON. LLM does all reasoning.
