@@ -1,9 +1,10 @@
-import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Alert, Switch } from 'react-native';
 import Constants from 'expo-constants';
 import { useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import type { TabParamList } from '../../navigation/TabNavigator';
 import { useAuthStore } from '../../store/authStore';
@@ -12,6 +13,8 @@ import { useThemeStore } from '../../store/themeStore';
 import { THEMES } from '../../constants/themes';
 import PlayerProfileView from '../../components/PlayerProfileView';
 import { signOut } from '../../services/authService';
+import { getUserProfile, updateUserProfile } from '../../services/userProfileService';
+import type { AppUser } from '../../types';
 
 type Nav = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList>,
@@ -75,6 +78,52 @@ function ThemePicker() {
   );
 }
 
+// Account-level, not club-scoped, so this renders in both the
+// no-active-club and normal render branches below. Opt-out only affects
+// match-live/match-finished pushes — join-request/approval pushes always
+// send regardless of this toggle. Missing/undefined means ON (default).
+function NotificationSettings() {
+  const user = useAuthStore((s) => s.user);
+  const theme = useThemeStore((s) => s.theme);
+  const queryClient = useQueryClient();
+
+  const { data: profile } = useQuery({
+    queryKey: ['userProfile', user?.uid],
+    queryFn: () => getUserProfile(user!.uid),
+    enabled: !!user,
+  });
+  const matchNotifications = profile?.notificationPrefs?.matchNotifications ?? true;
+
+  async function handleToggle(value: boolean) {
+    if (!user) return;
+    queryClient.setQueryData(['userProfile', user.uid], (prev: AppUser | null | undefined) =>
+      prev ? { ...prev, notificationPrefs: { matchNotifications: value } } : prev
+    );
+    try {
+      await updateUserProfile(user.uid, { matchNotifications: value });
+    } finally {
+      queryClient.invalidateQueries({ queryKey: ['userProfile', user.uid] });
+    }
+  }
+
+  return (
+    <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
+      <Text style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>
+        Notifications
+      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Text style={{ color: theme.textSecondary, flex: 1, fontSize: 15 }}>Match notifications</Text>
+        <Switch
+          value={matchNotifications}
+          onValueChange={handleToggle}
+          trackColor={{ false: theme.border, true: theme.accentDim }}
+          thumbColor={matchNotifications ? theme.accent : theme.textMuted}
+        />
+      </View>
+    </View>
+  );
+}
+
 function EditProfileButton() {
   const navigation = useNavigation<Nav>();
   const theme = useThemeStore((s) => s.theme);
@@ -128,6 +177,8 @@ export default function ProfileScreen() {
         </View>
         <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 16 }} />
         <ThemePicker />
+        <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 16 }} />
+        <NotificationSettings />
         <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 16, marginTop: 8 }} />
         <TouchableOpacity
           onPress={handleSignOut}
@@ -145,6 +196,8 @@ export default function ProfileScreen() {
         <EditProfileButton />
       </View>
       <ThemePicker />
+      <View style={{ height: 1, backgroundColor: theme.border }} />
+      <NotificationSettings />
       <View style={{ height: 1, backgroundColor: theme.border }} />
       <PlayerProfileView clubId={activeClubId} playerId={user.uid} canEdit />
       <TouchableOpacity

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { View, Text, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { NavigatorScreenParams } from '@react-navigation/native';
@@ -5,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ClubRules, MatchFormat } from '../types';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
+import { replayPendingNavigation } from '../services/notificationNavigation';
 import TabNavigator, { type TabParamList } from './TabNavigator';
 import SignInScreen from '../screens/SignIn';
 import CreateClubScreen from '../screens/CreateClub';
@@ -70,6 +72,17 @@ export default function RootNavigator() {
   const user = useAuthStore((s) => s.user);
   const initialized = useAuthStore((s) => s.initialized);
   const theme = useThemeStore((s) => s.theme);
+
+  // Replay a notification tap that arrived before auth resolved — covers a
+  // genuinely signed-out tap and a cold-start tap that races an
+  // already-signed-in session's onAuthStateChanged callback. The opposite
+  // ordering (user already truthy, navigationRef not yet ready) is covered
+  // by NavigationContainer's onReady callback in App.tsx — both funnel
+  // through the same replayPendingNavigation() choke point.
+  useEffect(() => {
+    if (!user) return;
+    replayPendingNavigation();
+  }, [user]);
 
   if (!initialized) {
     return (

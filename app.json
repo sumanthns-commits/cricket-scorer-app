@@ -49,6 +49,11 @@
       ["@react-native-google-signin/google-signin", {
         "iosUrlScheme": "com.googleusercontent.apps.29441644794-5937grt2lqfvgg0r9i29mmpdcpgrog9n"
       }],
+      ["expo-notifications", {
+        "icon": "./assets/android-icon-monochrome.png",
+        "color": "#16a34a",
+        "defaultChannel": "default"
+      }],
       "./plugins/withReleaseSigningConfig"
     ],
     "owner": "sumanthns-commits"

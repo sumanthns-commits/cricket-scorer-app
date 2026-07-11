@@ -12,7 +12,22 @@ export interface AppUser {
   bowlingStyle?: BowlingStyle;
   wicketKeeping?: WicketKeepingAbility;
   bio?: string;
+  // Expo push tokens for every device this user has granted notification
+  // permission on (see pushTokenService.ts) — array since a user may have
+  // more than one device.
+  expoPushTokens?: string[];
+  // Missing/undefined matchNotifications means ON (default) — every read
+  // site must treat it that way, never write a default at doc creation.
+  notificationPrefs?: { matchNotifications?: boolean };
 }
+
+// Tap-through payload for a push notification — shared shape between the
+// Cloud Function that builds it and the client's tap-to-navigate handler.
+export type PushNotificationData =
+  | { type: 'join_request'; clubId: string }
+  | { type: 'join_approved'; clubId: string }
+  | { type: 'match_live'; clubId: string; matchId: string }
+  | { type: 'match_finished'; clubId: string; matchId: string };
 
 export type JoinRequestStatus = 'pending' | 'approved' | 'rejected';
 

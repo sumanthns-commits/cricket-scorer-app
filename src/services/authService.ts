@@ -15,6 +15,7 @@ import {
 } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
 import { db, auth } from './firebase';
+import { unregisterPushTokenAsync } from './pushTokenService';
 
 export async function signInWithGoogleIdToken(idToken: string): Promise<User> {
   const credential = GoogleAuthProvider.credential(idToken);
@@ -49,6 +50,10 @@ export async function signInWithEmulatorCredentials(
 }
 
 export async function signOut(): Promise<void> {
+  const uid = auth.currentUser?.uid;
+  if (uid) {
+    await unregisterPushTokenAsync(uid);
+  }
   if (process.env.EXPO_PUBLIC_USE_EMULATOR !== 'true') {
     try {
       const { GoogleSignin } = require('@react-native-google-signin/google-signin');

@@ -16,13 +16,21 @@ export type UserProfileEdits = {
   bowlingStyle?: BowlingStyle;
   wicketKeeping?: WicketKeepingAbility | null;
   bio?: string;
+  matchNotifications?: boolean;
 };
 
 export async function updateUserProfile(
   uid: string,
   edits: UserProfileEdits
 ): Promise<void> {
-  const update: Record<string, unknown> = { ...edits };
+  const { matchNotifications, ...rest } = edits;
+  const update: Record<string, unknown> = { ...rest };
   if (edits.wicketKeeping === null) update.wicketKeeping = deleteField();
+  // Dotted field path, not a replacement `{ notificationPrefs: {...} }`
+  // object — a plain nested-object write would blow away any future
+  // sibling preference under notificationPrefs.
+  if (matchNotifications !== undefined) {
+    update['notificationPrefs.matchNotifications'] = matchNotifications;
+  }
   await updateDoc(doc(db, 'users', uid), update);
 }
