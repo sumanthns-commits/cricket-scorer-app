@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, Share, Platform } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
@@ -6,12 +6,20 @@ import { useQuery } from '@tanstack/react-query';
 import ViewShot, { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
-import { getMatch, getMatchOvers, getMatchBalls, getClubPlayers } from '../../services/matchService';
+import {
+  getMatch,
+  getMatchOvers,
+  getMatchBalls,
+  getClubPlayers,
+  subscribeMatch,
+  subscribeMatchBalls,
+  ballDocsToOverDocs,
+} from '../../services/matchService';
 import { buildInningsCard, formatDismissal, type InningsCard } from '../../services/scorecard';
 import { buildCommentary } from '../../services/commentary';
 import Commentary from '../../components/Commentary';
 import { useThemeStore } from '../../store/themeStore';
-import type { CustomDismissal, Match } from '../../types';
+import type { BallDoc, CustomDismissal, Match } from '../../types';
 
 type Route = RouteProp<RootStackParamList, 'MatchScorecard'>;
 
@@ -247,40 +255,107 @@ export default function MatchScorecardScreen() {
   const theme = useThemeStore((s) => s.theme);
   const snapshotRef = useRef<ViewShot>(null);
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['scorecard', clubId, matchId],
+  // Gate fetch (one-shot): determines whether the match is currently live.
+  // Only 'live' matches get real-time listeners below — completed/abandoned
+  // matches are static, so they stick to a plain one-shot fetch, same as before.
+  const { data: gateMatch, isPending: gatePending, isError: gateError } = useQuery({
+    queryKey: ['match', clubId, matchId],
+    queryFn: () => getMatch(clubId, matchId),
+  });
+  const isLive = gateMatch?.status === 'live';
+
+  // Live path: real-time match + ball subscriptions (status === 'live' matches
+  // only — these are always scored with per-ball docs, never the legacy
+  // overs/ format, so no legacy fallback is needed here).
+  const [liveMatch, setLiveMatch] = useState<Match | null | undefined>(undefined);
+  const [liveBalls, setLiveBalls] = useState<BallDoc[] | null>(null);
+  const [liveSubError, setLiveSubError] = useState(false);
+
+  useEffect(() => {
+    if (!isLive) return;
+    setLiveMatch(undefined);
+    setLiveBalls(null);
+    setLiveSubError(false);
+
+    let unsubMatch: (() => void) | null = null;
+    let unsubBalls: (() => void) | null = null;
+
+    unsubMatch = subscribeMatch(
+      clubId,
+      matchId,
+      (m) => {
+        setLiveMatch(m);
+        // Match just finished — no further writes expected, so drop both
+        // listeners (a completed match shouldn't keep listeners open). The
+        // balls listener's own final snapshot isn't guaranteed to have
+        // landed before this "completed" snapshot did (two independent
+        // listeners, no ordering guarantee) — one authoritative one-shot
+        // read after teardown guarantees the last ball(s) are never
+        // dropped, while still ending up listener-free once settled.
+        if (m && m.status !== 'live') {
+          unsubMatch?.();
+          unsubBalls?.();
+          getMatchBalls(clubId, matchId).then(setLiveBalls).catch(() => setLiveSubError(true));
+        }
+      },
+      () => setLiveSubError(true),
+    );
+    unsubBalls = subscribeMatchBalls(clubId, matchId, setLiveBalls, () => setLiveSubError(true));
+
+    return () => {
+      unsubMatch?.();
+      unsubBalls?.();
+    };
+  }, [isLive, clubId, matchId]);
+
+  // Static path: plain one-shot fetch for non-live matches. No listeners.
+  const { data: staticData, isPending: staticPending, isError: staticError } = useQuery({
+    queryKey: ['scorecard-static', clubId, matchId],
+    enabled: !gatePending && !gateError && !isLive,
     queryFn: async () => {
-      const [match, overs, balls, players] = await Promise.all([
-        getMatch(clubId, matchId),
+      const [overs, balls] = await Promise.all([
         getMatchOvers(clubId, matchId),
-        // Only populated for matches scored with per-ball docs — older
-        // overs/-only matches fall back to no commentary (see Commentary tab).
-        getMatchBalls(clubId, matchId).catch(() => [] as import('../../types').BallDoc[]),
-        // Non-members may not have permission to read the players subcollection;
-        // fall back to an empty map so the scorecard still renders with IDs.
-        getClubPlayers(clubId).catch(() => [] as import('../../types').Player[]),
+        getMatchBalls(clubId, matchId).catch(() => [] as BallDoc[]),
       ]);
-      const ballsPerOver = match?.rules.ballsPerOver ?? 6;
-      const first = overs.filter((o) => o.inningsId === 'innings-1');
-      const second = overs.filter((o) => o.inningsId === 'innings-2');
-      const summary = match?.inningsSummary;
-      return {
-        match,
-        nameMap: Object.fromEntries([
-          ...players.map((p) => [p.id, p.displayName]),
-          ...players.flatMap(p => p.linkedGhost ? [[p.linkedGhost.ghostId, p.displayName]] : []),
-        ]) as Record<string, string>,
-        handMap: Object.fromEntries([
-          ...players.map((p) => [p.id, p.battingHand]),
-          ...players.flatMap(p => p.linkedGhost ? [[p.linkedGhost.ghostId, p.battingHand]] : []),
-        ]) as Record<string, 'RHB' | 'LHB' | undefined>,
-        ball1: balls.filter((b) => b.inningsId === 'innings-1'),
-        ball2: balls.filter((b) => b.inningsId === 'innings-2'),
-        card1: first.length ? buildInningsCard(first, ballsPerOver) : summary?.['1'] ?? null,
-        card2: second.length ? buildInningsCard(second, ballsPerOver) : summary?.['2'] ?? null,
-      };
+      return { overs, balls };
     },
   });
+
+  // Non-members may not have permission to read the players subcollection;
+  // fall back to an empty list so the scorecard still renders with IDs.
+  const { data: players = [] } = useQuery({
+    queryKey: ['clubPlayers', clubId],
+    queryFn: () => getClubPlayers(clubId).catch(() => []),
+  });
+
+  const currentMatch = isLive ? liveMatch : gateMatch;
+  const isLoading = gatePending || (isLive ? (liveMatch === undefined || liveBalls === null) : staticPending);
+  const isError = gateError || gateMatch === null || (isLive ? (liveSubError || liveMatch === null) : staticError);
+
+  const data = useMemo(() => {
+    if (!currentMatch) return null;
+    const overs = isLive ? (liveBalls ? ballDocsToOverDocs(liveBalls, matchId) : []) : (staticData?.overs ?? []);
+    const balls = isLive ? (liveBalls ?? []) : (staticData?.balls ?? []);
+    const ballsPerOver = currentMatch.rules.ballsPerOver ?? 6;
+    const first = overs.filter((o) => o.inningsId === 'innings-1');
+    const second = overs.filter((o) => o.inningsId === 'innings-2');
+    const summary = currentMatch.inningsSummary;
+    return {
+      match: currentMatch,
+      nameMap: Object.fromEntries([
+        ...players.map((p) => [p.id, p.displayName]),
+        ...players.flatMap(p => p.linkedGhost ? [[p.linkedGhost.ghostId, p.displayName]] : []),
+      ]) as Record<string, string>,
+      handMap: Object.fromEntries([
+        ...players.map((p) => [p.id, p.battingHand]),
+        ...players.flatMap(p => p.linkedGhost ? [[p.linkedGhost.ghostId, p.battingHand]] : []),
+      ]) as Record<string, 'RHB' | 'LHB' | undefined>,
+      ball1: balls.filter((b) => b.inningsId === 'innings-1'),
+      ball2: balls.filter((b) => b.inningsId === 'innings-2'),
+      card1: first.length ? buildInningsCard(first, ballsPerOver) : summary?.['1'] ?? null,
+      card2: second.length ? buildInningsCard(second, ballsPerOver) : summary?.['2'] ?? null,
+    };
+  }, [currentMatch, isLive, liveBalls, staticData, players, matchId]);
 
   async function handleShare() {
     if (!snapshotRef.current || !data?.match) return;

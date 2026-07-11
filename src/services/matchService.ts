@@ -6,6 +6,7 @@ import {
   getDocs,
   updateDoc,
   deleteDoc,
+  onSnapshot,
   Timestamp,
   query,
   where,
@@ -98,6 +99,22 @@ export async function createMatch(params: {
 export async function getMatch(clubId: string, matchId: string): Promise<Match | null> {
   const snap = await getDoc(doc(db, 'clubs', clubId, 'matches', matchId));
   return snap.exists() ? ({ id: snap.id, ...snap.data() } as Match) : null;
+}
+
+// Live-updates a match doc for viewers watching a match in progress (e.g.
+// MatchScorecard) — scorer's own writes (setMatchToss, completeMatch, etc.)
+// push straight through without the viewer needing to refresh/reopen.
+export function subscribeMatch(
+  clubId: string,
+  matchId: string,
+  onData: (match: Match | null) => void,
+  onError?: (error: unknown) => void,
+): () => void {
+  return onSnapshot(
+    doc(db, 'clubs', clubId, 'matches', matchId),
+    (snap) => onData(snap.exists() ? ({ id: snap.id, ...snap.data() } as Match) : null),
+    onError,
+  );
 }
 
 export async function getClubMatches(clubId: string): Promise<Match[]> {
@@ -297,6 +314,28 @@ export async function getMatchBalls(
     .sort((a, b) => a.seq - b.seq);
 }
 
+// Live-updates the per-ball doc list for viewers watching a match in
+// progress. New-format matches only — legacy overs/-only matches just fire
+// once with an empty array (cheap; callers fall back to getMatchOvers).
+export function subscribeMatchBalls(
+  clubId: string,
+  matchId: string,
+  onData: (balls: BallDoc[]) => void,
+  onError?: (error: unknown) => void,
+): () => void {
+  return onSnapshot(
+    collection(db, 'clubs', clubId, 'matches', matchId, 'balls'),
+    (snap) => {
+      const balls = snap.docs
+        .map((d) => adaptToBallDoc(d.id, d.data()))
+        .filter((b): b is BallDoc => b !== null)
+        .sort((a, b) => a.seq - b.seq);
+      onData(balls);
+    },
+    onError,
+  );
+}
+
 // Adapts either a new BallDoc or an old MatchEvent ball doc to BallDoc format.
 // Returns null for non-ball event types (batsman-in, bowler-in).
 function adaptToBallDoc(id: string, data: Record<string, unknown>): BallDoc | null {
@@ -350,7 +389,7 @@ export async function deleteLastBall(
 
 // Converts BallDocs to synthetic OverDocuments so scorecard/stats consumers
 // work unchanged for both old (overs) and new (balls) matches.
-function ballDocsToOverDocs(balls: BallDoc[], matchId: string): OverDocument[] {
+export function ballDocsToOverDocs(balls: BallDoc[], matchId: string): OverDocument[] {
   const overMap = new Map<string, OverDocument>();
   for (const ball of balls) {
     const key = `${ball.inningsId}_${ball.overNumber}`;
