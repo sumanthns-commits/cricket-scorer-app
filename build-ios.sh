@@ -30,6 +30,23 @@ fi
 echo "==> Running prebuild..."
 npx expo prebuild --platform ios --clean
 
+# expo-notifications' config plugin always writes aps-environment as
+# 'development' at prebuild time (it can't know here whether this'll end up
+# a dev or App Store build) — EAS Build normally corrects this as part of
+# its own pipeline, but this script builds locally, so exportArchive rejects
+# an App Store distribution profile against a 'development' entitlement.
+# Must patch AFTER prebuild (which regenerates this file every run) and
+# BEFORE `xcodebuild archive` (entitlements are baked in at archive time,
+# not at export time).
+echo "==> Setting aps-environment to production for App Store distribution..."
+ENTITLEMENTS="ios/${SCHEME}/${SCHEME}.entitlements"
+if [ ! -f "$ENTITLEMENTS" ]; then
+  echo "ERROR: $ENTITLEMENTS not found after prebuild — expected the expo-notifications"
+  echo "        plugin to generate it. Did the plugin config change?"
+  exit 1
+fi
+/usr/libexec/PlistBuddy -c "Set :aps-environment production" "$ENTITLEMENTS"
+
 echo "==> Patching Podfile (use_modular_headers!)..."
 sed -i '' 's/^prepare_react_native_project!$/use_modular_headers!\n\nprepare_react_native_project!/' ios/Podfile
 
