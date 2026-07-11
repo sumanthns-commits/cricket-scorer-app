@@ -1467,7 +1467,7 @@ export default function LiveScoringScreen() {
     try {
       const [liveMatch, clubPlayers, club, member] = await Promise.all([
         getMatch(clubId, matchId),
-        getClubPlayers(clubId),
+        getClubPlayers(clubId, { includeDeparted: true }),
         getClub(clubId),
         user ? getClubMember(clubId, user.uid) : Promise.resolve(null),
       ]);

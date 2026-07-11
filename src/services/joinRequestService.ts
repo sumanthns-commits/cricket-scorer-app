@@ -84,14 +84,20 @@ export async function getClubRegisteredMembers(clubId: string): Promise<Player[]
 }
 
 // Unlinked ghost players in a club, for the approval-time link picker. Excludes
-// already-linked ghosts (type:'linked').
+// already-linked ghosts (type:'linked') and departed (left/removed) members —
+// merging a departed member's doc into someone else here would be
+// unrecoverable (server-side rejected too, in linkGhost.ts/resolveJoinRequest.ts,
+// as defense-in-depth). A departed member reattaches via the automatic
+// self-reactivation path in resolveJoinRequest.ts instead, never via this picker.
 export async function getClubGhosts(clubId: string): Promise<Player[]> {
   const q = query(
     collection(db, 'clubs', clubId, 'players'),
     where('type', '==', 'ghost')
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Player);
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }) as Player)
+    .filter((p) => p.status !== 'departed');
 }
 
 // Returns a map of ghostId → memberUid for all linked ghosts in the club.

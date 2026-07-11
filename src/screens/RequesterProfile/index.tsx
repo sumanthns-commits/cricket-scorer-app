@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { getUserProfile } from '../../services/userProfileService';
 import { getPublicPlayerStats, getClubGhosts, resolveJoinRequest } from '../../services/joinRequestService';
-import { computeDerivedStats } from '../../services/playerProfileService';
+import { computeDerivedStats, getPlayer } from '../../services/playerProfileService';
 import { useThemeStore } from '../../store/themeStore';
 import PlayerAvatar from '../../components/PlayerAvatar';
 import type { Player, PublicPlayerStats } from '../../types';
@@ -73,6 +73,12 @@ export default function RequesterProfileScreen({ route, navigation }: Props) {
   const { data: profile } = useQuery({ queryKey: ['userProfile', uid], queryFn: () => getUserProfile(uid) });
   const { data: clubStats, isLoading } = useQuery({ queryKey: ['publicPlayerStats', uid], queryFn: () => getPublicPlayerStats(uid) });
   const { data: ghosts } = useQuery({ queryKey: ['clubGhosts', clubId], queryFn: () => getClubGhosts(clubId) });
+  // Same-uid rejoin: their old player doc (id === uid) is still sitting here
+  // as a departed ghost — resolveJoinRequest's self-reactivation branch picks
+  // it up automatically on approve, no ghost needs picking. Pure UX
+  // confirmation banner; approval works the same with or without this query.
+  const { data: ownFormerProfile } = useQuery({ queryKey: ['player', clubId, uid], queryFn: () => getPlayer(clubId, uid) });
+  const isRejoining = ownFormerProfile?.type === 'ghost' && ownFormerProfile.status === 'departed';
 
   const name = profile?.displayName ?? displayName;
 
@@ -114,6 +120,16 @@ export default function RequesterProfileScreen({ route, navigation }: Props) {
       </View>
 
       {profile?.bio ? <Text style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 20, marginBottom: 20 }}>{profile.bio}</Text> : null}
+
+      {isRejoining && ownFormerProfile ? (
+        <View style={{ backgroundColor: theme.accentDim, borderRadius: 10, padding: 12, marginBottom: 20, borderWidth: 1, borderColor: theme.accent }}>
+          <Text style={{ color: theme.text, fontSize: 13, lineHeight: 19 }}>
+            <Text style={{ fontWeight: '700' }}>Welcome back — </Text>
+            this player was previously a member. Approving will restore their stats
+            ({ownFormerProfile.careerStats.totalRuns} runs, {ownFormerProfile.careerStats.totalWickets} wickets) automatically — no need to pick a ghost below.
+          </Text>
+        </View>
+      ) : null}
 
       <Text style={{ color: theme.textMuted, fontSize: 13, fontWeight: '700', letterSpacing: 0.5, marginBottom: 12 }}>STATS ACROSS CLUBS</Text>
       {isLoading ? (

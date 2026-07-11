@@ -12,6 +12,19 @@ Live scoring, player management, stats tracking, AI team selection.
 - Firebase AI SDK (`firebase/ai`, VertexAIBackend) with Gemini (gemini-2.5-flash) for AI assistant
 - Cloud Functions in sibling repo `../cricket-scorer-functions` (Node 24, Gen 2, australia-southeast1)
 
+## NO EAS BUILD — but eas credentials is fine
+This project uses the **Expo SDK** (the library/framework — `expo-notifications`, `expo
+prebuild`, etc.) but does **not** use **EAS Build** (the cloud compile pipeline) or EAS
+Update — all builds are local and already scripted: `build-ios.sh` (iOS archive + IPA via
+local `xcodebuild`) and `build-local.sh` (Android release AAB via local Gradle), both
+gitignored-secrets-backed (`build-secrets.sh`), both already working. Do not propose
+`eas build` or EAS Update as a fix for anything.
+
+`eas credentials` (the narrow, one-time credential-registration command — no cloud
+compiling involved) **is** acceptable — it's how push notification credentials (APNs key,
+FCM service account) get registered with Expo's push relay, and doesn't require using EAS
+Build for anything else.
+
 ## Folder structure
 src/
   screens/{Feature}/index.tsx
@@ -191,7 +204,8 @@ independent listeners, no ordering guarantee), so this closes that race rather t
 the last ball(s) never rendering.
 
 ## Domain: player types
-- ghost      — imported from PDF/CSV (or seeded), no auth
+- ghost      — imported from PDF/CSV (or seeded), no auth. Also what a departed member becomes
+  (see "Leave club / remove member" below) — distinguished by `status:'departed'`.
 - registered — has Firebase auth, a club member
 - linked     — ghost merged into a registered member; stats folded in, hidden from selection
 
@@ -211,6 +225,45 @@ Admin links ghost → member via `resolveJoinRequest({ ..., linkGhostId })`:
 - Reversible: `unlinkGhost` subtracts frozen stats, restores `type:'ghost'`.
 - `type:'linked'` suppressed from getClubPlayers, squad, AI selection.
 - `publicPlayerStats` mirror (`uid_clubId`) kept in sync by `mirrorPlayerStats` trigger.
+
+## Leave club / remove member (IMPLEMENTED)
+A registered member can leave (self-service, `leaveClub` Cloud Function) or be removed by an
+admin (`removeMember`) — both call a shared `deactivatePlayer` helper (functions repo):
+`type:'registered'` → `type:'ghost'`, plus `status:'departed'` + `departedAt` timestamp.
+**`careerStats` is never touched** — no subtraction, no deletion; the same doc (same id =
+their uid) just goes dormant. `userMemberships/{uid}.clubIds` drops the clubId too.
+
+- Both functions run inside a transaction with a **last-admin guard**: blocks if removing/
+  leaving would drop the club to zero `type:'registered' && role:'admin'` players. This also
+  closes a concurrent-race case (two admins leaving/removing each other simultaneously) —
+  Firestore's transaction conflict detection forces a retry when the admin-count query's
+  underlying docs changed since the read, so the second transaction sees the post-write count.
+- **Rejoin (same uid) is automatic**: `resolveJoinRequest`'s approve path detects
+  `existingPlayer.data().type === 'ghost'` at the requester's own doc (doc id is always their
+  uid) and flips it straight back to `registered` — `status`/`departedAt` cleared via
+  `FieldValue.delete()`, careerStats untouched, no `linkGhostId` needed or accepted (rejected
+  with a clear error if one's passed alongside — merging the same doc into itself doesn't
+  make sense and would double-write it in one transaction).
+- **Squad/team-selection excludes departed; Leaderboard/stats does not.** `getClubPlayers`
+  (`matchService.ts`) takes `{ includeDeparted?: boolean }` — default excludes (used by
+  `ScheduleMatch`/`TeamBuilder`'s squad pickers); `Leaderboard`/`MatchScorecard`/`MatchStats`/
+  `LiveScoring`/`AIAssistant` explicitly pass `includeDeparted: true` since a departed
+  member's history must stay fully visible there. `getClubSquad` (Squad screen) and
+  `getAvailablePlayers` (AI tool) hardcode the exclusion — no option, since they're always
+  squad/team-selection contexts.
+- **`getClubGhosts` excludes `status:'departed'`** — critical, not cosmetic: a departed
+  member's doc is `type:'ghost'` like any other ghost, so without this exclusion an admin
+  could pick a departed member from the "link to member" picker and merge them into someone
+  ELSE, permanently corrupting stats and blocking their own reactivation (the self-reactivation
+  path above only fires for an *unlinked* ghost sitting at the requester's own uid).
+  `linkGhost.ts` rejects `status:'departed'` server-side too, as defense-in-depth.
+- `firestore.rules`' `isMember(clubId)` requires `type == 'registered'` (not just doc
+  existence) — since a departed member's doc is never deleted, existence-only would let them
+  silently keep club read (and, via `isAdmin`, write) access forever.
+- UI: `PlayerProfileView` — "Leave club" (self, `player.type==='registered'`) / "Remove from
+  club" (admin viewing someone else, same condition), both behind an `Alert.alert` confirm.
+  `RequesterProfile` shows a "Welcome back" banner when the requester's own doc is a departed
+  ghost, confirming the reactivation is automatic (no ghost needs picking).
 
 ## Self-service claim lifecycle (PLANNED — NOT implemented)
 Stats resolver only PREVIEWS a claim snapshot. Ghost→member linking is admin-only today.
@@ -240,6 +293,14 @@ Key functions:
 Deploy: `firebase deploy --only functions` from `functions/` subdirectory.
 
 ## Push notifications
+**Delivery needs `eas credentials` run once, as of 2026-07-11 — until then, do not assume
+this delivers.** Tokens register fine (`getExpoPushTokenAsync` succeeds, `users/{uid}.
+expoPushTokens` gets populated) but Expo's push relay silently can't actually deliver until
+push credentials (an APNs key for iOS, an FCM service-account key for Android) are
+registered against this app on Expo's servers — that's a one-time `eas credentials` run
+(narrow credential registration, not EAS Build — see the rule above). No code changes
+needed for this; it's an account/credentials setup step only.
+
 Expo push notifications (`expo-notifications` client-side, `expo-server-sdk` v5 — pinned
 below v6 because v6+ is ESM-only and the functions repo compiles to CommonJS). Four triggers:
 new join request → club admins; join request approved → the requester; match goes live →

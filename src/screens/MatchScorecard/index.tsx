@@ -325,11 +325,15 @@ export default function MatchScorecardScreen() {
   // fall back to an empty list so the scorecard still renders with IDs.
   const { data: players = [] } = useQuery({
     queryKey: ['clubPlayers', clubId],
-    queryFn: () => getClubPlayers(clubId).catch(() => []),
+    queryFn: () => getClubPlayers(clubId, { includeDeparted: true }).catch(() => []),
   });
 
   const currentMatch = isLive ? liveMatch : gateMatch;
-  const isLoading = gatePending || (isLive ? (liveMatch === undefined || liveBalls === null) : staticPending);
+  // staticData's query is `enabled: !gateError && ...`, so if the gate query
+  // itself errored, the static query stays disabled and never leaves
+  // 'pending' — without the `!gateError` guard here, isLoading would get
+  // stuck true forever instead of falling through to the isError screen.
+  const isLoading = gatePending || (isLive ? (liveMatch === undefined || liveBalls === null) : (!gateError && staticPending));
   const isError = gateError || gateMatch === null || (isLive ? (liveSubError || liveMatch === null) : staticError);
 
   const data = useMemo(() => {

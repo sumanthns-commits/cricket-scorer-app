@@ -153,7 +153,7 @@ export function MatchStatsContent({ clubId, matchId }: { clubId: string; matchId
       const [match, overs, players] = await Promise.all([
         getMatch(clubId, matchId),
         getMatchOvers(clubId, matchId),
-        getClubPlayers(clubId),
+        getClubPlayers(clubId, { includeDeparted: true }),
       ]);
       return {
         match,

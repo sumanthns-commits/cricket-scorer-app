@@ -116,7 +116,7 @@ export default function AIAssistantScreen() {
 
   const { data: players = [] } = useQuery({
     queryKey: ['clubPlayers', activeClubId],
-    queryFn: () => getClubPlayers(activeClubId!),
+    queryFn: () => getClubPlayers(activeClubId!, { includeDeparted: true }),
     enabled: !!activeClubId,
   });
 

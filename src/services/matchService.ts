@@ -31,7 +31,10 @@ const emptyStats: CareerStats = {
   matchesPlayed: 0,
 };
 
-export async function getClubPlayers(clubId: string): Promise<Player[]> {
+export async function getClubPlayers(
+  clubId: string,
+  opts: { includeDeparted?: boolean } = {}
+): Promise<Player[]> {
   const snap = await getDocs(collection(db, 'clubs', clubId, 'players'));
   const results: Player[] = [];
 
@@ -40,6 +43,10 @@ export async function getClubPlayers(clubId: string): Promise<Player[]> {
     // Linked ghosts have been absorbed into a registered member; exclude them
     // from team selection so the same person can't be picked twice.
     if (data.type === 'linked') continue;
+    // Departed (left/removed) members: excluded by default (squad/team
+    // selection) — pass includeDeparted for leaderboard/stats/name-resolution
+    // contexts, where their history should stay fully visible.
+    if (data.status === 'departed' && !opts.includeDeparted) continue;
     if (data.displayName) {
       results.push({ id: d.id, ...data } as Player);
     } else {

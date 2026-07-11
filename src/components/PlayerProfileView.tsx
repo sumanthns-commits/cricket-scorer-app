@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Modal } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Modal, Alert } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Slider from '@react-native-community/slider';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { resolvePlayerStats } from '../services/statsResolver';
 import { linkGhost, unlinkGhost, getClubGhosts, getClubRegisteredMembers } from '../services/joinRequestService';
+import { leaveClub, removeMember } from '../services/clubService';
 import {
   computeDerivedStats,
   computeSkillRating,
@@ -18,6 +21,9 @@ import PlayerAvatar from './PlayerAvatar';
 import FormChart from './FormChart';
 import WagonWheel from './WagonWheel';
 import { useThemeStore } from '../store/themeStore';
+import { useAuthStore } from '../store/authStore';
+import { useClubStore } from '../store/clubStore';
+import type { RootStackParamList } from '../navigation/RootNavigator';
 import type { BattingHand, BowlingStyle, Player, PlayerType, StrengthOverride, WicketKeepingAbility } from '../types';
 
 const BATTING_HANDS: { value: BattingHand; label: string }[] = [
@@ -296,6 +302,75 @@ export default function PlayerProfileView({
       .finally(() => setUnlinking(false));
   };
 
+  const authUser = useAuthStore((s) => s.user);
+  const activeClubId = useClubStore((s) => s.activeClubId);
+  const setActiveClubId = useClubStore((s) => s.setActiveClubId);
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const isSelf = !!authUser && authUser.uid === playerId;
+  const [leavingOrRemoving, setLeavingOrRemoving] = useState(false);
+
+  const invalidateMembershipQueries = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['player', clubId, playerId] }),
+      queryClient.invalidateQueries({ queryKey: ['resolvedStats', clubId, playerId] }),
+      queryClient.invalidateQueries({ queryKey: ['clubSquad', clubId] }),
+      queryClient.invalidateQueries({ queryKey: ['clubGhosts', clubId] }),
+      queryClient.invalidateQueries({ queryKey: ['clubRegisteredMembers', clubId] }),
+      queryClient.invalidateQueries({ queryKey: ['leaderboard-base', clubId] }),
+    ]);
+
+  const afterMembershipChange = async () => {
+    await invalidateMembershipQueries();
+    if (activeClubId === clubId) setActiveClubId(null);
+    if (navigation.canGoBack()) navigation.goBack();
+  };
+
+  const handleLeave = () => {
+    Alert.alert(
+      'Leave club',
+      'Are you sure you want to leave this club? Your stats are kept, and you can rejoin later.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Leave',
+          style: 'destructive',
+          onPress: () => {
+            setLeavingOrRemoving(true);
+            leaveClub(clubId)
+              .then(afterMembershipChange)
+              .catch((e) =>
+                Alert.alert('Could not leave', e instanceof Error ? e.message : 'Please try again.')
+              )
+              .finally(() => setLeavingOrRemoving(false));
+          },
+        },
+      ]
+    );
+  };
+
+  const handleRemove = () => {
+    Alert.alert(
+      'Remove from club',
+      `Remove ${player?.displayName ?? 'this player'} from the club? Their stats are kept, and they can rejoin later.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            setLeavingOrRemoving(true);
+            removeMember(clubId, playerId)
+              .then(afterMembershipChange)
+              .catch((e) =>
+                Alert.alert('Could not remove', e instanceof Error ? e.message : 'Please try again.')
+              )
+              .finally(() => setLeavingOrRemoving(false));
+          },
+        },
+      ]
+    );
+  };
+
   const { data: player, isLoading: loadingPlayer } = useQuery({
     queryKey: ['player', clubId, playerId],
     queryFn: () => getPlayer(clubId, playerId),
@@ -498,7 +573,7 @@ export default function PlayerProfileView({
         </View>
       ) : null}
 
-      {isAdmin && player.type === 'ghost' ? (
+      {isAdmin && player.type === 'ghost' && player.status !== 'departed' ? (
         <View
           style={{
             backgroundColor: theme.surface,
@@ -657,6 +732,32 @@ export default function PlayerProfileView({
               </TouchableOpacity>
             </View>
           ) : null}
+        </View>
+      ) : null}
+
+      {(isSelf || isAdmin) && player.type === 'registered' ? (
+        <View style={{ marginTop: 16 }}>
+          <TouchableOpacity
+            onPress={isSelf ? handleLeave : handleRemove}
+            disabled={leavingOrRemoving}
+            style={{
+              backgroundColor: theme.surfaceAlt,
+              borderWidth: 1,
+              borderColor: '#dc2626',
+              borderRadius: 8,
+              paddingVertical: 12,
+              alignItems: 'center',
+              opacity: leavingOrRemoving ? 0.6 : 1,
+            }}
+          >
+            {leavingOrRemoving ? (
+              <ActivityIndicator color="#dc2626" />
+            ) : (
+              <Text style={{ color: '#dc2626', fontSize: 14, fontWeight: '700' }}>
+                {isSelf ? 'Leave club' : 'Remove from club'}
+              </Text>
+            )}
+          </TouchableOpacity>
         </View>
       ) : null}
 

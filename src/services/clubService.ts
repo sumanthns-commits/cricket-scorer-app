@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { normalizeClubName } from '../utils/clubName';
+import { callCallableFunction } from './functionsClient';
 import type { Club, ClubMember, ClubRules, Match, CareerStats, PlayerType } from '../types';
 
 // Thrown by createClub when another club already reserves the same (normalised)
@@ -249,4 +250,18 @@ export async function setMemberRole(
   role: 'admin' | 'member'
 ): Promise<void> {
   await updateDoc(doc(db, 'clubs', clubId, 'players', playerId), { role });
+}
+
+// Self-service: leave a club. Flips the caller's own player doc back to a
+// ghost (careerStats untouched) — runs server-side (leaveClub Cloud
+// Function) since `type` isn't a client-writable field and the last-admin
+// guard needs to run atomically with the write.
+export async function leaveClub(clubId: string): Promise<void> {
+  await callCallableFunction('leaveClub', { clubId });
+}
+
+// Admin-only: remove another member from a club. Same end state as
+// leaveClub — see removeMember Cloud Function.
+export async function removeMember(clubId: string, playerId: string): Promise<void> {
+  await callCallableFunction('removeMember', { clubId, playerId });
 }

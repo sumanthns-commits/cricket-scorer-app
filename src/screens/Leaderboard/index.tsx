@@ -139,7 +139,7 @@ export default function LeaderboardScreen() {
     queryFn: async () => {
       const [matches, players, ghostToMember] = await Promise.all([
         getClubMatches(clubId),
-        getClubPlayers(clubId),
+        getClubPlayers(clubId, { includeDeparted: true }),
         getLinkedGhostMap(clubId),
       ]);
       const nameMap = Object.fromEntries(players.map((p) => [p.id, p.displayName]));

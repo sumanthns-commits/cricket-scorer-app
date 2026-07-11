@@ -252,6 +252,11 @@ export interface Player {
   // Admin-set subjective strength overrides for AI team selection (0–100 each).
   // Does not affect careerStats or any computed ratings.
   strengthOverride?: StrengthOverride;
+  // Set when a registered member leaves/is removed (type flips to 'ghost' at
+  // the same time) — careerStats is left untouched. Absent = normal/active.
+  // Cleared (not set to some 'active' string) if the same uid rejoins.
+  status?: 'departed';
+  departedAt?: Timestamp;
 }
 
 export type ExtrasType = 'wide' | 'no-ball' | 'bye' | 'leg-bye';

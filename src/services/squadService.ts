@@ -34,6 +34,9 @@ export async function getClubSquad(clubId: string): Promise<SquadEntry[]> {
     const data = d.data();
     // Linked ghosts are absorbed into a registered member — hide from the squad.
     if (data.type === 'linked') continue;
+    // Departed (left/removed) members — hide from the squad/team-selection
+    // pool; still fully visible on the Leaderboard (unaffected, separate query).
+    if (data.status === 'departed') continue;
     const role: 'admin' | 'member' = data.role === 'admin' ? 'admin' : 'member';
 
     if (data.displayName) {
