@@ -105,7 +105,12 @@ export function buildCommentary(
 
     const bowler = getName(ball.bowlerId);
     const batsman = getName(ball.batsmanId);
-    const isLHB = handOf(ball.batsmanId) === 'LHB';
+    // Prefer the hand snapshotted on the shot itself (what the scorer actually
+    // saw on the wheel — may have been manually flipped for this innings) over
+    // the player's current profile hand, which can diverge and mirror the
+    // position to the wrong side. Falls back to the profile for older balls
+    // recorded before wagon.isLHB existed.
+    const isLHB = ball.wagon?.isLHB ?? (handOf(ball.batsmanId) === 'LHB');
     // Bare name for dismissals/boundaries (already "at the rope"); "deep"-
     // prefixed for anything running the outfield without reaching it.
     const wagonText = wagonPhrase(ball.wagon, isLHB);

@@ -8,7 +8,6 @@ import {
   ScrollView,
   Animated,
   ActivityIndicator,
-  Pressable,
   FlatList,
   Alert,
 } from 'react-native';
@@ -36,6 +35,7 @@ import {
 import { getClub, getClubMember } from '../../services/clubService';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
+import { useWagonViewStore } from '../../store/wagonViewStore';
 import { recordBall } from '../../services/scoringEngine';
 import { buildCommentary } from '../../services/commentary';
 import Commentary from '../../components/Commentary';
@@ -87,6 +87,10 @@ interface InningsState {
   batterStats: Record<string, BatterStats>;
   bowlerStats: Record<string, BowlerStats>;
   currentOverBalls: BallEntry[];
+  // Last 3 balls of the over immediately before overNumber — shown ahead of
+  // currentOverBalls so the ball strip doesn't go blank the instant a new
+  // over starts. Empty for the innings' first over.
+  previousOverBalls: BallEntry[];
   handedness: Record<string, 'RHB' | 'LHB'>;
 }
 
@@ -110,49 +114,98 @@ const DEPTH_LABELS = ['Infield', 'Mid', 'Boundary'];
 type WheelSel = { sector: number; depth: number; x: number; y: number };
 
 // Map a tap (relative to the wheel's top-left) to a sector + depth.
-// sector: round((angle + 90°) / 30) — matches the label geometry where
-//   sector i sits at screen-angle (i·30 − 90)°. depth: which ring band the
-//   radius falls in. Returns null for taps on the centre dot or outside the wheel.
-function tapToSel(x: number, y: number): WheelSel | null {
+// sector: round((angle + 90° − angleOffset) / 30) — matches the label
+//   geometry where sector i is drawn at screen-angle (i·30 − 90 + angleOffset)°.
+//   angleOffset is 180 for bowler's-end view (batsman at top), 0 for the
+//   keeper's/batsman's-end view (batsman at bottom) — a straight 180°
+//   rotation, which is also why left/right (off/leg side) swap between them.
+// depth: which ring band the radius falls in. Returns null for taps on the
+// centre dot or outside the wheel.
+function tapToSel(x: number, y: number, angleOffset: number): WheelSel | null {
   const dx = x - WC;
   const dy = y - WC;
   const r = Math.hypot(dx, dy);
   if (r < 8 || r > OUTER_R + 16) return null;
   const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-  const sector = ((Math.round((angle + 90) / 30) % 12) + 12) % 12;
+  const sector = ((Math.round((angle + 90 - angleOffset) / 30) % 12) + 12) % 12;
   const depth = r <= RINGS[0] ? 0 : r <= RINGS[1] ? 1 : 2;
   return { sector, depth, x, y };
 }
 
 function WagonWheelModal({ visible, isLHB, runs, onDone }: { visible: boolean; isLHB: boolean; runs: number; onDone: (shot: WagonShot | null) => void }) {
   const theme = useThemeStore((s) => s.theme);
+  const bowlerView = useWagonViewStore((s) => s.bowlerView);
+  const toggleWagonView = useWagonViewStore((s) => s.toggleWagonView);
   const [sel, setSel] = useState<WheelSel | null>(null);
   const labels = isLHB ? LHB_WAGON_LABELS : RHB_WAGON_LABELS;
+  const angleOffset = bowlerView ? 180 : 0;
+  // Off side / leg side swap sides between the two ends' views (see tapToSel).
+  const offSideRight = isLHB === bowlerView;
 
   useEffect(() => { if (visible) setSel(null); }, [visible]);
 
-  const onWheelPress = (e: GestureResponderEvent) => {
-    const next = tapToSel(e.nativeEvent.locationX, e.nativeEvent.locationY);
+  // Highlight follows the finger while pressed (ignoring moves that land
+  // outside the wheel so the highlight doesn't flicker away mid-drag);
+  // lifting the finger commits whatever's currently highlighted.
+  const selRef = useRef<WheelSel | null>(null);
+  selRef.current = sel;
+  const updateSel = (e: GestureResponderEvent) => {
+    const next = tapToSel(e.nativeEvent.locationX, e.nativeEvent.locationY, angleOffset);
     if (next) setSel(next);
   };
-
-  const canConfirm = sel !== null;
+  const commitSel = () => {
+    const s = selRef.current;
+    onDone(s ? { sector: s.sector, depth: s.depth } : null);
+  };
 
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={{ flex: 1, backgroundColor: '#000000cc', justifyContent: 'center', alignItems: 'center' }}>
         <View style={{ backgroundColor: theme.surface, borderRadius: 16, padding: 20, alignItems: 'center', width: 340 }}>
-          <Text style={{ color: theme.text, fontSize: 20, fontWeight: '700', marginBottom: 2 }}>
-            {runs === 4 ? 'FOUR!' : runs === 6 ? 'SIX!' : `${runs} run${runs !== 1 ? 's' : ''}`}
-          </Text>
+          <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+            <Text style={{ color: theme.text, fontSize: 20, fontWeight: '700' }}>
+              {runs === 4 ? 'FOUR!' : runs === 6 ? 'SIX!' : `${runs} run${runs !== 1 ? 's' : ''}`}
+            </Text>
+            <TouchableOpacity onPress={() => onDone(null)}>
+              <Text style={{ color: theme.textMuted, fontSize: 13, fontWeight: '600' }}>Skip</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 4 }}>
-            Tap where the ball went — closer to the edge = deeper
+            Press where the ball went, drag to adjust, release to confirm
           </Text>
-          <Text style={{ color: sel ? theme.accent : theme.border, fontSize: 12, fontWeight: '600', marginBottom: 12, height: 16 }}>
+          <Text style={{ color: sel ? theme.accent : theme.border, fontSize: 12, fontWeight: '600', marginBottom: 4, height: 16 }}>
             {sel ? `${labels[sel.sector]} · ${DEPTH_LABELS[sel.depth]}` : ' '}
           </Text>
 
-          <Pressable onPress={onWheelPress} style={{ width: WHEEL, height: WHEEL }}>
+          <TouchableOpacity
+            onPress={toggleWagonView}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 10, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: theme.surfaceAlt, borderWidth: 1, borderColor: theme.border }}
+          >
+            <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '700' }}>
+              {bowlerView ? "Bowler's view" : "Batsman's view"}
+            </Text>
+            <Text style={{ color: theme.textMuted, fontSize: 11 }}>⇄</Text>
+          </TouchableOpacity>
+
+          <View style={{ width: WHEEL, flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+            <Text style={{ color: theme.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>
+              {offSideRight ? 'LEG SIDE' : 'OFF SIDE'}
+            </Text>
+            <Text style={{ color: theme.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>
+              {offSideRight ? 'OFF SIDE' : 'LEG SIDE'}
+            </Text>
+          </View>
+
+          <View
+            style={{ width: WHEEL, height: WHEEL }}
+            onStartShouldSetResponder={() => true}
+            onMoveShouldSetResponder={() => true}
+            onResponderTerminationRequest={() => false}
+            onResponderGrant={updateSel}
+            onResponderMove={updateSel}
+            onResponderRelease={commitSel}
+            onResponderTerminate={commitSel}
+          >
             <View pointerEvents="none" style={{ position: 'absolute', width: WHEEL, height: WHEEL, borderRadius: WC, backgroundColor: theme.surfaceAlt }} />
 
             {RINGS.map((r, di) => (
@@ -164,7 +217,7 @@ function WagonWheelModal({ visible, isLHB, runs, onDone }: { visible: boolean; i
             ))}
 
             {labels.map((label, i) => {
-              const rad = ((i * 30 - 90) * Math.PI) / 180;
+              const rad = ((i * 30 - 90 + angleOffset) * Math.PI) / 180;
               const r = OUTER_R - 16;
               const x = WC + r * Math.cos(rad) - 26;
               const y = WC + r * Math.sin(rad) - 11;
@@ -182,19 +235,16 @@ function WagonWheelModal({ visible, isLHB, runs, onDone }: { visible: boolean; i
 
             <View pointerEvents="none" style={{ position: 'absolute', width: 8, height: 8, borderRadius: 4, backgroundColor: theme.textMuted, left: WC - 4, top: WC - 4 }} />
 
-            <Text pointerEvents="none" style={{ position: 'absolute', bottom: 6, alignSelf: 'center', color: theme.textMuted, fontSize: 10 }}>
-              {isLHB ? 'LHB' : 'RHB'} ▲
+            {/* Batsman marker — bottom (facing up) in keeper's view, top
+                (facing down) in bowler's view, since the whole wheel is
+                rotated 180° between the two. */}
+            <Text pointerEvents="none" style={bowlerView
+              ? { position: 'absolute', top: 6, alignSelf: 'center', color: theme.textMuted, fontSize: 10 }
+              : { position: 'absolute', bottom: 6, alignSelf: 'center', color: theme.textMuted, fontSize: 10 }
+            }>
+              {bowlerView ? `▼ ${isLHB ? 'LHB' : 'RHB'}` : `${isLHB ? 'LHB' : 'RHB'} ▲`}
             </Text>
-          </Pressable>
-
-          <TouchableOpacity
-            onPress={() => onDone(sel ? { sector: sel.sector, depth: sel.depth } : null)}
-            style={{ width: '100%', padding: 14, borderRadius: 10, marginTop: 18, alignItems: 'center', backgroundColor: canConfirm ? theme.accent : theme.surface, borderWidth: canConfirm ? 0 : 1, borderColor: theme.border }}
-          >
-            <Text style={{ color: canConfirm ? '#ffffff' : theme.textMuted, fontWeight: '700' }}>
-              {canConfirm ? 'Confirm' : 'Skip'}
-            </Text>
-          </TouchableOpacity>
+          </View>
         </View>
       </View>
     </Modal>
@@ -513,6 +563,79 @@ function EditOversModal({
           </TouchableOpacity>
           <TouchableOpacity onPress={onCancel} style={{ marginTop: 10, padding: 10, alignItems: 'center' }}>
             <Text style={{ color: '#9ca3af', fontWeight: '600' }}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function CustomRunsModal({
+  visible,
+  onConfirm,
+  onCancel,
+}: {
+  visible: boolean;
+  onConfirm: (runs: number) => void;
+  onCancel: () => void;
+}) {
+  const theme = useThemeStore((s) => s.theme);
+  const [value, setValue] = useState(7);
+
+  useEffect(() => { if (visible) setValue(7); }, [visible]);
+
+  const dec = () => setValue((v) => Math.max(0, v - 1));
+  const inc = () => setValue((v) => v + 1);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={{ flex: 1, backgroundColor: '#000000cc', justifyContent: 'center', alignItems: 'center' }}>
+        <View style={{ backgroundColor: theme.surface, borderRadius: 16, padding: 20, width: 320 }}>
+          <Text style={{ color: theme.text, fontSize: 20, fontWeight: '700', textAlign: 'center' }}>
+            Custom runs
+          </Text>
+          <Text style={{ color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 4, marginBottom: 20 }}>
+            Runs off the bat for this delivery
+          </Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 24 }}>
+            <TouchableOpacity
+              onPress={dec}
+              disabled={value === 0}
+              style={{
+                width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center',
+                backgroundColor: theme.surfaceAlt, borderWidth: 1.5, borderColor: value === 0 ? theme.surfaceAlt : theme.border,
+              }}
+            >
+              <Text style={{ color: value === 0 ? theme.textMuted : theme.text, fontSize: 28, fontWeight: '800' }}>−</Text>
+            </TouchableOpacity>
+
+            <Text style={{ color: theme.text, fontSize: 44, fontWeight: '800', minWidth: 70, textAlign: 'center' }}>
+              {value}
+            </Text>
+
+            <TouchableOpacity
+              onPress={inc}
+              style={{
+                width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center',
+                backgroundColor: theme.surfaceAlt, borderWidth: 1.5, borderColor: theme.border,
+              }}
+            >
+              <Text style={{ color: theme.text, fontSize: 28, fontWeight: '800' }}>+</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            onPress={() => onConfirm(value)}
+            style={{
+              marginTop: 24, padding: 14, borderRadius: 10, alignItems: 'center',
+              backgroundColor: theme.accent,
+            }}
+          >
+            <Text style={{ color: '#ffffff', fontWeight: '700' }}>Confirm</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onCancel} style={{ marginTop: 10, padding: 10, alignItems: 'center' }}>
+            <Text style={{ color: theme.textMuted, fontWeight: '600' }}>Cancel</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -911,7 +1034,11 @@ function SelectPlayerModal({
 
 // ─── Ball circles ────────────────────────────────────────────────────
 
-function BallCircle({ ball }: { ball: BallEntry }) {
+// Target size of the "This over" strip — previous-over balls fill unused
+// spots and drop off one at a time as the current over's balls fill in.
+const BALL_STRIP_SIZE = 6;
+
+function BallCircle({ ball, dim }: { ball: BallEntry; dim?: boolean }) {
   const theme = useThemeStore((s) => s.theme);
   const isDot = ball.runs === 0 && !ball.extras && !ball.dismissal;
   const isWicket = !!ball.dismissal;
@@ -942,6 +1069,7 @@ function BallCircle({ ball }: { ball: BallEntry }) {
         borderWidth: 1.5, borderColor: border,
         alignItems: 'center', justifyContent: 'center',
         marginRight: 6,
+        opacity: dim ? 0.45 : 1,
       }}
     >
       <Text style={{ color: textColor, fontSize: 12, fontWeight: '700' }}>
@@ -1459,6 +1587,7 @@ export default function LiveScoringScreen() {
   const [pendingExtraRunOut, setPendingExtraRunOut] = useState<{ extraType: ExtrasType; extraRuns: number } | null>(null);
   const [changeTarget, setChangeTarget] = useState<'onStrike' | 'offStrike' | 'bowler' | null>(null);
   const [showEditOvers, setShowEditOvers] = useState(false);
+  const [showCustomRuns, setShowCustomRuns] = useState(false);
 
   // ── Load data ────────────────────────────────────────────────────
 
@@ -1691,17 +1820,24 @@ export default function LiveScoringScreen() {
     if (offStrikeId && !batterStats[offStrikeId]) batterStats[offStrikeId] = emptyBatterStats();
 
     // Current over balls (for display in the scoring row)
+    const toBallEntry = (b: BallDoc): BallEntry => ({
+      batsmanId: b.dismissal?.nonStrikerOut ? b.nonStrikerId : b.batsmanId,
+      runs: b.runs,
+      extras: b.extras as BallEntry['extras'],
+      dismissal: b.dismissal ? { type: b.dismissal.type, fielderIds: b.dismissal.fielderIds } : undefined,
+      wagon: b.wagon,
+      fielding: b.fielding,
+      onStrikeId: b.dismissal?.nonStrikerOut ? b.batsmanId : undefined,
+    });
     const currentOverBalls: BallEntry[] = balls
       .filter((b) => b.overNumber === activeOverNumber && !b.isLastBallOfOver)
-      .map((b) => ({
-        batsmanId: b.dismissal?.nonStrikerOut ? b.nonStrikerId : b.batsmanId,
-        runs: b.runs,
-        extras: b.extras as BallEntry['extras'],
-        dismissal: b.dismissal ? { type: b.dismissal.type, fielderIds: b.dismissal.fielderIds } : undefined,
-        wagon: b.wagon,
-        fielding: b.fielding,
-        onStrikeId: b.dismissal?.nonStrikerOut ? b.batsmanId : undefined,
-      }));
+      .map(toBallEntry);
+    // Last 3 balls of the previous over, for continuity when the current
+    // over is still empty (or short) right after a fresh over starts.
+    const previousOverBalls: BallEntry[] = balls
+      .filter((b) => b.overNumber === activeOverNumber - 1)
+      .slice(-3)
+      .map(toBallEntry);
 
     // Count total wickets = number of balls with dismissals
     const totalWickets = balls.filter((b) => !!b.dismissal).length;
@@ -1722,6 +1858,7 @@ export default function LiveScoringScreen() {
       batterStats,
       bowlerStats,
       currentOverBalls,
+      previousOverBalls,
       handedness: {},
     };
   }
@@ -1836,6 +1973,7 @@ export default function LiveScoringScreen() {
       batterStats: initBatterStats,
       bowlerStats: {},
       currentOverBalls: [],
+      previousOverBalls: [],
       handedness: {},
     });
     setPhase('scoring');
@@ -1882,7 +2020,13 @@ export default function LiveScoringScreen() {
   }
 
   function handleWagonDone(shot: WagonShot | null) {
-    pendingWagonRef.current = shot;
+    // Snapshot the hand actually used to orient the wheel for this tap (may
+    // have been manually flipped for this innings — see toggleHand) so later
+    // sector→position-name lookups (commentary, etc.) stay consistent with
+    // what the scorer saw, even if the player's profile hand changes.
+    pendingWagonRef.current = shot && innings
+      ? { ...shot, isLHB: (innings.handedness[innings.onStrikeId] ?? 'RHB') === 'LHB' }
+      : shot;
     setShowWagon(false);
     proceedAfterWagon();
   }
@@ -2034,6 +2178,7 @@ export default function LiveScoringScreen() {
     let newOverNumber = innings.overNumber;
     let newLegalBalls = result.newLegalBallsInOver;
     let newCurrentOverBalls = newOverBalls;
+    let newPreviousOverBalls = innings.previousOverBalls;
 
     if (result.isOverComplete) {
       bow.completedOvers++;
@@ -2041,6 +2186,7 @@ export default function LiveScoringScreen() {
       newOverNumber++;
       newLegalBalls = 0;
       newCurrentOverBalls = [];
+      newPreviousOverBalls = newOverBalls.slice(-3);
     } else {
       newBowlerStats[input.bowlerId] = bow;
     }
@@ -2056,6 +2202,7 @@ export default function LiveScoringScreen() {
       batterStats: newBatterStats,
       bowlerStats: newBowlerStats,
       currentOverBalls: newCurrentOverBalls,
+      previousOverBalls: newPreviousOverBalls,
     };
 
     setInnings(newInnings);
@@ -2087,7 +2234,12 @@ export default function LiveScoringScreen() {
             type: input.dismissal.type,
             nonStrikerOut: isNonStrikerRunOut,
             outBatsmanId: input.batsmanId,      // who got out (on or non-striker)
-            ...(input.dismissal.fielderIds && { fielderIds: input.dismissal.fielderIds }),
+            // Normalize the single-fielder case (fielderId only) into the array
+            // BallDoc.dismissal persists — otherwise the fielder is silently
+            // dropped and never written to Firestore at all.
+            ...((input.dismissal.fielderIds ?? (input.dismissal.fielderId ? [input.dismissal.fielderId] : undefined)) && {
+              fielderIds: input.dismissal.fielderIds ?? [input.dismissal.fielderId!],
+            }),
           },
         }),
       };
@@ -2781,14 +2933,32 @@ export default function LiveScoringScreen() {
         </Text>
       )}
 
-      {/* Ball log */}
+      {/* Ball log — a fixed 6-spot strip. Trailing balls from the previous
+          over (dimmed, labelled "Prev") fill any spots the current over
+          hasn't used yet, and drop off one at a time as each new ball fills
+          the strip. */}
       <View style={{ paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-        <Text style={{ color: theme.textMuted, fontSize: 12, marginRight: 8 }}>This over:</Text>
-        {innings.currentOverBalls.length === 0 ? (
-          <Text style={{ color: theme.border, fontSize: 13 }}>–</Text>
-        ) : (
-          innings.currentOverBalls.map((ball, i) => <BallCircle key={i} ball={ball} />)
-        )}
+        {(() => {
+          const previousSlots = Math.max(0, BALL_STRIP_SIZE - innings.currentOverBalls.length);
+          const shownPrevious = previousSlots > 0 ? innings.previousOverBalls.slice(-previousSlots) : [];
+          return (
+            <>
+              {shownPrevious.length > 0 && (
+                <>
+                  <Text style={{ color: theme.textMuted, fontSize: 11, fontStyle: 'italic', marginRight: 6 }}>Prev:</Text>
+                  {shownPrevious.map((ball, i) => <BallCircle key={`prev-${i}`} ball={ball} dim />)}
+                  <View style={{ width: 1, height: 20, backgroundColor: theme.border, marginRight: 8 }} />
+                </>
+              )}
+              <Text style={{ color: theme.textMuted, fontSize: 12, marginRight: 8 }}>This over:</Text>
+              {innings.currentOverBalls.length === 0 ? (
+                <Text style={{ color: theme.border, fontSize: 13 }}>–</Text>
+              ) : (
+                innings.currentOverBalls.map((ball, i) => <BallCircle key={i} ball={ball} />)
+              )}
+            </>
+          );
+        })()}
       </View>
 
       {/* Divider */}
@@ -2823,30 +2993,64 @@ export default function LiveScoringScreen() {
           </View>
         ) : (
           <>
-          {/* Run buttons */}
-          <View pointerEvents={scoringReady ? 'auto' : 'none'} style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8, marginBottom: 10, opacity: scoringReady ? 1 : 0.4 }}>
-            {[0, 1, 2, 3, 4, 6].map((r) => (
+          {/* Run buttons — 0-3, then 4/6/Custom (5 dropped: rare enough to
+              route through Custom instead of costing its own slot) */}
+          <View pointerEvents={scoringReady ? 'auto' : 'none'} style={{ opacity: scoringReady ? 1 : 0.4 }}>
+            <View style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8, marginBottom: 8 }}>
+              {[0, 1, 2, 3].map((r) => (
+                <TouchableOpacity
+                  key={r}
+                  onPress={() =>
+                    startBall({ batsmanId: innings.onStrikeId, bowlerId: innings.bowlerId, runs: r })
+                  }
+                  style={{
+                    flex: 1, paddingVertical: 16, borderRadius: 10,
+                    backgroundColor: theme.surface,
+                    borderWidth: 1.5,
+                    borderColor: theme.border,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800' }}>{r}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8, marginBottom: 10 }}>
+              {[4, 6].map((r) => (
+                <TouchableOpacity
+                  key={r}
+                  onPress={() =>
+                    startBall({ batsmanId: innings.onStrikeId, bowlerId: innings.bowlerId, runs: r })
+                  }
+                  style={{
+                    flex: 1, paddingVertical: 16, borderRadius: 10,
+                    backgroundColor: r === 4 ? theme.accentDim : r === 6 ? (theme.id === 'light' ? '#ede9fe' : '#2d1a5f') : theme.surface,
+                    borderWidth: 1.5,
+                    borderColor: r === 4 ? theme.accent : r === 6 ? '#a78bfa' : theme.border,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{
+                    color: r === 4 ? theme.accent : r === 6 ? '#a78bfa' : theme.text,
+                    fontSize: 20, fontWeight: '800',
+                  }}>
+                    {r}
+                  </Text>
+                </TouchableOpacity>
+              ))}
               <TouchableOpacity
-                key={r}
-                onPress={() =>
-                  startBall({ batsmanId: innings.onStrikeId, bowlerId: innings.bowlerId, runs: r })
-                }
+                onPress={() => setShowCustomRuns(true)}
                 style={{
                   flex: 1, paddingVertical: 16, borderRadius: 10,
-                  backgroundColor: r === 4 ? theme.accentDim : r === 6 ? (theme.id === 'light' ? '#ede9fe' : '#2d1a5f') : theme.surface,
-                  borderWidth: 1.5,
-                  borderColor: r === 4 ? theme.accent : r === 6 ? '#a78bfa' : theme.border,
+                  backgroundColor: theme.surface,
+                  borderWidth: 1.5, borderStyle: 'dashed',
+                  borderColor: theme.border,
                   alignItems: 'center',
                 }}
               >
-                <Text style={{
-                  color: r === 4 ? theme.accent : r === 6 ? '#a78bfa' : theme.text,
-                  fontSize: 20, fontWeight: '800',
-                }}>
-                  {r}
-                </Text>
+                <Text style={{ color: theme.textMuted, fontSize: 13, fontWeight: '800' }}>Custom</Text>
               </TouchableOpacity>
-            ))}
+            </View>
           </View>
 
           {/* Extras row */}
@@ -2986,6 +3190,16 @@ export default function LiveScoringScreen() {
         minOvers={oversFloor}
         onConfirm={handleSaveOvers}
         onCancel={() => setShowEditOvers(false)}
+      />
+
+      <CustomRunsModal
+        visible={showCustomRuns}
+        onConfirm={(runs) => {
+          setShowCustomRuns(false);
+          if (!innings) return;
+          startBall({ batsmanId: innings.onStrikeId, bowlerId: innings.bowlerId, runs });
+        }}
+        onCancel={() => setShowCustomRuns(false)}
       />
     </View>
   );

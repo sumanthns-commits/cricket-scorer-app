@@ -125,7 +125,7 @@ batsmanId: string        — on-striker (facing batter, always)
 nonStrikerId: string     — non-striker before this delivery
 runs: number             — runs off the bat (excludes extras)
 extras?: { type, runs }
-wagon?: { sector, depth }
+wagon?: { sector, depth, isLHB? }
 fielding?: { eventId?, eventLabel?, fielderIds? }
 dismissal?: {
   type: string
@@ -139,6 +139,23 @@ isLastBallOfOver: boolean
 Innings state is reconstructed purely from the ball sequence — no state snapshot stored.
 Bowler selection is ephemeral (not stored); user re-selects if app is reopened mid-over.
 Undo = `deleteLastBall()` which removes the last doc for the innings.
+
+`dismissal.fielderIds` is **always normalized to an array at write time** (`commitBall`,
+LiveScoring), even for a single fielder — never rely on a singular `fielderId` on the
+persisted doc; it doesn't exist on `BallDoc` (only on the legacy `DismissalEntry`/`BallEntry`
+shape). A single-fielder catch/stumping omitting this normalization silently drops the
+fielder from Firestore entirely (no fallback field to recover it from) — this happened
+historically; fixed going forward only, not backfilled for matches scored before the fix.
+
+`wagon.isLHB` snapshots the batter's hand **as used to orient the wheel at the moment of
+capture** — not the player's profile `battingHand`. The wheel's hand (`innings.handedness`)
+is session-only and can be manually flipped mid-innings (`toggleHand`) independently of the
+profile, e.g. when the profile's hand is wrong. `sector` itself is pure geometry (hand-
+independent); only the sector→position-name translation depends on hand, and that
+translation must always prefer `wagon.isLHB` over `player.battingHand` (see Commentary
+below) — using the profile instead re-mirrors the position to the wrong side whenever the
+two diverge. Absent on balls recorded before this field existed; fall back to profile hand
+for those.
 
 ## Ball storage (legacy — old matches)
 `matches/{matchId}/overs/{overId}` — each doc has `balls: BallEntry[]`.
@@ -161,7 +178,18 @@ fielding?: {
 ## Live scoring screen tabs
 SCORING | SCORECARD | COMMENTARY | TEAMS | STATS
 
-- **SCORING**: ball-by-ball entry, wagon wheel, fielding overlay, wicket sheet
+- **SCORING**: ball-by-ball entry, wagon wheel, fielding overlay, wicket sheet. Run buttons:
+  `0 1 2 3` / `4 6 Custom` (Custom opens a stepper modal, no upper bound — for rare values
+  like overthrows past 6; `5` was deliberately dropped as uncommon enough to route through
+  Custom instead of costing its own slot). Extras (wide/no-ball/bye/leg-bye) are entirely
+  driven by `match.rules.enabledExtras` — no exceptions carved out for any of the four.
+  "This over" ball strip is a fixed 6-spot window: `InningsState.previousOverBalls` (last 3
+  balls of the prior over) fills spots the current over hasn't used yet, dimmed and labelled
+  "Prev:", dropping off one at a time as real current-over balls arrive — keeps context across
+  the over boundary instead of the strip going blank on a fresh over. Computed in three places
+  that all touch `InningsState` (`beginInnings`, `buildInningsFromBalls` reload reconstruction,
+  `commitBall` incremental update on over completion) — must stay in sync if `InningsState`
+  gains another over-scoped field.
 - **SCORECARD**: batting + bowling tables, innings switcher in 2nd innings
 - **COMMENTARY**: ball-by-ball text feed, newest ball first — see Commentary below.
 - **TEAMS**: shows Team A/B rosters with captain badge (C); substitutes section
@@ -185,6 +213,14 @@ newest-first display. Shown in LiveScoring's COMMENTARY tab (backed by new `acti
 it updates live) and in MatchScorecard's commentary tab for completed matches (via
 `getMatchBalls`, not `getMatchOvers`'s `BallEntry` conversion — legacy `overs/`-only matches
 with no `balls/` subcollection show "Commentary isn't available for this match" instead).
+
+Text isn't stored — always re-derived from `ball.wagon.sector` + hand at render time. Hand
+resolution for a wagon position name is `ball.wagon?.isLHB ?? (handOf(batsmanId) === 'LHB')`
+— the snapshotted per-shot hand always wins over the player's current profile hand when
+present (see `wagon.isLHB` above); only falls back to the profile for pre-existing balls
+recorded before that field existed. This one `buildCommentary` call is shared by both
+LiveScoring's live tab and MatchScorecard's completed-match tab, so fixing hand resolution
+here fixes both without touching either screen.
 
 Wagon-wheel position names for commentary come from `src/constants/wagonPositions.ts`
 (`RHB_WAGON_LABELS`/`LHB_WAGON_LABELS`/`wagonLabelFor`) — the **same canonical table** the
@@ -339,10 +375,34 @@ API key from `Constants.expoConfig.extra.apiKey` (injected via EAS Secrets)
 Never store tokens to disk. Never commit .env
 
 ## Wagon wheel orientation
-Keeper's view (behind the batsman). Batsman at BOTTOM, bowler at TOP.
-0° = top (straight/toward bowler), clockwise positive.
-RHB: off side = RIGHT, leg side = LEFT. LHB: labels flip, geometry stays same.
-12 uniform 30° sectors, 2° gap between each.
+Two selectable views, `src/store/wagonViewStore.ts` (`bowlerView: boolean`, session-only,
+**defaults to `true`** — bowler's-end view is the default, not keeper's/batsman's-end).
+Toggle pill lives inside `WagonWheelModal` itself.
+- **Bowler's view** (default): looking from the bowler's end toward the batsman — batsman at
+  TOP.
+- **Batsman's/keeper's view**: batsman at BOTTOM, bowler at TOP (both look the same direction,
+  toward the bowler).
+
+The two views are a straight 180° rotation of each other (`angleOffset = bowlerView ? 180 :
+0`), applied identically to both `tapToSel`'s tap→sector angle math and the label-placement
+angle math in `WagonWheelModal` — sector 0 ("Straight", toward the bowler) sits at the TOP in
+batsman's view, BOTTOM in bowler's view. This rotation is also *why* off side / leg side
+swap screen-left/right between the two views: `offSideRight = isLHB === bowlerView`, shown
+explicitly as "OFF SIDE"/"LEG SIDE" captions above the wheel (computed once per render, not
+per-sector).
+
+`sector` (0–11, 30° each, clockwise from 0=straight) is **pure geometry, hand-independent** —
+a tap at the same screen position always yields the same sector regardless of who's batting.
+Only the sector→label translation depends on hand: RHB off side = RIGHT / leg side = LEFT in
+batsman's view (`RHB_WAGON_LABELS`); LHB mirrors it (`LHB_WAGON_LABELS`), same 12 geometric
+slots, different names attached to each. The hand used for this on the wheel is
+`innings.handedness[onStrikeId]` — session-only, seeded from the player's profile
+`battingHand` but independently flippable per-innings via `toggleHand()` — see `wagon.isLHB`
+above for why that matters beyond just this screen's rendering.
+
+Interaction: press-and-drag to highlight a sector/depth live (ring + label + dot marker all
+track the touch), release to commit and close — no Confirm button. A small "Skip" text link
+(top-right of the modal) is the only way to record no shot.
 
 ## Env vars (in .env, gitignored)
 EXPO_PUBLIC_FIREBASE_PROJECT_ID

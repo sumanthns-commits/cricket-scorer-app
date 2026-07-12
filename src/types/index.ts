@@ -270,12 +270,22 @@ export interface DismissalEntry {
 
 /**
  * Wagon-wheel shot location.
- * sector: 0–11, 30° each, clockwise from 0 = straight (toward bowler).
+ * sector: 0–11, 30° each, clockwise from 0 = straight (toward bowler). Purely
+ *   geometric — hand-independent (a tap at the same screen position always
+ *   yields the same sector, regardless of who's batting).
  * depth:  0 = infield, 1 = mid, 2 = boundary.
+ * isLHB:  the batter's hand *as used to orient the wheel at capture time*
+ *   (which can be manually flipped mid-innings and may differ from the
+ *   player's profile `battingHand`). Snapshotted here — same reasoning as
+ *   `fielding.eventLabel` — so sector→position-name translation (off/leg
+ *   side mirrors between hands) stays correct even if the profile's hand
+ *   is edited later. Absent on balls recorded before this field existed;
+ *   consumers should fall back to the player's current battingHand.
  */
 export interface WagonShot {
   sector: number;
   depth: number;
+  isLHB?: boolean;
 }
 
 export interface BallEntry {

@@ -423,6 +423,7 @@ export function ballDocsToOverDocs(balls: BallDoc[], matchId: string): OverDocum
         ? {
             type: ball.dismissal.type,
             fielderIds: ball.dismissal.fielderIds,
+            bowlerId: ball.bowlerId,
           }
         : undefined,
       wagon: ball.wagon,
