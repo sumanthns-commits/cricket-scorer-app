@@ -1270,6 +1270,12 @@ export default function LiveScoringScreen() {
   const { clubId, matchId } = route.params;
   const user = useAuthStore((s) => s.user);
   const theme = useThemeStore((s) => s.theme);
+  // The SCORING tab's content (including the bottom-most "Abandon match"/
+  // "Delete match" button) is a plain flex column, not a ScrollView — with no
+  // bottom safe-area padding it can render flush against, or partly behind,
+  // a device's home indicator / gesture nav bar, making that button hard or
+  // impossible to tap.
+  const insets = useSafeAreaInsets();
   const [isAdmin, setIsAdmin] = useState(false);
   const [phase, setPhase] = useState<Phase>('loading');
   const [match, setMatch] = useState<Match | null>(null);
@@ -2312,7 +2318,7 @@ export default function LiveScoringScreen() {
   const canEditOvers = isAdmin && inningsNumber === 1 && phase === 'scoring' && match?.rules.oversPerInnings != null;
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg, paddingBottom: insets.bottom }}>
       {/* Top tabs — horizontally scrollable with equal-width tabs (rather than
           flex:1) so labels like COMMENTARY aren't squeezed. A chevron hints
           at more tabs off-screen in whichever direction still has any. */}

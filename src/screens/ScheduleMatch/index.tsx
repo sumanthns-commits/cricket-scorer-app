@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -73,6 +74,7 @@ export default function ScheduleMatchScreen() {
   const { params } = useRoute<Route>();
   const { clubId } = params;
   const theme = useThemeStore((s) => s.theme);
+  const insets = useSafeAreaInsets();
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -428,7 +430,7 @@ export default function ScheduleMatchScreen() {
           padding: 16,
           alignItems: 'center',
           marginTop: 12,
-          marginBottom: 40,
+          marginBottom: 40 + insets.bottom,
           borderWidth: canSubmit ? 0 : 1,
           borderColor: theme.border,
         }}

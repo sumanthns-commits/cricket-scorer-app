@@ -13,6 +13,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
@@ -296,6 +297,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
   const theme = useThemeStore((s) => s.theme);
+  const insets = useSafeAreaInsets();
 
   const [draft, setDraft] = useState<ClubRules | null>(null);
   const [saving, setSaving] = useState(false);
@@ -523,7 +525,7 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
         <ScrollView
           ref={scrollRef}
-          contentContainerStyle={{ padding: 20, paddingBottom: 60 + kbHeight }}
+          contentContainerStyle={{ padding: 20, paddingBottom: 60 + kbHeight + insets.bottom }}
           keyboardShouldPersistTaps="handled"
           scrollEventThrottle={16}
           onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {

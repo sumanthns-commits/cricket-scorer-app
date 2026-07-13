@@ -3,6 +3,7 @@ import {
   View, Text, TouchableOpacity, FlatList, ActivityIndicator,
   Modal, TextInput, KeyboardAvoidingView, Platform, Pressable, Alert, ScrollView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -149,6 +150,7 @@ export default function SquadScreen() {
   const activeClubId = useClubStore((s) => s.activeClubId);
   const uid = useAuthStore((s) => s.user?.uid);
   const theme = useThemeStore((s) => s.theme);
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
 
   const { data: squad, isLoading, refetch } = useQuery({
@@ -288,7 +290,7 @@ export default function SquadScreen() {
                   borderTopLeftRadius: 20,
                   borderTopRightRadius: 20,
                   padding: 24,
-                  paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+                  paddingBottom: (Platform.OS === 'ios' ? 40 : 24) + insets.bottom,
                   borderTopWidth: 1,
                   borderColor: theme.border,
                 }}

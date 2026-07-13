@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Modal, Alert } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Slider from '@react-native-community/slider';
@@ -224,6 +225,7 @@ export default function PlayerProfileView({
   isAdmin?: boolean;
 }) {
   const theme = useThemeStore((s) => s.theme);
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
 
   const [showRatingInfo, setShowRatingInfo] = useState(false);
@@ -490,7 +492,7 @@ export default function PlayerProfileView({
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
+    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 48 + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
         <PlayerAvatar name={player.displayName} photoURL={player.photoURL} seed={player.id} size={64} />

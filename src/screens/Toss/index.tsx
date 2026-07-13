@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { View, Text, TouchableOpacity, Animated, Easing, ActivityIndicator, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -18,6 +19,7 @@ export default function TossScreen() {
   const { params } = useRoute<Route>();
   const { clubId, matchId, matchDraft } = params;
   const theme = useThemeStore((s) => s.theme);
+  const insets = useSafeAreaInsets();
 
   const [winnerId, setWinnerId] = useState<'homeTeam' | 'awayTeam' | null>(null);
   const [choice, setChoice] = useState<'bat' | 'field' | null>(null);
@@ -114,7 +116,7 @@ export default function TossScreen() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
+    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 16 + insets.bottom }} keyboardShouldPersistTaps="handled">
       <Text style={{ color: theme.text, fontSize: 20, fontWeight: '700', textAlign: 'center', marginTop: 12, marginBottom: 4 }}>
         {homeTeam} vs {awayTeam}
       </Text>

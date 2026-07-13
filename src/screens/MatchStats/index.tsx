@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, Modal } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -78,6 +79,7 @@ function PlayerDropdown({
   nameOf: (id: string) => string;
 }) {
   const theme = useThemeStore((s) => s.theme);
+  const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const effectiveSelected = selected && options.includes(selected) ? selected : options[0] ?? null;
   const displayName = effectiveSelected ? nameOf(effectiveSelected) : 'No players';
@@ -105,7 +107,7 @@ function PlayerDropdown({
           <View
             style={{
               backgroundColor: theme.surfaceAlt, borderTopLeftRadius: 16, borderTopRightRadius: 16,
-              paddingBottom: 32, maxHeight: '60%',
+              paddingBottom: 32 + insets.bottom, maxHeight: '60%',
             }}
           >
             <View style={{ padding: 16, borderBottomWidth: 1, borderColor: theme.border }}>

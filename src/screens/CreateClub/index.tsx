@@ -3,6 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, ActivityIndicator,
   KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useAuthStore } from '../../store/authStore';
@@ -17,6 +18,7 @@ export default function CreateClubScreen({ navigation }: Props) {
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
   const theme = useThemeStore((s) => s.theme);
+  const insets = useSafeAreaInsets();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -56,7 +58,7 @@ export default function CreateClubScreen({ navigation }: Props) {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView contentContainerStyle={{ padding: 24 }}>
+      <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 24 + insets.bottom }}>
         <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700', marginBottom: 24 }}>Create Club</Text>
 
         <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 6 }}>CLUB NAME *</Text>

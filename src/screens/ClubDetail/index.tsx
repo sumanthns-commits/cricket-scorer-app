@@ -35,11 +35,15 @@ const STATUS_COLORS: Record<Match['status'], string> = {
   abandoned: '#dc2626',
 };
 
-// Legacy matches predating the scorerId field (no scorer ever recorded) fall
-// back to true so they aren't locked out of the old "anyone can open
-// LiveScoring" behavior.
-function isMatchScorer(match: Match, uid: string | undefined): boolean {
-  return !match.scorerId || match.scorerId === uid;
+// A non-admin never gets scoring controls — LiveScoring's own input controls
+// are isAdmin-gated internally, so routing a non-admin there for a legacy
+// match with no scorerId set would land them on a screen with no real-time
+// subscription and no actions ("Watching live" placeholder), instead of
+// MatchScorecard, which is real-time and built for spectators. Legacy
+// matches predating the scorerId field (no scorer ever recorded) fall back
+// to true for admins only, so an admin isn't locked out of scoring them.
+function isMatchScorer(match: Match, uid: string | undefined, isAdmin: boolean): boolean {
+  return isAdmin && (!match.scorerId || match.scorerId === uid);
 }
 
 function MatchCard({
@@ -231,7 +235,7 @@ export default function ClubDetailScreen({ navigation }: Props) {
       // Only the scorer gets the ball-entry screen — everyone else watches
       // via MatchScorecard's real-time subscription.
       nav.navigate(
-        isMatchScorer(match, user?.uid) ? 'LiveScoring' : 'MatchScorecard',
+        isMatchScorer(match, user?.uid, isAdmin) ? 'LiveScoring' : 'MatchScorecard',
         { clubId, matchId }
       );
       return;
@@ -371,7 +375,7 @@ export default function ClubDetailScreen({ navigation }: Props) {
             <MatchCard
               match={item}
               isAdmin={isAdmin}
-              isScorer={isMatchScorer(item, user?.uid)}
+              isScorer={isMatchScorer(item, user?.uid, isAdmin)}
               onPress={() => handleMatchPress(item)}
               onDelete={
                 isAdmin && (item.status === 'scheduled' || item.status === 'live' || item.status === 'abandoned')

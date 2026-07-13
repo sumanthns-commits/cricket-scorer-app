@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
@@ -66,6 +67,7 @@ export default function RequesterProfileScreen({ route, navigation }: Props) {
   const { clubId, uid, displayName } = route.params;
   const queryClient = useQueryClient();
   const theme = useThemeStore((s) => s.theme);
+  const insets = useSafeAreaInsets();
 
   const [selectedGhostId, setSelectedGhostId] = useState<string | null>(null);
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
@@ -108,7 +110,7 @@ export default function RequesterProfileScreen({ route, navigation }: Props) {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 32 + insets.bottom }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 }}>
         <PlayerAvatar name={name} photoURL={profile?.photoURL} size={56} />
         <View style={{ flex: 1 }}>

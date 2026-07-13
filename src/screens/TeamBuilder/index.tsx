@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Modal } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -84,6 +85,7 @@ export default function TeamBuilderScreen() {
   const { params } = useRoute<Route>();
   const { clubId, matchId, returnTo, matchDraft } = params;
   const theme = useThemeStore((s) => s.theme);
+  const insets = useSafeAreaInsets();
 
   const [teamA, setTeamA] = useState<string[]>([]);
   const [teamB, setTeamB] = useState<string[]>([]);
@@ -339,7 +341,7 @@ export default function TeamBuilderScreen() {
 
       <TouchableOpacity
         onPress={handleConfirm} disabled={!canConfirm}
-        style={{ backgroundColor: canConfirm ? theme.accent : theme.surface, borderRadius: 10, padding: 16, alignItems: 'center', marginTop: 8, marginBottom: 40, borderWidth: canConfirm ? 0 : 1, borderColor: theme.border }}
+        style={{ backgroundColor: canConfirm ? theme.accent : theme.surface, borderRadius: 10, padding: 16, alignItems: 'center', marginTop: 8, marginBottom: 40 + insets.bottom, borderWidth: canConfirm ? 0 : 1, borderColor: theme.border }}
       >
         {isPending ? <ActivityIndicator color="#ffffff" /> : <Text style={{ color: canConfirm ? '#ffffff' : theme.textMuted, fontSize: 16, fontWeight: '700' }}>Confirm Teams</Text>}
       </TouchableOpacity>
