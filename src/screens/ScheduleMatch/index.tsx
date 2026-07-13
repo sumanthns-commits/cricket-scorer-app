@@ -106,7 +106,7 @@ export default function ScheduleMatchScreen() {
 
   const prevMatch = useMemo(() => {
     return matches
-      .filter((m) => (m.squad?.length ?? 0) > 0 && m.status === 'completed')
+      .filter((m) => (m.squad?.length ?? 0) > 0 && (m.status === 'completed' || m.status === 'live'))
       .sort((a, b) => {
         const dateDiff = b.date.toMillis() - a.date.toMillis();
         if (dateDiff !== 0) return dateDiff;

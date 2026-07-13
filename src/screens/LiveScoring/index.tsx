@@ -1672,6 +1672,26 @@ export default function LiveScoringScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  // Back navigation (header back button, Android hardware back, swipe-back
+  // gesture) always lands on Matches directly rather than popping one screen
+  // at a time — the match-setup stack (ScheduleMatch → TeamBuilder → Toss) or
+  // an "Edit Teams" detour would otherwise be replayed backwards instead of
+  // returning to where the scorer actually wants to be once a match is live.
+  // The redirectingRef guard is required: calling reset() from inside
+  // beforeRemove synchronously removes this same screen, which re-fires
+  // beforeRemove on it before the first reset() call returns — without the
+  // guard that recurses forever (RangeError: Maximum call stack size
+  // exceeded). Letting the second, self-triggered firing through avoids that.
+  const redirectingToMatchesRef = useRef(false);
+  useEffect(() => {
+    return navigation.addListener('beforeRemove', (e) => {
+      if (redirectingToMatchesRef.current) return;
+      e.preventDefault();
+      redirectingToMatchesRef.current = true;
+      navigation.reset({ index: 0, routes: [{ name: 'Tabs', params: { screen: 'Matches' } }] });
+    });
+  }, [navigation]);
+
   // A new matchId means a different match instance — allow it to be sealed too.
   useEffect(() => { sealedRef.current = false; }, [clubId, matchId]);
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
@@ -194,6 +194,15 @@ export default function MatchesScreen() {
       getClubMatchesBySeason(activeClubId!, effectiveSeason!.start, effectiveSeason!.end),
     enabled: !!activeClubId && !!effectiveSeason,
   });
+
+  // Refetch whenever this screen (re)gains focus — e.g. returning from
+  // LiveScoring after starting a match — so a just-created/just-started match
+  // shows up without the user having to pull-to-refresh manually.
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
 
   const sortedMatches = useMemo(() => {
     if (!matches) return matches;
