@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, Modal, Pressable } from 'react-native';
-import { useRoute } from '@react-navigation/native';
+import { useFocusEffect, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,7 +28,10 @@ interface SeasonOption {
 function seasonsFrom(matches: Match[], hemisphere: Hemisphere): SeasonOption[] {
   const map = new Map<string, SeasonOption>();
   for (const m of matches) {
-    if (m.status !== 'completed' && m.status !== 'abandoned') continue;
+    // Abandoned matches never contributed to any player's stats (see
+    // buildSeasonLeaderboard) — excluded here too so a season with only
+    // abandoned matches doesn't show up as a selectable, empty-looking option.
+    if (m.status !== 'completed') continue;
     const date = m.date.toDate();
     const label = seasonLabel(date, hemisphere);
     const existing = map.get(label);
@@ -134,7 +137,7 @@ export default function LeaderboardScreen() {
     queryFn: () => getClub(clubId),
   });
 
-  const { data: base, isLoading } = useQuery({
+  const { data: base, isLoading, refetch: refetchBase } = useQuery({
     queryKey: ['leaderboard-base', clubId],
     queryFn: async () => {
       const [matches, players, ghostToMember] = await Promise.all([
@@ -162,14 +165,51 @@ export default function LeaderboardScreen() {
     return seasons.find((s) => s.label === cur) ?? seasons[0];
   }, [selectedLabel, seasons, hemisphere]);
 
-  const { data: board, isFetching } = useQuery({
+  const { data: board, isFetching, refetch: refetchBoard } = useQuery({
     queryKey: ['leaderboard', clubId, activeSeason?.label],
     queryFn: () => buildSeasonLeaderboard(clubId, activeSeason!.matches, base!.ghostToMember),
     enabled: !!activeSeason && !!base,
   });
 
+  // Refetch on focus rather than relying on a fresh mount — e.g. deleting a
+  // match on the Matches screen and coming straight back here should drop it
+  // (and re-run buildSeasonLeaderboard on the remaining matches) without a
+  // manual pull-to-refresh. base drives `matches`/`activeSeason`; board is
+  // re-triggered too since its queryFn closes over whatever base/activeSeason
+  // were at the time it last ran, not the just-refetched ones.
+  // `refetch()` bypasses `enabled` (unlike the automatic fetch-on-mount), so
+  // it's gated on the same `activeSeason && base` condition as the query
+  // itself — a club with zero completed matches has no activeSeason, and
+  // `board`'s queryFn non-null-asserts it, which would throw on every focus.
+  useFocusEffect(
+    useCallback(() => {
+      refetchBase().then(() => {
+        if (activeSeason && base) refetchBoard();
+      });
+    }, [refetchBase, refetchBoard, activeSeason, base])
+  );
+
   const nameOf = (id: string) => base?.nameMap[id] ?? id;
   const photoOf = (id: string) => base?.photoMap[id];
+
+  // Leaderboard display intentionally ignores score/eventPoints (net fielding
+  // rating, negative-polarity events etc.) — those stay in buildSeasonLeaderboard
+  // for other consumers (e.g. AI insights) but here we only show and rank by
+  // raw dismissal counts, which read unambiguously without needing the rating
+  // model explained.
+  const fieldingByDismissals = useMemo(() => {
+    if (!board) return [];
+    // board.fielding also includes eventPoints-only entries (e.g. a player
+    // with zero dismissals but a recorded negative event) — irrelevant once
+    // this view only shows catches/stumpings/run-outs, so drop them here.
+    return board.fielding
+      .filter((f) => f.catches + f.stumpings + f.runOuts > 0)
+      .sort((a, b) => {
+        const total = (b.catches + b.stumpings + b.runOuts) - (a.catches + a.stumpings + a.runOuts);
+        if (total !== 0) return total;
+        return b.catches - a.catches || b.runOuts - a.runOuts || b.stumpings - a.stumpings;
+      });
+  }, [board]);
 
   if (isLoading) {
     return (
@@ -340,23 +380,18 @@ export default function LeaderboardScreen() {
 
           {discipline === 'fielding' && (
             <>
-              <HeaderRow labels={['Scr', 'Ct', 'St', 'RO', 'Pts']} />
-              {board.fielding.length === 0 ? (
+              <HeaderRow labels={['Total', 'Ct', 'St', 'RO']} />
+              {fieldingByDismissals.length === 0 ? (
                 <Text style={{ color: theme.textMuted, marginTop: 16 }}>No fielding recorded.</Text>
               ) : (
-                board.fielding.map((f, i) => (
+                fieldingByDismissals.map((f, i) => (
                   <LeaderRow
                     key={f.playerId}
                     rank={i + 1}
                     name={nameOf(f.playerId)}
                     photoURL={photoOf(f.playerId)}
-                    primary={f.score}
-                    cols={[
-                      f.catches,
-                      f.stumpings,
-                      f.runOuts,
-                      f.eventPoints > 0 ? `+${f.eventPoints}` : String(f.eventPoints),
-                    ]}
+                    primary={f.catches + f.stumpings + f.runOuts}
+                    cols={[f.catches, f.stumpings, f.runOuts]}
                   />
                 ))
               )}

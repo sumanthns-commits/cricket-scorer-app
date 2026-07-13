@@ -6,6 +6,7 @@ import {
   getDocs,
   updateDoc,
   deleteDoc,
+  writeBatch,
   onSnapshot,
   Timestamp,
   query,
@@ -275,9 +276,29 @@ export async function abandonMatch(clubId: string, matchId: string): Promise<voi
   });
 }
 
-// Only valid before the first ball — there are no overs to orphan yet.
+// Deleting the match doc alone would leave its balls/overs subcollections
+// orphaned in Firestore (deletes don't cascade) — harmless for a scheduled
+// match (no balls yet) but abandoned matches can carry a full innings' worth
+// of balls, so those are purged too. None of this data ever fed into
+// careerStats/playerPerformances (onMatchCompleted, the sole writer, never
+// fires for 'abandoned'), so there's nothing to reverse — just cleanup.
 export async function deleteMatch(clubId: string, matchId: string): Promise<void> {
-  await deleteDoc(doc(db, 'clubs', clubId, 'matches', matchId));
+  const matchRef = doc(db, 'clubs', clubId, 'matches', matchId);
+  const [ballsSnap, oversSnap] = await Promise.all([
+    getDocs(collection(matchRef, 'balls')),
+    getDocs(collection(matchRef, 'overs')),
+  ]);
+
+  // Batched writes cap at 500 ops; chunk defensively in case a long innings
+  // (plus the final match-doc delete) ever pushes past that.
+  const refs = [...ballsSnap.docs, ...oversSnap.docs].map((d) => d.ref);
+  for (let i = 0; i < refs.length; i += 499) {
+    const batch = writeBatch(db);
+    for (const ref of refs.slice(i, i + 499)) batch.delete(ref);
+    await batch.commit();
+  }
+
+  await deleteDoc(matchRef);
 }
 
 // ── Per-ball document store ────────────────────────────────────────

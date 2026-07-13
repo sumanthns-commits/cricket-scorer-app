@@ -352,7 +352,7 @@ export default function MatchesScreen() {
               isScorer={isMatchScorer(item, user?.uid)}
               onPress={() => handleMatchPress(item)}
               onDelete={
-                isAdmin && (item.status === 'scheduled' || item.status === 'live')
+                isAdmin && (item.status === 'scheduled' || item.status === 'live' || item.status === 'abandoned')
                   ? () => handleDelete(item)
                   : undefined
               }

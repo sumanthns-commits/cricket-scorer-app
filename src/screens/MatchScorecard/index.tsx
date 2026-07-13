@@ -18,8 +18,13 @@ import {
 import { buildInningsCard, formatDismissal, type InningsCard } from '../../services/scorecard';
 import { buildCommentary } from '../../services/commentary';
 import Commentary from '../../components/Commentary';
+import { ScoreHeader, BatterRow, BowlerRow, BallCircle } from '../../components/LiveScoreboard';
+import { buildInningsFromBalls, emptyBatterStats, emptyBowlerStats } from '../../services/inningsState';
 import { useThemeStore } from '../../store/themeStore';
 import type { BallDoc, CustomDismissal, Match } from '../../types';
+
+// Target size of the "This over" strip, matching LiveScoring's ball strip.
+const BALL_STRIP_SIZE = 6;
 
 type Route = RouteProp<RootStackParamList, 'MatchScorecard'>;
 
@@ -250,7 +255,7 @@ export default function MatchScorecardScreen() {
   const { params } = useRoute<Route>();
   const { clubId, matchId } = params;
   const [innings, setInnings] = useState<1 | 2>(1);
-  const [tab, setTab] = useState<'scorecard' | 'commentary' | 'teams'>('scorecard');
+  const [tab, setTab] = useState<'live' | 'scorecard' | 'commentary' | 'teams'>('scorecard');
   const [sharing, setSharing] = useState(false);
   const theme = useThemeStore((s) => s.theme);
   const snapshotRef = useRef<ViewShot>(null);
@@ -329,6 +334,21 @@ export default function MatchScorecardScreen() {
   });
 
   const currentMatch = isLive ? liveMatch : gateMatch;
+
+  // The LIVE tab (current batters/bowler/this-over strip) only makes sense
+  // while the match is actually in progress — derived from currentMatch's
+  // real-time status rather than the one-shot `isLive` gate, so it disappears
+  // again once the match finishes without needing a screen remount. Defaults
+  // a fresh visit straight to it, and falls back off it (without touching a
+  // manually-chosen tab) the moment it stops being live.
+  const showLiveTab = currentMatch?.status === 'live';
+  useEffect(() => {
+    setTab((t) => {
+      if (showLiveTab) return t === 'scorecard' ? 'live' : t;
+      return t === 'live' ? 'scorecard' : t;
+    });
+  }, [showLiveTab]);
+
   // staticData's query is `enabled: !gateError && ...`, so if the gate query
   // itself errored, the static query stays disabled and never leaves
   // 'pending' — without the `!gateError` guard here, isLoading would get
@@ -360,6 +380,27 @@ export default function MatchScorecardScreen() {
       card2: second.length ? buildInningsCard(second, ballsPerOver) : summary?.['2'] ?? null,
     };
   }, [currentMatch, isLive, liveBalls, staticData, players, matchId]);
+
+  // Current crease/over state for the LIVE tab — reconstructed with the same
+  // buildInningsFromBalls LiveScoring uses, so the scorer's and spectators'
+  // views of "who's batting/bowling right now" can never diverge.
+  // match.firstInningsEnded says which innings is actually in progress.
+  // Memoized and gated on `tab === 'live'` (not just showLiveTab):
+  // buildInningsFromBalls replays every ball of the active innings, and
+  // liveBalls updates via onSnapshot on every delivery, so recomputing this
+  // while some other tab is visible (or on unrelated re-renders, e.g. the
+  // share button's setSharing toggles) would be pure waste.
+  const activeInningsNum: 1 | 2 = data?.match.firstInningsEnded ? 2 : 1;
+  const liveInnings = useMemo(() => {
+    if (!data || !showLiveTab || tab !== 'live') return null;
+    return buildInningsFromBalls(
+      activeInningsNum === 1 ? data.ball1 : data.ball2,
+      data.match,
+      activeInningsNum,
+      players,
+      data.match.rules.autoRotateStrikeEoO ?? true,
+    );
+  }, [data, showLiveTab, tab, activeInningsNum, players]);
 
   async function handleShare() {
     if (!snapshotRef.current || !data?.match) return;
@@ -413,6 +454,7 @@ export default function MatchScorecardScreen() {
 
   const teamA = match?.teamA ?? [];
   const teamB = match?.teamB ?? [];
+  const liveBallsPerOver = match?.rules.ballsPerOver ?? 6;
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -452,20 +494,111 @@ export default function MatchScorecardScreen() {
 
       {/* Tab bar */}
       <View style={{ flexDirection: 'row', backgroundColor: theme.surfaceAlt, borderBottomWidth: 1, borderBottomColor: theme.border }}>
-        {(['scorecard', 'commentary', 'teams'] as const).map((t) => (
+        {(showLiveTab ? (['live', 'scorecard', 'commentary', 'teams'] as const) : (['scorecard', 'commentary', 'teams'] as const)).map((t) => (
           <TouchableOpacity
             key={t}
             onPress={() => setTab(t)}
             style={{ flex: 1, paddingVertical: 11, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: tab === t ? theme.accent : 'transparent' }}
           >
             <Text style={{ color: tab === t ? theme.accent : theme.textMuted, fontWeight: '700', fontSize: 12 }}>
-              {t === 'scorecard' ? 'SCORECARD' : t === 'commentary' ? 'COMMENTARY' : 'TEAMS'}
+              {t === 'live' ? 'LIVE' : t === 'scorecard' ? 'SCORECARD' : t === 'commentary' ? 'COMMENTARY' : 'TEAMS'}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      {tab === 'commentary' ? (
+      {tab === 'live' && liveInnings ? (
+        <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+          <ScoreHeader
+            runs={liveInnings.totalRuns}
+            wickets={liveInnings.totalWickets}
+            overNumber={liveInnings.overNumber}
+            legalBalls={liveInnings.legalBallsInOver}
+            ballsPerOver={liveBallsPerOver}
+            matchName={match ? `${match.homeTeam} vs ${match.awayTeam}` : ''}
+          />
+
+          {/* Chase target (2nd innings) */}
+          {activeInningsNum === 2 && card1 && (() => {
+            const target = card1.totalRuns + 1;
+            const need = Math.max(0, target - liveInnings.totalRuns);
+            const oversLimit = match?.rules.oversPerInnings;
+            const ballsBowled = liveInnings.overNumber * liveBallsPerOver + liveInnings.legalBallsInOver;
+            const ballsLeft = oversLimit != null ? oversLimit * liveBallsPerOver - ballsBowled : null;
+            const rrr = ballsLeft != null && ballsLeft > 0 ? ((need * liveBallsPerOver) / ballsLeft).toFixed(2) : null;
+            return (
+              <View style={{ backgroundColor: theme.surface, paddingVertical: 6, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: theme.border }}>
+                <Text style={{ color: '#d97706', fontSize: 13, fontWeight: '700' }}>
+                  Need {need} run{need !== 1 ? 's' : ''}
+                  {ballsLeft != null ? ` from ${ballsLeft} ball${ballsLeft !== 1 ? 's' : ''}` : ''}
+                </Text>
+                {rrr != null && (
+                  <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 1 }}>
+                    Target {target} · RRR {rrr}
+                  </Text>
+                )}
+              </View>
+            );
+          })()}
+
+          {!liveInnings.onStrikeId ? (
+            <View style={{ padding: 32, alignItems: 'center' }}>
+              <Text style={{ color: theme.textMuted, fontSize: 14, textAlign: 'center' }}>Waiting for the first ball…</Text>
+            </View>
+          ) : (
+            <>
+              <BatterRow
+                player={players.find((p) => p.id === liveInnings.onStrikeId)}
+                stats={liveInnings.batterStats[liveInnings.onStrikeId] ?? emptyBatterStats()}
+                onStrike
+                hand={players.find((p) => p.id === liveInnings.onStrikeId)?.battingHand ?? 'RHB'}
+              />
+              {liveInnings.offStrikeId ? (
+                <BatterRow
+                  player={players.find((p) => p.id === liveInnings.offStrikeId)}
+                  stats={liveInnings.batterStats[liveInnings.offStrikeId] ?? emptyBatterStats()}
+                  onStrike={false}
+                  hand={players.find((p) => p.id === liveInnings.offStrikeId)?.battingHand ?? 'RHB'}
+                />
+              ) : (
+                <View style={{ paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: theme.border }}>
+                  <Text style={{ color: theme.textMuted, fontSize: 12, fontStyle: 'italic' }}>Last man standing — batting alone</Text>
+                </View>
+              )}
+              <BowlerRow
+                player={players.find((p) => p.id === liveInnings.bowlerId)}
+                stats={liveInnings.bowlerStats[liveInnings.bowlerId] ?? emptyBowlerStats()}
+                ballsPerOver={liveBallsPerOver}
+              />
+            </>
+          )}
+
+          {/* Ball strip — mirrors LiveScoring's "This over" row */}
+          <View style={{ paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+            {(() => {
+              const previousSlots = Math.max(0, BALL_STRIP_SIZE - liveInnings.currentOverBalls.length);
+              const shownPrevious = previousSlots > 0 ? liveInnings.previousOverBalls.slice(-previousSlots) : [];
+              return (
+                <>
+                  {shownPrevious.length > 0 && (
+                    <>
+                      <Text style={{ color: theme.textMuted, fontSize: 11, fontStyle: 'italic', marginRight: 6 }}>Prev:</Text>
+                      {shownPrevious.map((ball, i) => <BallCircle key={`prev-${i}`} ball={ball} dim />)}
+                      <View style={{ width: 1, height: 20, backgroundColor: theme.border, marginRight: 8 }} />
+                    </>
+                  )}
+                  <Text style={{ color: theme.textMuted, fontSize: 12, marginRight: 8 }}>This over:</Text>
+                  {liveInnings.currentOverBalls.length === 0 ? (
+                    <Text style={{ color: theme.border, fontSize: 13 }}>–</Text>
+                  ) : (
+                    liveInnings.currentOverBalls.map((ball, i) => <BallCircle key={i} ball={ball} />)
+                  )}
+                </>
+              );
+            })()}
+          </View>
+        </ScrollView>
+      ) : tab === 'commentary' ? (
         <View style={{ flex: 1 }}>
           {/* Gated on raw balls (what commentary actually reads), not card1/
               card2 — those can both be populated via inningsSummary even when

@@ -55,7 +55,13 @@ ScheduleMatch → TeamBuilder → Toss → LiveScoring
   In draft mode (no matchId): reads teams from `matchDraft`, passes updated draft to Toss.
   In edit mode (has matchId): writes directly to the existing match doc.
   Accepts `returnTo?: 'LiveScoring'` param — replaces back to LiveScoring after confirm.
-- **Toss**: coin flip, toss winner + choice (bat/field), select scorer.
+- **Toss**: coin flip, toss winner + choice (bat/field). Scorer is auto-assigned, not
+  picked — whoever confirms the toss becomes `scorerId`/`scorerName` (name resolved via
+  `getPlayer` for the club-scoped display name, falling back to the Auth profile
+  name/email). No picker UI and no way to reassign afterward; safe because only an admin
+  ever reaches Toss (gated upstream in Matches/ClubDetail), so the confirming admin is
+  always the sole scorer for that match — closes the old gap where an unset scorer let
+  every admin get scoring controls simultaneously on separate devices.
   In draft mode: calls `createLiveMatch()` which writes the match doc with `status:'live'`
   and the toss in a single shot. Match never exists in Firestore as 'scheduled'.
   In edit mode (existing matchId): calls `setMatchToss()` as before.
@@ -197,6 +203,34 @@ SCORING | SCORECARD | COMMENTARY | TEAMS | STATS
   Substitutes from any team/player pool can be added; they appear in fielding overlay.
 - **STATS**: MatchStatsContent component (worm, wagon wheel, per-over stats)
 
+Fielding pickers (FieldingPanel's checklist + WicketSheet's caught/stumped/run-out fielder
+lists — both fed by the single `fieldingPlayers` var) include **both teams' full squads by
+default** (`innings.battingIds ∪ innings.bowlingIds`), not just the bowling side — a
+batting-team player can be tagged as a fielder (12th man, mixed/social games) without an
+admin first adding them as a substitute purely to unlock the picker. `match.substitutes`
+still folds in genuine bench players who aren't on either team's roster at all. The two
+batters currently at the crease (`innings.onStrikeId`/`offStrikeId`) are always excluded —
+they can't be the fielder credited on the same ball that dismisses/faces them.
+
+`buildInningsFromBalls`, `computeNextBatsmen`, `battingForInnings`/`bowlingForInnings`,
+`buildDismissalText`, `emptyBatterStats`/`emptyBowlerStats`, and the `InningsState`/
+`BatterStats`/`BowlerStats` types now live in `services/inningsState.ts` — extracted from
+LiveScoring so MatchScorecard's LIVE tab (below) can reconstruct the same crease state from
+the same ball data. `ScoreHeader`/`BatterRow`/`BowlerRow`/`BallCircle` now live in
+`components/LiveScoreboard.tsx` for the same reason; `BatterRow`'s `onToggleHand`/`onEdit`
+props are optional (renders a plain, non-interactive hand chip and no ✎ button when
+omitted) so the same component serves LiveScoring's editable rows and MatchScorecard's
+read-only ones.
+
+Back navigation (header back, Android hardware back, swipe gesture, and the abandon/delete
+`goBack()` calls) is intercepted via a `beforeRemove` listener that resets straight to
+Matches instead of popping through whatever setup stack (ScheduleMatch → TeamBuilder →
+Toss) or "Edit Teams" detour got the scorer here. Requires a `redirectingToMatchesRef`
+guard: calling `navigation.reset()` from inside `beforeRemove` removes the same screen,
+which re-fires `beforeRemove` on it *before* the first `reset()` call returns — without the
+guard that recurses forever (`RangeError: Maximum call stack size exceeded`). The guard
+lets the second, self-triggered firing through instead of intercepting it again.
+
 Tab bar is a horizontally-scrollable `ScrollView` (equal fixed-width tabs, not `flex:1`) —
 accent-colored circular chevron buttons appear at whichever edge(s) still have more tabs to
 scroll to, and call `scrollTo` on the tab ScrollView's ref; they hide once fully scrolled.
@@ -238,6 +272,18 @@ authoritative `getMatchBalls()` re-fetch runs immediately after — the balls li
 final snapshot isn't guaranteed to have landed before the "completed" snapshot did (two
 independent listeners, no ordering guarantee), so this closes that race rather than risking
 the last ball(s) never rendering.
+
+Live matches additionally get a **LIVE** tab (shown first, auto-selected while
+`currentMatch.status === 'live'` via a `showLiveTab` effect — falls back to SCORECARD once
+the match finishes, without disturbing a tab the viewer picked manually) mirroring
+LiveScoring's SCORING tab read-only: current striker/non-striker/bowler, "this over" ball
+strip, chase target/RRR in the 2nd innings. Built from the same real-time `liveBalls` via
+the shared `buildInningsFromBalls` (`inningsState.ts`) — no edit affordances (`BatterRow`'s
+`onToggleHand`/`onEdit` omitted). Note: hand shown for wagon-position purposes here is the
+player's profile `battingHand`, not the scorer's session-only `toggleHand()` override —
+`buildInningsFromBalls` always returns `handedness: {}` since that override lives only in
+LiveScoring's local component state and is never persisted, so a mid-innings hand
+correction on the scorer's device won't be reflected on spectators' screens.
 
 ## Domain: player types
 - ghost      — imported from PDF/CSV (or seeded), no auth. Also what a departed member becomes
@@ -300,6 +346,27 @@ their uid) just goes dormant. `userMemberships/{uid}.clubIds` drops the clubId t
   club" (admin viewing someone else, same condition), both behind an `Alert.alert` confirm.
   `RequesterProfile` shows a "Welcome back" banner when the requester's own doc is a departed
   ghost, confirming the reactivation is automatic (no ghost needs picking).
+
+## Leaderboard (per-season stats)
+Recomputed client-side from ball data (`services/seasonLeaderboard.ts`'s
+`buildSeasonLeaderboard`) — **not** the all-time `careerStats` the backend writes. Only
+`status === 'completed'` matches count; abandoned matches are excluded (mirrors the
+backend: `onMatchCompleted`, the sole writer of `careerStats`/`playerPerformances`, never
+fires for `'abandoned'` either, so an abandoned match never counted toward all-time stats
+in the first place). `Leaderboard/index.tsx`'s `seasonsFrom` bucketing applies the same
+exclusion, so a season with only abandoned matches doesn't appear as a selectable option.
+
+Fielding tab intentionally displays/sorts by raw `catches + stumpings + runOuts` only —
+`buildSeasonLeaderboard` still computes `score`/`eventPoints` (a weighted rating that
+folds in negative-polarity fielding-event points, e.g. misfields) for other future
+consumers (AI insights), but the Leaderboard screen hides that number since the rating
+model isn't self-evident from a bare figure and negative-polarity events fan out to every
+tagged fielder at full weight (one misfield with 2 fielders selected = two separate `-3`s,
+not one) — easy to misread as "more bad plays happened than actually did."
+
+Screen refetches on focus (`useFocusEffect`) rather than relying on a fresh mount, so e.g.
+deleting a match on the Matches screen and returning here reflects it without a manual
+pull-to-refresh.
 
 ## Self-service claim lifecycle (PLANNED — NOT implemented)
 Stats resolver only PREVIEWS a claim snapshot. Ghost→member linking is admin-only today.
@@ -427,7 +494,7 @@ Critical regression targets on every release (must all PASS):
 - F16: Bye/LB run picker shows 1–6
 - F20/F21: Non-striker run-out toggle (WHO WAS RUN OUT? card)
 - F26: maxBowlerOvers cap excludes bowler from picker
-- C7: Abandoned match excluded from prevMatch
+- C7: Abandoned match excluded from prevMatch and from Leaderboard season stats
 - C2/C3/C4/C5/M4: Linked ghost excluded from all squad reuse paths
 - G4: BowlerRow economy uses match ballsPerOver, not hardcoded 6
 - J5: sealedRef guard prevents double match completion

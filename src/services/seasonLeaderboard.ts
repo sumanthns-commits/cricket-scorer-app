@@ -125,8 +125,12 @@ function tallyFielding(
 
 /**
  * Aggregate a per-season leaderboard from the season's matches. Only
- * completed/abandoned matches carry meaningful scorecards; scheduled and live
- * matches are skipped so partial innings don't distort averages.
+ * completed matches carry meaningful, stats-worthy scorecards — scheduled and
+ * live matches are skipped so partial innings don't distort averages, and
+ * abandoned matches are skipped too (mirrors the backend: onMatchCompleted,
+ * which is the sole writer of careerStats/playerPerformances, never fires for
+ * 'abandoned' — so an abandoned match's balls, however many were bowled,
+ * never counted toward any player's all-time stats either).
  *
  * Stats are derived ball-by-ball from each match's overs (career totals are
  * all-time and can't be sliced by season), reusing buildInningsCard per innings
@@ -137,9 +141,7 @@ export async function buildSeasonLeaderboard(
   matches: Match[],
   ghostToMember: Record<string, string> = {},
 ): Promise<SeasonLeaderboard> {
-  const played = matches.filter(
-    (m) => m.status === 'completed' || m.status === 'abandoned',
-  );
+  const played = matches.filter((m) => m.status === 'completed');
 
   const batting = new Map<string, BattingAcc>();
   const bowling = new Map<string, BowlingAcc>();

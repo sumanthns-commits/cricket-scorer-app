@@ -1,5 +1,6 @@
+import { useCallback } from 'react';
 import { View, Text, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -85,11 +86,21 @@ export default function HomeScreen() {
   const setActiveClubId = useClubStore((s) => s.setActiveClubId);
   const theme = useThemeStore((s) => s.theme);
 
-  const { data: clubsWithRoles, isLoading } = useQuery({
+  const { data: clubsWithRoles, isLoading, isRefetching, refetch } = useQuery({
     queryKey: ['clubsWithRoles', user?.uid],
     queryFn: () => getUserClubsWithRoles(user!.uid),
     enabled: !!user,
   });
+
+  // Refetch on focus — the Home tab stays mounted when switching tabs, so
+  // without this a newly-approved club membership (or one joined moments ago)
+  // never appears until the app is fully restarted (e.g. sign out/in), since
+  // the query is otherwise only ever fetched once per session.
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
 
   const handleMatchesPress = (club: Club) => {
     setActiveClubId(club.id);
@@ -137,9 +148,9 @@ export default function HomeScreen() {
 
       {isLoading ? (
         <ActivityIndicator color={theme.accent} style={{ marginTop: 40 }} />
-      ) : clubsWithRoles && clubsWithRoles.length > 0 ? (
+      ) : (
         <FlatList
-          data={clubsWithRoles}
+          data={clubsWithRoles ?? []}
           keyExtractor={({ club }) => club.id}
           renderItem={({ item: { club, isAdmin } }) => (
             <ClubCard
@@ -151,13 +162,20 @@ export default function HomeScreen() {
               onEditPress={() => navigation.navigate('EditClub', { clubId: club.id })}
             />
           )}
+          // Kept scrollable/refreshable even with zero clubs — a
+          // freshly-approved join is otherwise stuck behind the empty state
+          // with no way to pull-to-refresh into seeing it.
+          contentContainerStyle={clubsWithRoles && clubsWithRoles.length > 0 ? undefined : { flexGrow: 1, justifyContent: 'center' }}
+          ListEmptyComponent={
+            <View style={{ alignItems: 'center' }}>
+              <Text style={{ color: theme.textMuted, fontSize: 16, textAlign: 'center' }}>
+                No clubs yet.{'\n'}Create your first club to get started.
+              </Text>
+            </View>
+          }
+          onRefresh={refetch}
+          refreshing={isRefetching}
         />
-      ) : (
-        <View style={{ alignItems: 'center', marginTop: 60 }}>
-          <Text style={{ color: theme.textMuted, fontSize: 16, textAlign: 'center' }}>
-            No clubs yet.{'\n'}Create your first club to get started.
-          </Text>
-        </View>
       )}
     </View>
   );

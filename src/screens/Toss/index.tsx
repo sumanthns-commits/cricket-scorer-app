@@ -6,7 +6,8 @@ import type { RouteProp } from '@react-navigation/native';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { getMatch, setMatchToss, createLiveMatch } from '../../services/matchService';
-import { getRegisteredClubMembers } from '../../services/clubService';
+import { getPlayer } from '../../services/playerProfileService';
+import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -23,8 +24,7 @@ export default function TossScreen() {
   const [flipped, setFlipped] = useState(false);
   const [flipping, setFlipping] = useState(false);
   const [coin, setCoin] = useState<'Heads' | 'Tails' | null>(null);
-  const [scorerId, setScorerId] = useState<string | null>(null);
-  const [scorerPickerOpen, setScorerPickerOpen] = useState(false);
+  const user = useAuthStore((s) => s.user);
 
   const flipAnim = useRef(new Animated.Value(0)).current;
 
@@ -34,12 +34,15 @@ export default function TossScreen() {
     enabled: !!matchId,
   });
 
-  const { data: members = [] } = useQuery({
-    queryKey: ['registeredMembers', clubId],
-    queryFn: () => getRegisteredClubMembers(clubId),
+  // Club-scoped display name (may differ from the Firebase Auth profile name
+  // — e.g. edited via PlayerProfileView) for whoever starts the match, who is
+  // auto-assigned as scorer below. Only reachable by an admin (gated at the
+  // Matches/ClubDetail nav level), so this player doc is guaranteed to exist.
+  const { data: myPlayer } = useQuery({
+    queryKey: ['player', clubId, user?.uid],
+    queryFn: () => getPlayer(clubId, user!.uid),
+    enabled: !!user,
   });
-
-  const selectedScorer = members.find(m => m.id === scorerId);
 
   const flipCoin = () => {
     if (flipping) return;
@@ -61,7 +64,11 @@ export default function TossScreen() {
   const { mutate: confirm, isPending, error } = useMutation({
     mutationFn: async () => {
       if (!winnerId || !choice) throw new Error('Select toss winner and choice');
-      const scorer = selectedScorer ? { scorerId: selectedScorer.id, scorerName: selectedScorer.displayName } : undefined;
+      if (!user) throw new Error('Not signed in');
+      // Whoever starts the match is automatically the scorer — no picker, so
+      // there's never more than one admin with scoring controls on this match
+      // (LiveScoring's routing/isMatchScorer check keys off exactly this field).
+      const scorer = { scorerId: user.uid, scorerName: myPlayer?.displayName ?? user.displayName ?? user.email ?? 'Scorer' };
 
       if (matchDraft) {
         // Draft mode: create match and set toss in a single shot
@@ -182,48 +189,16 @@ export default function TossScreen() {
         </View>
       )}
 
-      {/* Scorer picker */}
-      <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 8 }}>SCORER (OPTIONAL)</Text>
-      <TouchableOpacity
-        onPress={() => setScorerPickerOpen(o => !o)}
-        style={{ backgroundColor: theme.surface, borderRadius: 8, padding: 14, borderWidth: 1, borderColor: scorerId ? theme.accent : theme.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}
-      >
-        <Text style={{ color: scorerId ? theme.accent : theme.textMuted, fontSize: 15, fontWeight: scorerId ? '600' : '400' }}>
-          {selectedScorer ? selectedScorer.displayName : 'Assign a scorer…'}
+      {/* Scorer — always whoever starts the match, no picker */}
+      <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 8 }}>SCORER</Text>
+      <View style={{ backgroundColor: theme.surface, borderRadius: 8, padding: 14, borderWidth: 1, borderColor: theme.border, marginBottom: 16 }}>
+        <Text style={{ color: theme.text, fontSize: 15, fontWeight: '600' }}>
+          {myPlayer?.displayName ?? user?.displayName ?? user?.email ?? 'You'}
         </Text>
-        <Text style={{ color: theme.textMuted }}>{scorerPickerOpen ? '▲' : '▼'}</Text>
-      </TouchableOpacity>
-
-      {scorerPickerOpen && (
-        <View style={{ backgroundColor: theme.surface, borderRadius: 8, borderWidth: 1, borderColor: theme.border, marginBottom: 16, maxHeight: 180, overflow: 'hidden' }}>
-          <ScrollView>
-            {scorerId !== null && (
-              <TouchableOpacity
-                onPress={() => { setScorerId(null); setScorerPickerOpen(false); }}
-                style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: theme.border }}
-              >
-                <Text style={{ color: '#dc2626', fontSize: 14 }}>✕ Remove scorer</Text>
-              </TouchableOpacity>
-            )}
-            {members.length === 0 && (
-              <Text style={{ color: theme.textMuted, padding: 14, fontSize: 14 }}>No registered members found</Text>
-            )}
-            {members.map((m, i) => (
-              <TouchableOpacity
-                key={m.id}
-                onPress={() => { setScorerId(m.id); setScorerPickerOpen(false); }}
-                style={{ padding: 14, borderBottomWidth: i < members.length - 1 ? 1 : 0, borderBottomColor: theme.border, backgroundColor: scorerId === m.id ? theme.accentDim : 'transparent' }}
-              >
-                <Text style={{ color: scorerId === m.id ? theme.accent : theme.text, fontSize: 15, fontWeight: scorerId === m.id ? '600' : '400' }}>
-                  {m.displayName}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
-
-      {!scorerPickerOpen && <View style={{ marginBottom: 16 }} />}
+        <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
+          You're starting this match, so you'll be the only one with scoring controls.
+        </Text>
+      </View>
 
       {error instanceof Error && (
         <Text style={{ color: '#dc2626', textAlign: 'center', marginBottom: 12 }}>{error.message}</Text>

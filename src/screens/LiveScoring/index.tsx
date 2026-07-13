@@ -39,6 +39,18 @@ import { useWagonViewStore } from '../../store/wagonViewStore';
 import { recordBall } from '../../services/scoringEngine';
 import { buildCommentary } from '../../services/commentary';
 import Commentary from '../../components/Commentary';
+import { ScoreHeader, BatterRow, BowlerRow, BallCircle } from '../../components/LiveScoreboard';
+import {
+  buildDismissalText,
+  buildInningsFromBalls,
+  battingForInnings,
+  bowlingForInnings,
+  emptyBatterStats,
+  emptyBowlerStats,
+  type BatterStats,
+  type BowlerStats,
+  type InningsState,
+} from '../../services/inningsState';
 import { RHB_WAGON_LABELS, LHB_WAGON_LABELS } from '../../constants/wagonPositions';
 import { MatchStatsContent } from '../MatchStats';
 import type {
@@ -46,7 +58,6 @@ import type {
   BallEntry,
   ClubRules,
   CustomDismissal,
-  DismissalEntry,
   ExtrasType,
   Match,
   Player,
@@ -54,45 +65,6 @@ import type {
   WagonShot,
 } from '../../types';
 import type { BallInput, DismissalConfig } from '../../services/scoringEngine';
-
-// ─── Local types ────────────────────────────────────────────────────
-
-interface BatterStats {
-  runs: number;
-  balls: number;
-  fours: number;
-  sixes: number;
-  isOut: boolean;
-  dismissalText?: string;
-}
-
-interface BowlerStats {
-  legalBalls: number;
-  completedOvers: number;
-  runsConceded: number;
-  wickets: number;
-}
-
-interface InningsState {
-  inningsId: string;
-  battingIds: string[];
-  bowlingIds: string[];
-  totalRuns: number;
-  totalWickets: number;
-  overNumber: number;
-  legalBallsInOver: number;
-  onStrikeId: string;
-  offStrikeId: string;
-  bowlerId: string;
-  batterStats: Record<string, BatterStats>;
-  bowlerStats: Record<string, BowlerStats>;
-  currentOverBalls: BallEntry[];
-  // Last 3 balls of the over immediately before overNumber — shown ahead of
-  // currentOverBalls so the ball strip doesn't go blank the instant a new
-  // over starts. Empty for the innings' first over.
-  previousOverBalls: BallEntry[];
-  handedness: Record<string, 'RHB' | 'LHB'>;
-}
 
 // Snapshot includes the ball ID that produced this state so undo can
 // restore lastBallIdRef correctly (needed for subsequent handleNewBatter calls).
@@ -1038,221 +1010,10 @@ function SelectPlayerModal({
 // spots and drop off one at a time as the current over's balls fill in.
 const BALL_STRIP_SIZE = 6;
 
-function BallCircle({ ball, dim }: { ball: BallEntry; dim?: boolean }) {
-  const theme = useThemeStore((s) => s.theme);
-  const isDot = ball.runs === 0 && !ball.extras && !ball.dismissal;
-  const isWicket = !!ball.dismissal;
-  const isWide = ball.extras?.type === 'wide';
-  const isNoBall = ball.extras?.type === 'no-ball';
-  const isFour = ball.runs === 4 && !ball.extras;
-  const isSix = ball.runs === 6 && !ball.extras;
-
-  const sixBg = theme.id === 'light' ? '#ede9fe' : '#2d1a5f';
-  const bg = isWicket ? '#dc2626' : isSix ? sixBg : isFour ? theme.accentDim : theme.surface;
-  const border = isWicket ? '#dc2626' : isSix ? '#a78bfa' : isFour ? theme.accent : theme.border;
-  const textColor = isWicket ? '#ffffff' : isSix ? '#a78bfa' : isFour ? theme.accent : theme.textSecondary;
-  const label = isWicket
-    ? 'W'
-    : isWide
-    ? `W${ball.extras!.runs > 1 ? ball.extras!.runs : ''}`
-    : isNoBall
-    ? `NB${ball.runs > 0 ? `+${ball.runs}` : ''}`
-    : isDot
-    ? '•'
-    : String(ball.runs + (ball.extras?.runs ?? 0));
-
-  return (
-    <View
-      style={{
-        width: 34, height: 34, borderRadius: 17,
-        backgroundColor: bg,
-        borderWidth: 1.5, borderColor: border,
-        alignItems: 'center', justifyContent: 'center',
-        marginRight: 6,
-        opacity: dim ? 0.45 : 1,
-      }}
-    >
-      <Text style={{ color: textColor, fontSize: 12, fontWeight: '700' }}>
-        {label}
-      </Text>
-    </View>
-  );
-}
-
-// ─── Score header ─────────────────────────────────────────────────────
-
-function ScoreHeader({
-  runs, wickets, overNumber, legalBalls, ballsPerOver, matchName,
-}: {
-  runs: number; wickets: number; overNumber: number; legalBalls: number; ballsPerOver: number; matchName: string;
-}) {
-  const theme = useThemeStore((s) => s.theme);
-  const oversDisplay = `${overNumber}.${legalBalls}`;
-  const ballsBowled = overNumber * ballsPerOver + legalBalls;
-  const crr = ballsBowled > 0 ? ((runs * ballsPerOver) / ballsBowled).toFixed(2) : '0.00';
-  return (
-    <View style={{ backgroundColor: theme.surface, padding: 20, paddingTop: 16 }}>
-      <Text style={{ color: theme.textMuted, fontSize: 13, textAlign: 'center', marginBottom: 4 }}>{matchName}</Text>
-      <Text style={{ color: theme.text, fontSize: 52, fontWeight: '800', textAlign: 'center', lineHeight: 58 }}>
-        {runs}<Text style={{ color: theme.textMuted, fontSize: 32, fontWeight: '600' }}>/{wickets}</Text>
-      </Text>
-      <Text style={{ color: theme.textSecondary, fontSize: 16, textAlign: 'center' }}>
-        {oversDisplay} ov{ballsPerOver !== 6 ? ` (${ballsPerOver} ball overs)` : ''} · CRR {crr}
-      </Text>
-    </View>
-  );
-}
-
-// ─── Batter row ───────────────────────────────────────────────────────
-
-function BatterRow({
-  player,
-  stats,
-  onStrike,
-  hand,
-  onToggleHand,
-  onEdit,
-  showStrikeHint,
-}: {
-  player: Player | undefined;
-  stats: BatterStats;
-  onStrike: boolean;
-  hand: 'RHB' | 'LHB';
-  onToggleHand: () => void;
-  onEdit?: () => void;
-  showStrikeHint?: boolean;
-}) {
-  const theme = useThemeStore((s) => s.theme);
-  const sr = stats.balls > 0 ? ((stats.runs / stats.balls) * 100).toFixed(0) : '–';
-  return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.border,
-      }}
-    >
-      {/* Strike bar */}
-      <View
-        style={{
-          width: 4, height: 36, borderRadius: 2,
-          backgroundColor: onStrike ? theme.accent : 'transparent',
-          marginRight: 10,
-          shadowColor: onStrike ? theme.accent : 'transparent',
-          shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: onStrike ? 0.9 : 0,
-          shadowRadius: 6,
-        }}
-      />
-
-      <View style={{ flex: 1 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>
-            {player?.displayName ?? '–'}
-          </Text>
-          {onStrike ? (
-            <View style={{ backgroundColor: theme.accentDim, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
-              <Text style={{ color: theme.accent, fontSize: 10, fontWeight: '700' }}>ON STRIKE</Text>
-            </View>
-          ) : showStrikeHint ? (
-            <Text style={{ color: theme.textMuted, fontSize: 10, fontWeight: '600', fontStyle: 'italic' }}>tap to face</Text>
-          ) : null}
-        </View>
-        <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 1 }}>
-          SR {sr} · {stats.fours}×4 · {stats.sixes}×6
-        </Text>
-      </View>
-
-      {onEdit && (
-        <TouchableOpacity onPress={onEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 8, marginRight: 4 }}>
-          <Text style={{ color: theme.accent, fontSize: 15 }}>✎</Text>
-        </TouchableOpacity>
-      )}
-
-      <TouchableOpacity
-        onPress={onToggleHand}
-        style={{
-          paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6,
-          backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
-          marginRight: 14,
-        }}
-      >
-        <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>{hand}</Text>
-      </TouchableOpacity>
-
-      <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800', minWidth: 36, textAlign: 'right' }}>
-        {stats.runs}
-      </Text>
-      <Text style={{ color: theme.textMuted, fontSize: 13, marginLeft: 2, minWidth: 28 }}>
-        ({stats.balls})
-      </Text>
-    </View>
-  );
-}
-
-// ─── Bowler row ───────────────────────────────────────────────────────
-
-function BowlerRow({
-  player,
-  stats,
-  ballsPerOver,
-  onEdit,
-}: {
-  player: Player | undefined;
-  stats: BowlerStats;
-  ballsPerOver: number;
-  onEdit?: () => void;
-}) {
-  const theme = useThemeStore((s) => s.theme);
-  const oversFull = stats.completedOvers + (stats.legalBalls % ballsPerOver) / 10;
-  const economy = stats.legalBalls > 0
-    ? ((stats.runsConceded / stats.legalBalls) * ballsPerOver).toFixed(1)
-    : '–';
-  return (
-    <View
-      style={{
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 16, paddingVertical: 10,
-        backgroundColor: theme.surfaceAlt,
-        borderBottomWidth: 1, borderBottomColor: theme.border,
-      }}
-    >
-      <Text style={{ color: theme.textMuted, fontSize: 13, marginRight: 8 }}>🎯</Text>
-      <Text style={{ color: theme.textSecondary, fontSize: 14, flex: 1 }}>{player?.displayName ?? '–'}</Text>
-      {onEdit && (
-        <TouchableOpacity onPress={onEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 8, marginRight: 6 }}>
-          <Text style={{ color: theme.accent, fontSize: 15 }}>✎</Text>
-        </TouchableOpacity>
-      )}
-      <Text style={{ color: theme.textSecondary, fontSize: 13 }}>
-        {oversFull.toFixed(1)}-0-{stats.runsConceded}-{stats.wickets}
-      </Text>
-      <Text style={{ color: theme.textMuted, fontSize: 12, marginLeft: 10 }}>econ {economy}</Text>
-    </View>
-  );
-}
-
-// ─── Dismissal text ──────────────────────────────────────────────────
-
-function buildDismissalText(d: DismissalEntry, getName: (id: string) => string): string {
-  const bowler = d.bowlerId ? getName(d.bowlerId) : '';
-  const fielderIds = d.fielderIds ?? (d.fielderId ? [d.fielderId] : []);
-  const fielder = fielderIds.map(getName).join(' & ');
-  switch (d.type) {
-    case 'bowled': return `b ${bowler}`;
-    case 'lbw': return `lbw b ${bowler}`;
-    case 'caught': return fielder ? `c ${fielder} b ${bowler}` : `c & b ${bowler}`;
-    case 'stumped': return `st ${fielder} b ${bowler}`;
-    case 'run-out': return fielder ? `run out (${fielder})` : 'run out';
-    case 'hit-wicket': return `hit wkt b ${bowler}`;
-    case 'obstructing-field': return 'obstructing field';
-    case 'timed-out': return 'timed out';
-    default: return d.type;
-  }
-}
+// ScoreHeader, BatterRow, BowlerRow, BallCircle now live in
+// ../../components/LiveScoreboard (shared with MatchScorecard's read-only
+// live view for spectators). buildDismissalText now lives in
+// ../../services/inningsState alongside buildInningsFromBalls, which needs it.
 
 // ─── Scorecard ───────────────────────────────────────────────────────
 
@@ -1497,15 +1258,7 @@ function TeamsTab({
   );
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────
-
-function emptyBatterStats(): BatterStats {
-  return { runs: 0, balls: 0, fours: 0, sixes: 0, isOut: false };
-}
-
-function emptyBowlerStats(): BowlerStats {
-  return { legalBalls: 0, completedOvers: 0, runsConceded: 0, wickets: 0 };
-}
+// emptyBatterStats/emptyBowlerStats now live in ../../services/inningsState.
 
 // ─── Main screen ─────────────────────────────────────────────────────
 
@@ -1751,199 +1504,9 @@ export default function LiveScoringScreen() {
     setPhase(resolvedPhase);
   }
 
-  // Builds InningsState from BallDocs.
-  // Stats are replayed from ball documents; crease state is computed from the last ball.
-  function buildInningsFromBalls(
-    balls: BallDoc[],
-    m: Match,
-    n: number,
-    localPlayers: Player[] = [],
-    autoRotateEoO: boolean,
-  ): InningsState {
-    const battingIds = battingForInnings(m, n);
-    const bowlingIds = bowlingForInnings(m, n);
-    const localNameMap = Object.fromEntries(localPlayers.map((p) => [p.id, p.displayName]));
-
-    const batterStats: Record<string, BatterStats> = {};
-    const bowlerStats: Record<string, BowlerStats> = {};
-    const bowlerCompletedOvers = new Map<string, Set<number>>();
-
-    for (const ball of balls) {
-      // Runs and balls credited to the on-striker (batsmanId)
-      if (!batterStats[ball.batsmanId]) batterStats[ball.batsmanId] = emptyBatterStats();
-      const bat = batterStats[ball.batsmanId];
-      const isLegal = ball.extras?.type !== 'wide' && ball.extras?.type !== 'no-ball';
-      bat.runs += ball.runs;
-      if (isLegal) bat.balls++;
-      if (ball.runs === 4 && !ball.extras) bat.fours++;
-      if (ball.runs === 6 && !ball.extras) bat.sixes++;
-
-      // Dismissal attributed to outBatsmanId (on-striker or non-striker)
-      if (ball.dismissal) {
-        const outId = ball.dismissal.outBatsmanId;
-        if (!batterStats[outId]) batterStats[outId] = emptyBatterStats();
-        const dismissedBat = batterStats[outId];
-        dismissedBat.isOut = true;
-        const getName = (id: string) => localNameMap[id] ?? id;
-        dismissedBat.dismissalText = buildDismissalText(
-          { type: ball.dismissal.type, fielderIds: ball.dismissal.fielderIds, bowlerId: ball.bowlerId },
-          getName,
-        );
-      }
-
-      // Bowler stats
-      if (!bowlerStats[ball.bowlerId]) bowlerStats[ball.bowlerId] = emptyBowlerStats();
-      const bow = bowlerStats[ball.bowlerId];
-      const extrasType = ball.extras?.type;
-      const byeLB = (extrasType === 'bye' || extrasType === 'leg-bye') ? (ball.extras?.runs ?? 0) : 0;
-      const isWideNoBall = extrasType === 'wide' || extrasType === 'no-ball';
-      bow.runsConceded += ball.runs + (isWideNoBall ? (ball.extras?.runs ?? 0) : 0) - byeLB;
-      if (isLegal) bow.legalBalls++;
-      if (ball.dismissal) bow.wickets++;
-      if (ball.isLastBallOfOver) {
-        if (!bowlerCompletedOvers.has(ball.bowlerId)) bowlerCompletedOvers.set(ball.bowlerId, new Set());
-        bowlerCompletedOvers.get(ball.bowlerId)!.add(ball.overNumber);
-      }
-    }
-
-    for (const [bowlerId, overs] of bowlerCompletedOvers) {
-      if (!bowlerStats[bowlerId]) bowlerStats[bowlerId] = emptyBowlerStats();
-      bowlerStats[bowlerId].completedOvers = overs.size;
-    }
-
-    const lastBall = balls[balls.length - 1];
-
-    // Compute crease state from the last ball using rotation logic
-    const lastOverNumber = lastBall?.overNumber ?? 0;
-    const activeOverNumber = lastBall?.isLastBallOfOver ? lastOverNumber + 1 : lastOverNumber;
-
-    // Count legal balls in the current (active) over
-    const legalBallsInCurrentOver = balls.filter(
-      (b) => b.overNumber === activeOverNumber && b.extras?.type !== 'wide' && b.extras?.type !== 'no-ball',
-    ).length;
-
-    // Derive on-striker and non-striker after the last ball
-    let onStrikeId = '';
-    let offStrikeId = '';
-    let currentBowlerId = '';
-
-    if (lastBall) {
-      const isLoneBatter = lastBall.nonStrikerId === '';
-      const next = computeNextBatsmen(lastBall, autoRotateEoO, isLoneBatter);
-      onStrikeId = next.onStrikeId;
-      offStrikeId = next.offStrikeId;
-      currentBowlerId = lastBall.isLastBallOfOver ? '' : lastBall.bowlerId;
-    }
-
-    // Seed empty stats for current crease pair
-    if (onStrikeId && !batterStats[onStrikeId]) batterStats[onStrikeId] = emptyBatterStats();
-    if (offStrikeId && !batterStats[offStrikeId]) batterStats[offStrikeId] = emptyBatterStats();
-
-    // Current over balls (for display in the scoring row)
-    const toBallEntry = (b: BallDoc): BallEntry => ({
-      batsmanId: b.dismissal?.nonStrikerOut ? b.nonStrikerId : b.batsmanId,
-      runs: b.runs,
-      extras: b.extras as BallEntry['extras'],
-      dismissal: b.dismissal ? { type: b.dismissal.type, fielderIds: b.dismissal.fielderIds } : undefined,
-      wagon: b.wagon,
-      fielding: b.fielding,
-      onStrikeId: b.dismissal?.nonStrikerOut ? b.batsmanId : undefined,
-    });
-    const currentOverBalls: BallEntry[] = balls
-      .filter((b) => b.overNumber === activeOverNumber && !b.isLastBallOfOver)
-      .map(toBallEntry);
-    // Last 3 balls of the previous over, for continuity when the current
-    // over is still empty (or short) right after a fresh over starts.
-    const previousOverBalls: BallEntry[] = balls
-      .filter((b) => b.overNumber === activeOverNumber - 1)
-      .slice(-3)
-      .map(toBallEntry);
-
-    // Count total wickets = number of balls with dismissals
-    const totalWickets = balls.filter((b) => !!b.dismissal).length;
-    // Count total runs = sum of all runs + extras
-    const totalRuns = balls.reduce((acc, b) => acc + b.runs + (b.extras?.runs ?? 0), 0);
-
-    return {
-      inningsId: `innings-${n}`,
-      battingIds,
-      bowlingIds,
-      totalRuns,
-      totalWickets,
-      overNumber: activeOverNumber,
-      legalBallsInOver: legalBallsInCurrentOver,
-      onStrikeId,
-      offStrikeId,
-      bowlerId: currentBowlerId,
-      batterStats,
-      bowlerStats,
-      currentOverBalls,
-      previousOverBalls,
-      handedness: {},
-    };
-  }
-
-  // Computes who should face the next delivery after a given ball.
-  function computeNextBatsmen(
-    ball: BallDoc,
-    autoRotateEoO: boolean,
-    isLoneBatter: boolean,
-  ): { onStrikeId: string; offStrikeId: string } {
-    const physRuns = (ball.extras?.type === 'wide' || ball.extras?.type === 'no-ball')
-      ? ball.runs + (ball.extras?.runs ?? 0) - 1
-      : ball.runs;
-
-    if (ball.dismissal && !isLoneBatter) {
-      const isNonStrikerOut = ball.dismissal.nonStrikerOut;
-      // Run-outs: must mirror commitBall's crossedOnRunOut exactly — always
-      // assume the batsmen crossed on the run that got them out, so an even
-      // completedRuns count (including 0) means crossed, odd means not. Other
-      // dismissal types never involve crossing (and never carry nonzero runs).
-      const crossedOnRunOut = ball.dismissal.type === 'run-out'
-        ? physRuns % 2 === 0
-        : physRuns % 2 !== 0;
-      const eooSwap = ball.isLastBallOfOver && autoRotateEoO;
-      const survivorIsOnStrike = (isNonStrikerOut !== crossedOnRunOut) !== eooSwap;
-      const survivorId = isNonStrikerOut ? ball.batsmanId : ball.nonStrikerId;
-      const replacementId = ball.dismissal.nextBatsmanId ?? '';
-      return survivorIsOnStrike
-        ? { onStrikeId: survivorId, offStrikeId: replacementId }
-        : { onStrikeId: replacementId, offStrikeId: survivorId };
-    }
-
-    let onStrike = ball.batsmanId;
-    let offStrike = ball.nonStrikerId;
-    if (!isLoneBatter) {
-      const runRotate = physRuns % 2 !== 0;
-      const eooRotate = ball.isLastBallOfOver && autoRotateEoO;
-      if (runRotate !== eooRotate) [onStrike, offStrike] = [offStrike, onStrike];
-    }
-    return { onStrikeId: onStrike, offStrikeId: offStrike };
-  }
-
-  function firstInningsBatters(m: Match): string[] {
-    if (!m.toss) return m.teamA ?? [];
-    const tossWinnerBats =
-      (m.toss.winnerId === 'homeTeam' && m.toss.choice === 'bat') ||
-      (m.toss.winnerId === 'awayTeam' && m.toss.choice === 'field');
-    return tossWinnerBats ? (m.teamA ?? []) : (m.teamB ?? []);
-  }
-
-  function firstInningsBowlers(m: Match): string[] {
-    if (!m.toss) return m.teamB ?? [];
-    const tossWinnerBats =
-      (m.toss.winnerId === 'homeTeam' && m.toss.choice === 'bat') ||
-      (m.toss.winnerId === 'awayTeam' && m.toss.choice === 'field');
-    return tossWinnerBats ? (m.teamB ?? []) : (m.teamA ?? []);
-  }
-
-  // Teams swap for the 2nd innings: who bowled first now bats, and vice versa.
-  function battingForInnings(m: Match, n: number): string[] {
-    return n === 1 ? firstInningsBatters(m) : firstInningsBowlers(m);
-  }
-  function bowlingForInnings(m: Match, n: number): string[] {
-    return n === 1 ? firstInningsBowlers(m) : firstInningsBatters(m);
-  }
+  // buildInningsFromBalls, computeNextBatsmen, firstInningsBatters/Bowlers,
+  // and battingForInnings/bowlingForInnings now live in
+  // ../../services/inningsState (shared with MatchScorecard's live view).
 
   // 2nd-innings match result, e.g. "Team <captain name> won by 12 runs 🏆".
   // Falls back to the home/away team name when no captain is set. Shared by
@@ -2617,8 +2180,23 @@ export default function LiveScoringScreen() {
   const liveCustomDismissals: CustomDismissal[] =
     clubRules?.customDismissals ?? match?.rules.customDismissals ?? [];
   const substituteIds = match?.substitutes ?? [];
+  // Both teams' full squads are selectable as fielders by default (not just
+  // the bowling side) — a batting-team player can be called on to field
+  // (12th man, mixed/social games, wrong-team mishaps, etc.) without an admin
+  // first having to add them as a "substitute" purely to unlock the picker.
+  // `substituteIds` still folds in genuine bench subs who aren't on either
+  // team's roster at all. The two batters currently at the crease are always
+  // excluded — they can't simultaneously be the fielder credited on the same
+  // ball that dismisses/faces them.
   const fieldingPlayers = innings
-    ? players.filter((p) => innings.bowlingIds.includes(p.id) || substituteIds.includes(p.id))
+    ? players.filter(
+        (p) =>
+          (innings.battingIds.includes(p.id) ||
+            innings.bowlingIds.includes(p.id) ||
+            substituteIds.includes(p.id)) &&
+          p.id !== innings.onStrikeId &&
+          p.id !== innings.offStrikeId
+      )
     : [];
   const enabledFieldingEvents = (clubRules?.fieldingEvents ?? []).filter((e) => e.enabled);
   // Scope 'both' (and absent/legacy) appears in both contexts; 'wicket' only on the
