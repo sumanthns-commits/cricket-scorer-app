@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, Modal, Pressable } from 'react-native';
 import { useFocusEffect, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
@@ -181,12 +181,23 @@ export default function LeaderboardScreen() {
   // it's gated on the same `activeSeason && base` condition as the query
   // itself — a club with zero completed matches has no activeSeason, and
   // `board`'s queryFn non-null-asserts it, which would throw on every focus.
+  // Read via refs, NOT captured in the useCallback's deps: useFocusEffect's
+  // underlying effect re-runs (immediately, while still focused) whenever the
+  // callback's identity changes, not just on real navigation focus events —
+  // putting activeSeason/base in the deps meant every refetch produced a new
+  // base/activeSeason, which changed the callback, which re-triggered the
+  // effect, which refetched again — an infinite loop the leaderboard's
+  // perpetual loading spinner was a symptom of.
+  const activeSeasonRef = useRef(activeSeason);
+  activeSeasonRef.current = activeSeason;
+  const baseRef = useRef(base);
+  baseRef.current = base;
   useFocusEffect(
     useCallback(() => {
       refetchBase().then(() => {
-        if (activeSeason && base) refetchBoard();
+        if (activeSeasonRef.current && baseRef.current) refetchBoard();
       });
-    }, [refetchBase, refetchBoard, activeSeason, base])
+    }, [refetchBase, refetchBoard])
   );
 
   const nameOf = (id: string) => base?.nameMap[id] ?? id;
