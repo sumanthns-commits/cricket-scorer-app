@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Alert, Switch } from 'react-native';
 import Constants from 'expo-constants';
 import { useNavigation } from '@react-navigation/native';
@@ -12,7 +13,7 @@ import { useClubStore } from '../../store/clubStore';
 import { useThemeStore } from '../../store/themeStore';
 import { THEMES } from '../../constants/themes';
 import PlayerProfileView from '../../components/PlayerProfileView';
-import { signOut } from '../../services/authService';
+import { signOut, deleteAccount } from '../../services/authService';
 import { getUserProfile, updateUserProfile } from '../../services/userProfileService';
 import type { AppUser } from '../../types';
 
@@ -145,6 +146,56 @@ function EditProfileButton() {
   );
 }
 
+function DeleteAccountButton() {
+  const setActiveClubId = useClubStore((s) => s.setActiveClubId);
+  const [deleting, setDeleting] = useState(false);
+
+  function handleDeleteAccount() {
+    Alert.alert(
+      'Delete account',
+      "This permanently deletes your account and sign-in. Your match history stays on record under your club(s), but your profile and personal data are erased. This can't be undone.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: () => {
+            setDeleting(true);
+            deleteAccount()
+              .then(() => setActiveClubId(null))
+              .catch((err: unknown) => {
+                setDeleting(false);
+                const message = err instanceof Error ? err.message : 'Please try again.';
+                Alert.alert("Couldn't delete account", message);
+              });
+          },
+        },
+      ]
+    );
+  }
+
+  return (
+    <TouchableOpacity
+      onPress={handleDeleteAccount}
+      disabled={deleting}
+      style={{
+        marginHorizontal: 16,
+        marginBottom: 16,
+        paddingVertical: 12,
+        alignItems: 'center',
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#dc2626',
+        opacity: deleting ? 0.6 : 1,
+      }}
+    >
+      <Text style={{ color: '#dc2626', fontSize: 14, fontWeight: '700' }}>
+        {deleting ? 'Deleting…' : 'Delete Account'}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 export default function ProfileScreen() {
   const user = useAuthStore((s) => s.user);
   const activeClubId = useClubStore((s) => s.activeClubId);
@@ -186,6 +237,7 @@ export default function ProfileScreen() {
         >
           <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '700' }}>Sign Out</Text>
         </TouchableOpacity>
+        <DeleteAccountButton />
       </ScrollView>
     );
   }
@@ -206,6 +258,7 @@ export default function ProfileScreen() {
       >
         <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '700' }}>Sign Out</Text>
       </TouchableOpacity>
+      <DeleteAccountButton />
       <Text style={{ textAlign: 'center', color: theme.textMuted, fontSize: 11, marginBottom: 16, opacity: 0.5 }}>
         v{Constants.expoConfig?.version ?? '—'}
       </Text>

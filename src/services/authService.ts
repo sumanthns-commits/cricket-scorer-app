@@ -6,6 +6,7 @@ import {
 } from 'firebase/firestore';
 import {
   GoogleAuthProvider,
+  OAuthProvider,
   signInWithCredential,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -16,10 +17,40 @@ import {
 import { FirebaseError } from 'firebase/app';
 import { db, auth } from './firebase';
 import { unregisterPushTokenAsync } from './pushTokenService';
+import { callCallableFunction } from './functionsClient';
 
 export async function signInWithGoogleIdToken(idToken: string): Promise<User> {
   const credential = GoogleAuthProvider.credential(idToken);
   const result = await signInWithCredential(auth, credential);
+  return result.user;
+}
+
+/**
+ * Apple's identityToken JWT already carries the email claim (Firebase
+ * extracts it into user.email automatically, same as Google), but NOT a
+ * name claim — Apple only hands back `fullName` out-of-band, and only on
+ * the very first authorization ever granted to this app. Without patching
+ * displayName in here, there's no later opportunity to backfill it.
+ */
+export async function signInWithAppleCredential(
+  identityToken: string,
+  rawNonce: string,
+  fullName?: { givenName?: string | null; familyName?: string | null } | null
+): Promise<User> {
+  const provider = new OAuthProvider('apple.com');
+  const credential = provider.credential({ idToken: identityToken, rawNonce });
+  const result = await signInWithCredential(auth, credential);
+
+  const displayName = [fullName?.givenName, fullName?.familyName].filter(Boolean).join(' ');
+  if (displayName) {
+    await updateProfile(result.user, { displayName });
+    // Written directly rather than left to initializeUserDocs' create-only-
+    // if-missing check — that runs from a separate onAuthStateChanged
+    // listener that races this function, so whichever finishes first must
+    // not leave users/{uid} with a blank name.
+    await setDoc(doc(db, 'users', result.user.uid), { displayName }, { merge: true });
+  }
+
   return result.user;
 }
 
@@ -54,6 +85,30 @@ export async function signOut(): Promise<void> {
   if (uid) {
     await unregisterPushTokenAsync(uid);
   }
+  if (process.env.EXPO_PUBLIC_USE_EMULATOR !== 'true') {
+    try {
+      const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+      await GoogleSignin.signOut();
+    } catch {
+      // non-fatal — Firebase sign-out still clears the session
+    }
+  }
+  await firebaseSignOut(auth);
+}
+
+/**
+ * Deletes the signed-in user's account: the deleteAccount Cloud Function
+ * ghosts their player doc in every club (careerStats untouched, mirroring
+ * leaveClub), then erases users/{uid}, userMemberships/{uid}, and the
+ * Firebase Auth user. Push token is unregistered first — it writes to
+ * users/{uid}, which no longer exists once the callable returns.
+ */
+export async function deleteAccount(): Promise<void> {
+  const uid = auth.currentUser?.uid;
+  if (uid) {
+    await unregisterPushTokenAsync(uid);
+  }
+  await callCallableFunction('deleteAccount', {});
   if (process.env.EXPO_PUBLIC_USE_EMULATOR !== 'true') {
     try {
       const { GoogleSignin } = require('@react-native-google-signin/google-signin');

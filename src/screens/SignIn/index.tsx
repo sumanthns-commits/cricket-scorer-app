@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 import {
   signInWithGoogleIdToken,
+  signInWithAppleCredential,
   signInWithEmulatorCredentials,
 } from '../../services/authService';
 
@@ -18,11 +21,27 @@ if (!USE_EMULATOR) {
   });
 }
 
+function randomHex(byteLength: number): string {
+  const bytes = Crypto.getRandomBytes(byteLength);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export default function SignInScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState('dev@example.com');
   const [password, setPassword] = useState('password');
+  // Apple Sign In (Guideline 4.8 — required alongside Google on iOS only;
+  // the module doesn't exist as a login option on Android, and
+  // isAvailableAsync() is additionally false on iOS devices signed out of
+  // iCloud/without an Apple ID, so the button must not just be hidden by
+  // Platform.OS alone).
+  const [appleAvailable, setAppleAvailable] = useState(false);
+
+  useEffect(() => {
+    if (USE_EMULATOR || Platform.OS !== 'ios') return;
+    AppleAuthentication.isAvailableAsync().then(setAppleAvailable);
+  }, []);
 
   const handleEmulatorSignIn = () => {
     setError(null);
@@ -44,6 +63,34 @@ export default function SignInScreen() {
       await signInWithGoogleIdToken(idToken);
     } catch (err) {
       console.error('[GoogleSignIn] error:', err);
+      setError('Sign-in failed. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const rawNonce = randomHex(16);
+      const hashedNonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce);
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+        nonce: hashedNonce,
+      });
+      if (!credential.identityToken) throw new Error('No identity token returned');
+      await signInWithAppleCredential(credential.identityToken, rawNonce, credential.fullName);
+    } catch (err) {
+      // User dismissing the native Apple sheet isn't a failure — no error banner for it.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((err as any)?.code === 'ERR_REQUEST_CANCELED') {
+        setLoading(false);
+        return;
+      }
+      console.error('[AppleSignIn] error:', err);
       setError('Sign-in failed. Please try again.');
       setLoading(false);
     }
@@ -79,6 +126,16 @@ export default function SignInScreen() {
           </Text>
         </TouchableOpacity>
       ) : null}
+
+      {!loading && appleAvailable && (
+        <AppleAuthentication.AppleAuthenticationButton
+          buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+          buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+          cornerRadius={10}
+          style={{ width: 240, height: 50, marginTop: 16 }}
+          onPress={handleAppleSignIn}
+        />
+      )}
 
       {error && (
         <Text style={{ color: '#dc2626', marginTop: 16, fontSize: 14 }}>
