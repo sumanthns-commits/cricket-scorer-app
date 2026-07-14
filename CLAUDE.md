@@ -347,6 +347,25 @@ their uid) just goes dormant. `userMemberships/{uid}.clubIds` drops the clubId t
   `RequesterProfile` shows a "Welcome back" banner when the requester's own doc is a departed
   ghost, confirming the reactivation is automatic (no ghost needs picking).
 
+## Account deletion (IMPLEMENTED)
+App Store Guideline 5.1.1(v): apps that support account creation must support in-app
+account deletion. `authService.ts`'s `deleteAccount()` calls the `deleteAccount` Cloud
+Function (functions repo), which ghosts the caller's player doc in every club they belong
+to (same end state as leaveClub — careerStats untouched — see "Leave club / remove member"
+above) and erases `users/{uid}`, `userMemberships/{uid}`, and the Firebase Auth user.
+Blocked (whole thing aborts, nothing partially deleted) if the caller is the sole admin of
+any one of their clubs — same last-admin guard as leaveClub/removeMember, surfaced as a
+Cloud Function error naming the club.
+
+Client-side ordering in `deleteAccount()`: unregisters the push token FIRST (it writes to
+`users/{uid}`, which no longer exists once the callable returns), then calls the callable,
+then signs out locally (Google + Firebase) — mirrors `signOut()`'s structure.
+
+UI: `Profile/index.tsx`'s `DeleteAccountButton` (rendered in both branches — with and
+without an active club), red outlined button below Sign Out, behind an `Alert.alert`
+confirm, with a loading state and an error Alert on failure (e.g. the last-admin guard
+tripping).
+
 ## Leaderboard (per-season stats)
 Recomputed client-side from ball data (`services/seasonLeaderboard.ts`'s
 `buildSeasonLeaderboard`) — **not** the all-time `careerStats` the backend writes. Only
@@ -435,6 +454,32 @@ Push delivery cannot be exercised in the iOS Simulator at all, and needs a nativ
 ## AI tools — DATA ONLY, no reasoning in tools
 Tools return structured JSON. LLM does all reasoning.
 Returns JSON teams + rationale → app parses → `createMatchTeams` Function persists.
+
+## Sign-in providers
+`SignIn/index.tsx` offers Google (all platforms) and Apple (iOS only — required alongside
+Google by App Store Guideline 4.8; the native module has nothing to offer on Android
+anyway). The Apple button is additionally gated by `AppleAuthentication.isAvailableAsync()`
+at runtime (checked in a mount effect) — `Platform.OS === 'ios'` alone isn't enough, since
+that's also false on a device signed out of iCloud/without an Apple ID.
+
+`authService.ts`'s `signInWithAppleCredential(identityToken, rawNonce, fullName)`:
+- Nonce: a random hex string is hashed (SHA-256, `expo-crypto`) and passed to
+  `AppleAuthentication.signInAsync`; the RAW nonce goes to Firebase's
+  `OAuthProvider('apple.com').credential()` — standard replay-protection handshake.
+- Apple's identityToken JWT already carries the email claim (Firebase auto-populates
+  `user.email` from it, same as Google's ID token) — but NOT a name claim. `fullName` is
+  only returned by Apple out-of-band on-device, and only on the very first-ever
+  authorization for this app (never again, even after reinstall, unless the user revokes
+  and re-grants access in Settings). `signInWithAppleCredential` writes `displayName` to
+  both the Firebase Auth profile (`updateProfile`) and `users/{uid}` (`setDoc merge:true`)
+  directly — NOT left to `initializeUserDocs`' create-only-if-missing check, since that
+  runs from a separate `onAuthStateChanged` listener that races this function; whichever
+  finishes first must not leave the doc with a blank name.
+
+`app.json` plugins include `expo-apple-authentication`, whose config plugin injects the
+`com.apple.developer.applesignin` entitlement into `ios/Crease/Crease.entitlements` at
+`expo prebuild` time (run by `build-ios.sh` on every build — `ios/` is gitignored and fully
+regenerated, so this entitlement must come from the plugin, never hand-edited).
 
 ## Auth
 Firebase ID token via `getAuth().currentUser.getIdToken(false)`
