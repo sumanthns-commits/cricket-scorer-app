@@ -1270,11 +1270,6 @@ export default function LiveScoringScreen() {
   const { clubId, matchId } = route.params;
   const user = useAuthStore((s) => s.user);
   const theme = useThemeStore((s) => s.theme);
-  // The SCORING tab's content (including the bottom-most "Abandon match"/
-  // "Delete match" button) is a plain flex column, not a ScrollView — with no
-  // bottom safe-area padding it can render flush against, or partly behind,
-  // a device's home indicator / gesture nav bar, making that button hard or
-  // impossible to tap.
   const insets = useSafeAreaInsets();
   const [isAdmin, setIsAdmin] = useState(false);
   const [phase, setPhase] = useState<Phase>('loading');
@@ -2444,8 +2439,12 @@ export default function LiveScoringScreen() {
         matchName={match ? `${match.homeTeam} vs ${match.awayTeam}` : ''}
       />
 
-      {/* Overs limit — editable during the 1st innings */}
-      {match?.rules.oversPerInnings != null && (
+      {/* Overs limit — editable during the 1st innings. Once the chase-target
+          banner below is showing (2nd innings), this is redundant with it
+          (RRR already implies the overs limit) and dropped to keep the two
+          banners from stacking — that stacked height is what pushed the
+          Wicket/Undo/Abandon row below the screen during a run-chase. */}
+      {match?.rules.oversPerInnings != null && !(inningsNumber === 2 && firstInningsRuns != null) && (
         <TouchableOpacity
           disabled={!canEditOvers}
           onPress={() => setShowEditOvers(true)}
@@ -2541,7 +2540,7 @@ export default function LiveScoringScreen() {
           over (dimmed, labelled "Prev") fill any spots the current over
           hasn't used yet, and drop off one at a time as each new ball fills
           the strip. */}
-      <View style={{ paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+      <View style={{ paddingHorizontal: 16, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
         {(() => {
           const previousSlots = Math.max(0, BALL_STRIP_SIZE - innings.currentOverBalls.length);
           const shownPrevious = previousSlots > 0 ? innings.previousOverBalls.slice(-previousSlots) : [];
@@ -2566,7 +2565,7 @@ export default function LiveScoringScreen() {
       </View>
 
       {/* Divider */}
-      <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 16, marginBottom: 12 }} />
+      <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 16, marginBottom: 8 }} />
 
       {isAdmin ? (
         <>
@@ -2600,7 +2599,7 @@ export default function LiveScoringScreen() {
           {/* Run buttons — 0-3, then 4/6/Custom (5 dropped: rare enough to
               route through Custom instead of costing its own slot) */}
           <View pointerEvents={scoringReady ? 'auto' : 'none'} style={{ opacity: scoringReady ? 1 : 0.4 }}>
-            <View style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8, marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8, marginBottom: 6 }}>
               {[0, 1, 2, 3].map((r) => (
                 <TouchableOpacity
                   key={r}
@@ -2608,7 +2607,7 @@ export default function LiveScoringScreen() {
                     startBall({ batsmanId: innings.onStrikeId, bowlerId: innings.bowlerId, runs: r })
                   }
                   style={{
-                    flex: 1, paddingVertical: 16, borderRadius: 10,
+                    flex: 1, paddingVertical: 13, borderRadius: 10,
                     backgroundColor: theme.surface,
                     borderWidth: 1.5,
                     borderColor: theme.border,
@@ -2619,7 +2618,7 @@ export default function LiveScoringScreen() {
                 </TouchableOpacity>
               ))}
             </View>
-            <View style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8, marginBottom: 10 }}>
+            <View style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8, marginBottom: 8 }}>
               {[4, 6].map((r) => (
                 <TouchableOpacity
                   key={r}
@@ -2627,7 +2626,7 @@ export default function LiveScoringScreen() {
                     startBall({ batsmanId: innings.onStrikeId, bowlerId: innings.bowlerId, runs: r })
                   }
                   style={{
-                    flex: 1, paddingVertical: 16, borderRadius: 10,
+                    flex: 1, paddingVertical: 13, borderRadius: 10,
                     backgroundColor: r === 4 ? theme.accentDim : r === 6 ? (theme.id === 'light' ? '#ede9fe' : '#2d1a5f') : theme.surface,
                     borderWidth: 1.5,
                     borderColor: r === 4 ? theme.accent : r === 6 ? '#a78bfa' : theme.border,
@@ -2645,7 +2644,7 @@ export default function LiveScoringScreen() {
               <TouchableOpacity
                 onPress={() => setShowCustomRuns(true)}
                 style={{
-                  flex: 1, paddingVertical: 16, borderRadius: 10,
+                  flex: 1, paddingVertical: 13, borderRadius: 10,
                   backgroundColor: theme.surface,
                   borderWidth: 1.5, borderStyle: 'dashed',
                   borderColor: theme.border,
@@ -2659,13 +2658,13 @@ export default function LiveScoringScreen() {
 
           {/* Extras row */}
           {enabledExtras.length > 0 && (
-            <View pointerEvents={scoringReady ? 'auto' : 'none'} style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8, marginBottom: 10, opacity: scoringReady ? 1 : 0.4 }}>
+            <View pointerEvents={scoringReady ? 'auto' : 'none'} style={{ flexDirection: 'row', paddingHorizontal: 12, gap: 8, marginBottom: 8, opacity: scoringReady ? 1 : 0.4 }}>
               {enabledExtras.map((type) => (
                 <TouchableOpacity
                   key={type}
                   onPress={() => handleExtra(type)}
                   style={{
-                    flex: 1, paddingVertical: 10, borderRadius: 8,
+                    flex: 1, paddingVertical: 8, borderRadius: 8,
                     backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
                     alignItems: 'center',
                   }}
@@ -2711,7 +2710,7 @@ export default function LiveScoringScreen() {
         {/* Delete (before first ball) or Abandon (after) */}
         <TouchableOpacity
           onPress={firstBallBowled ? handleAbandon : handleDeleteMatch}
-          style={{ alignSelf: 'center', paddingVertical: 14, marginTop: 4 }}
+          style={{ alignSelf: 'center', paddingVertical: 10, marginTop: 2 }}
         >
           <Text style={{ color: theme.textMuted, fontSize: 13, fontWeight: '600' }}>
             {firstBallBowled ? 'Abandon match' : 'Delete match'}
