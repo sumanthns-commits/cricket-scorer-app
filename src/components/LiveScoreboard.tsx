@@ -175,7 +175,7 @@ export function BallCircle({ ball, dim }: { ball: BallEntry; dim?: boolean }) {
   const label = isWicket
     ? 'W'
     : isWide
-    ? `W${ball.extras!.runs > 1 ? ball.extras!.runs : ''}`
+    ? `Wd${ball.extras!.runs > 1 ? ball.extras!.runs : ''}`
     : isNoBall
     ? `NB${ball.runs > 0 ? `+${ball.runs}` : ''}`
     : isDot
