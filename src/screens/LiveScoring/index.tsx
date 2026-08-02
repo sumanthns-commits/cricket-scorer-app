@@ -1476,9 +1476,19 @@ export default function LiveScoringScreen() {
     if (isComplete) return sealed ? 'innings-over' : 'end-pending';
     const last = balls[balls.length - 1];
     if (!last) return 'scoring';
-    if (last.dismissal) {
-      const replacementNeeded = !last.dismissal.nextBatsmanId;
-      if (replacementNeeded) {
+    if (last.dismissal && !last.dismissal.nextBatsmanId) {
+      // A dismissal with no persisted nextBatsmanId is ambiguous on its own:
+      // either a replacement genuinely wasn't picked yet, or (last man stands)
+      // the surviving partner was correctly left to bat on alone and no
+      // replacement was ever needed — commitBall never shows a picker or
+      // patches nextBatsmanId for that case (see the live 'new-batter' branch
+      // above). Disambiguate by checking whether anyone eligible is actually
+      // left to fill the empty crease slot; if not, this was last-man-stands
+      // continuation, not a stuck pick.
+      const replacementAvailable = inn.battingIds.some(
+        (id) => id !== inn.onStrikeId && id !== inn.offStrikeId && !inn.batterStats[id]?.isOut
+      );
+      if (replacementAvailable) {
         // computeNextBatsmen puts the survivor in the non-empty slot and leaves
         // the dismissed player's slot empty ('').  The replacement fills that slot.
         newBatterEndRef.current = inn.onStrikeId === '' ? 'onStrike' : 'offStrike';
@@ -2776,6 +2786,16 @@ export default function LiveScoringScreen() {
         players={nextBatters}
         excludeIds={[]}
         onSelect={handleNewBatter}
+        // Safety net: `nextBatters` should never be empty while this phase is
+        // reachable, but if some other edge case gets here anyway with no
+        // candidates, the scorer needs a way out rather than being trapped on
+        // a picker with nothing to pick and no cancel button. Mirrors the
+        // header/hardware-back redirect above — bails out to Matches without
+        // touching any already-committed ball data.
+        onClose={() => {
+          redirectingToMatchesRef.current = true;
+          navigation.reset({ index: 0, routes: [{ name: 'Tabs', params: { screen: 'Matches' } }] });
+        }}
       />
 
       <SelectPlayerModal
