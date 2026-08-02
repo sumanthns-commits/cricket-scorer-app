@@ -107,10 +107,11 @@ export function formatDismissal(
 ): string {
   if (!dismissal) return 'not out';
 
-  const custom = customDismissals.find((d) => d.id === dismissal.type);
-  if (custom) return custom.label;
-
   const bowler = dismissal.bowlerId ? nameOf(dismissal.bowlerId) : '';
+
+  const custom = customDismissals.find((d) => d.id === dismissal.type);
+  if (custom) return custom.bowlerGetsWicket && bowler ? `${custom.label} - b ${bowler}` : custom.label;
+
   const fielders = dismissal.fielderIds?.length
     ? dismissal.fielderIds.map(nameOf).join('/')
     : dismissal.fielderId

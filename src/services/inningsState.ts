@@ -1,4 +1,4 @@
-import type { BallDoc, BallEntry, DismissalEntry, Match, Player } from '../types';
+import type { BallDoc, BallEntry, CustomDismissal, DismissalEntry, Match, Player } from '../types';
 
 // Live/replay-able snapshot of one innings' crease state and per-player
 // stats. Built by buildInningsFromBalls from the raw ball sequence — shared
@@ -51,10 +51,16 @@ export function emptyBowlerStats(): BowlerStats {
   return { legalBalls: 0, completedOvers: 0, runsConceded: 0, wickets: 0 };
 }
 
-export function buildDismissalText(d: DismissalEntry, getName: (id: string) => string): string {
+export function buildDismissalText(
+  d: DismissalEntry,
+  getName: (id: string) => string,
+  customDismissals: CustomDismissal[] = [],
+): string {
   const bowler = d.bowlerId ? getName(d.bowlerId) : '';
   const fielderIds = d.fielderIds ?? (d.fielderId ? [d.fielderId] : []);
   const fielder = fielderIds.map(getName).join(' & ');
+  const custom = customDismissals.find((cd) => cd.id === d.type);
+  if (custom) return custom.bowlerGetsWicket && bowler ? `${custom.label} - b ${bowler}` : custom.label;
   switch (d.type) {
     case 'bowled': return `b ${bowler}`;
     case 'lbw': return `lbw b ${bowler}`;
@@ -167,6 +173,7 @@ export function buildInningsFromBalls(
       dismissedBat.dismissalText = buildDismissalText(
         { type: ball.dismissal.type, fielderIds: ball.dismissal.fielderIds, bowlerId: ball.bowlerId },
         getName,
+        m.rules.customDismissals,
       );
     }
 
