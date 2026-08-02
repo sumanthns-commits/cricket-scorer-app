@@ -14,7 +14,7 @@ import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useClubStore } from '../../store/clubStore';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
-import { getClubMatchesBySeason, deleteMatch, getMatchOvers } from '../../services/matchService';
+import { getClubMatchesBySeason, deleteMatch } from '../../services/matchService';
 import { getClub, getClubMember } from '../../services/clubService';
 import {
   currentSeasonInfo,
@@ -256,14 +256,7 @@ export default function MatchesScreen() {
     }
   };
 
-  const handleDelete = async (match: Match) => {
-    if (match.status === 'live') {
-      const overs = await getMatchOvers(match.clubId, match.id).catch(() => []);
-      if (overs.length > 0) {
-        Alert.alert('Match already started', 'It can only be abandoned (from the Live screen), not deleted.');
-        return;
-      }
-    }
+  const handleDelete = (match: Match) => {
     Alert.alert(
       'Delete match?',
       `Remove ${match.homeTeam} vs ${match.awayTeam}? This cannot be undone.`,
@@ -356,7 +349,7 @@ export default function MatchesScreen() {
               isScorer={isMatchScorer(item, user?.uid, isAdmin)}
               onPress={() => handleMatchPress(item)}
               onDelete={
-                isAdmin && (item.status === 'scheduled' || item.status === 'live' || item.status === 'abandoned')
+                isAdmin && (item.status === 'scheduled' || item.status === 'abandoned')
                   ? () => handleDelete(item)
                   : undefined
               }
