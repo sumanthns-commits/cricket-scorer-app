@@ -113,9 +113,9 @@ describe('extras', () => {
     expect(r.runsScored).toBe(1);
     expect(r.isLegalDelivery).toBe(false);
     expect(r.batterIsOut).toBe(false);
-    // odd runs XOR not-over = true: the engine formula rotates on 1-run wides.
-    // Screen can override for wides if desired; engine contract is correct.
-    expect(r.rotateStrike).toBe(true);
+    // Wide +0: only the mandatory penalty run, nobody physically ran, so the
+    // batsmen don't cross (see F7 in cricket-scorer-app/CLAUDE.md).
+    expect(r.rotateStrike).toBe(false);
   });
 
   test('no-ball: not legal, runs count', () => {
