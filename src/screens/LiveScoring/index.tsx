@@ -1719,7 +1719,8 @@ export default function LiveScoringScreen() {
         const getName = (id: string) => playerMap[id]?.displayName ?? id;
         dismissedBat.dismissalText = buildDismissalText(
           { ...input.dismissal, bowlerId: input.bowlerId },
-          getName
+          getName,
+          clubRules?.customDismissals ?? match.rules.customDismissals,
         );
       }
       newBatterStats[input.batsmanId] = dismissedBat;
