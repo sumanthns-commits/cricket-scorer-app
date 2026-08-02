@@ -68,6 +68,19 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+// Explicit JS-driven back button, used in place of native-stack's default
+// header back chevron on screens where it's been reported unresponsive on an
+// iOS beta (native-stack's back button is a real UIKit control — its
+// hit-testing is outside this app's control, so this sidesteps it entirely
+// rather than depending on the OS to render/hit-test it correctly).
+function backButton(navigation: { goBack: () => void }, color: string) {
+  return (
+    <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={12} style={{ padding: 4, marginLeft: -4 }}>
+      <Ionicons name="chevron-back" size={28} color={color} />
+    </TouchableOpacity>
+  );
+}
+
 export default function RootNavigator() {
   const user = useAuthStore((s) => s.user);
   const initialized = useAuthStore((s) => s.initialized);
@@ -105,8 +118,16 @@ export default function RootNavigator() {
         <>
           <Stack.Screen name="Tabs" component={TabNavigator} options={{ headerShown: false }} />
           <Stack.Screen name="CreateClub" component={CreateClubScreen} options={{ title: 'New Club' }} />
-          <Stack.Screen name="EditClub" component={EditClubScreen} options={{ title: 'Edit Club' }} />
-          <Stack.Screen name="ClubRulesAdmin" component={ClubRulesAdminScreen} options={{ title: 'Club Rules' }} />
+          <Stack.Screen
+            name="EditClub"
+            component={EditClubScreen}
+            options={({ navigation }) => ({ title: 'Edit Club', headerLeft: () => backButton(navigation, theme.text) })}
+          />
+          <Stack.Screen
+            name="ClubRulesAdmin"
+            component={ClubRulesAdminScreen}
+            options={({ navigation }) => ({ title: 'Club Rules', headerLeft: () => backButton(navigation, theme.text) })}
+          />
           <Stack.Screen name="ScheduleMatch" component={ScheduleMatchScreen} options={{ title: 'Schedule Match' }} />
           <Stack.Screen name="TeamBuilder" component={TeamBuilderScreen} options={{ title: 'Build Teams' }} />
           <Stack.Screen name="Toss" component={TossScreen} options={{ title: 'Toss' }} />
@@ -132,7 +153,11 @@ export default function RootNavigator() {
           <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ title: 'Leaderboard' }} />
           <Stack.Screen name="FindClubs" component={FindClubsScreen} options={{ title: 'Find Clubs' }} />
           <Stack.Screen name="ClubDetail" component={ClubDetailScreen} options={{ title: 'Club' }} />
-          <Stack.Screen name="JoinRequests" component={JoinRequestsScreen} options={{ title: 'Join Requests' }} />
+          <Stack.Screen
+            name="JoinRequests"
+            component={JoinRequestsScreen}
+            options={({ navigation }) => ({ title: 'Join Requests', headerLeft: () => backButton(navigation, theme.text) })}
+          />
           <Stack.Screen name="RequesterProfile" component={RequesterProfileScreen} options={{ title: 'Player' }} />
           <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: 'Edit Profile' }} />
         </>
