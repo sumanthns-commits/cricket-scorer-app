@@ -2438,7 +2438,14 @@ export default function LiveScoringScreen() {
       ) : tab === 'stats' ? (
         <MatchStatsContent clubId={clubId} matchId={matchId} />
       ) : (
-      <>
+      // Plain flex column, not previously scrollable — on a short screen
+      // (reported: fine on a 6.7" display, but the fixed content stack
+      // overflowed the viewport on a 6.1" one) the Wicket/Undo/Abandon row
+      // at the bottom could render past the visible area entirely, with no
+      // way to reach it. ScrollView guarantees it's always reachable
+      // regardless of device height, rather than relying on trimming
+      // padding to fit under some assumed worst-case screen size.
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }}>
       {/* Score header */}
       <ScoreHeader
         runs={innings.totalRuns}
@@ -2732,7 +2739,7 @@ export default function LiveScoringScreen() {
           <Text style={{ color: theme.textMuted, fontSize: 13 }}>Watching live</Text>
         </View>
       )}
-      </>
+      </ScrollView>
       )}
 
       {/* ── Modals ── */}
