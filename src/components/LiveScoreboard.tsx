@@ -9,9 +9,13 @@ import type { BatterStats, BowlerStats } from '../services/inningsState';
 // spectators (omits them, so rows render without any edit affordance).
 
 export function ScoreHeader({
-  runs, wickets, overNumber, legalBalls, ballsPerOver, matchName,
+  runs, wickets, overNumber, legalBalls, ballsPerOver, matchName, scorerName,
 }: {
   runs: number; wickets: number; overNumber: number; legalBalls: number; ballsPerOver: number; matchName: string;
+  // Shown to everyone viewing the match — both the scorer's own screen and
+  // spectators/other admins — so it's always visible who currently has
+  // scoring control (relevant now that scoring can be handed over mid-match).
+  scorerName?: string;
 }) {
   const theme = useThemeStore((s) => s.theme);
   const oversDisplay = `${overNumber}.${legalBalls}`;
@@ -20,6 +24,11 @@ export function ScoreHeader({
   return (
     <View style={{ backgroundColor: theme.surface, padding: 20, paddingTop: 16 }}>
       <Text style={{ color: theme.textMuted, fontSize: 13, textAlign: 'center', marginBottom: 4 }}>{matchName}</Text>
+      {scorerName && (
+        <Text style={{ color: theme.textMuted, fontSize: 11, textAlign: 'center', marginBottom: 4 }}>
+          Scoring: {scorerName}
+        </Text>
+      )}
       <Text style={{ color: theme.text, fontSize: 52, fontWeight: '800', textAlign: 'center', lineHeight: 58 }}>
         {runs}<Text style={{ color: theme.textMuted, fontSize: 32, fontWeight: '600' }}>/{wickets}</Text>
       </Text>

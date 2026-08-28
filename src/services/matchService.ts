@@ -109,6 +109,17 @@ export async function getMatch(clubId: string, matchId: string): Promise<Match |
   return snap.exists() ? ({ id: snap.id, ...snap.data() } as Match) : null;
 }
 
+// A non-admin never gets scoring controls — LiveScoring's own input controls
+// are isAdmin-gated internally, so routing a non-admin there for a legacy
+// match with no scorerId set would land them on a screen with no real-time
+// subscription and no actions ("Watching live" placeholder), instead of
+// MatchScorecard, which is real-time and built for spectators. Legacy
+// matches predating the scorerId field (no scorer ever recorded) fall back
+// to true for admins only, so an admin isn't locked out of scoring them.
+export function isMatchScorer(match: Match, uid: string | undefined, isAdmin: boolean): boolean {
+  return isAdmin && (!match.scorerId || match.scorerId === uid);
+}
+
 // Live-updates a match doc for viewers watching a match in progress (e.g.
 // MatchScorecard) — scorer's own writes (setMatchToss, completeMatch, etc.)
 // push straight through without the viewer needing to refresh/reopen.
@@ -205,6 +216,25 @@ export async function setMatchToss(
   });
 }
 
+
+// Reassigns the live scorer — e.g. the original scorer's device died or they
+// had to step away mid-match. A plain last-write-wins update is fine here:
+// unlike the toss-confirm race (two admins racing to start the SAME match),
+// this is a deliberate one-off action an admin takes after confirming with
+// the "Take over scoring?" prompt, not a tight concurrent race. What makes
+// the handover actually stick is LiveScoring's live scorerId subscription,
+// which kicks the outgoing scorer back to MatchScorecard as soon as this
+// write lands, even if their app is still open.
+export async function takeOverScoring(
+  clubId: string,
+  matchId: string,
+  scorer: { scorerId: string; scorerName: string }
+): Promise<void> {
+  await updateDoc(doc(db, 'clubs', clubId, 'matches', matchId), {
+    scorerId: scorer.scorerId,
+    scorerName: scorer.scorerName,
+  });
+}
 
 export async function completeMatch(
   clubId: string,

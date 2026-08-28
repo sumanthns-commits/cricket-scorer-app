@@ -13,7 +13,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
-import { getClubMatchesBySeason, getMatchOvers, deleteMatch } from '../../services/matchService';
+import { getClubMatchesBySeason, getMatchOvers, deleteMatch, isMatchScorer } from '../../services/matchService';
 import { getClub, getClubMember } from '../../services/clubService';
 import { requestToJoin, getMyJoinRequest, cancelJoinRequest } from '../../services/joinRequestService';
 import {
@@ -35,16 +35,6 @@ const STATUS_COLORS: Record<Match['status'], string> = {
   abandoned: '#dc2626',
 };
 
-// A non-admin never gets scoring controls — LiveScoring's own input controls
-// are isAdmin-gated internally, so routing a non-admin there for a legacy
-// match with no scorerId set would land them on a screen with no real-time
-// subscription and no actions ("Watching live" placeholder), instead of
-// MatchScorecard, which is real-time and built for spectators. Legacy
-// matches predating the scorerId field (no scorer ever recorded) fall back
-// to true for admins only, so an admin isn't locked out of scoring them.
-function isMatchScorer(match: Match, uid: string | undefined, isAdmin: boolean): boolean {
-  return isAdmin && (!match.scorerId || match.scorerId === uid);
-}
 
 function MatchCard({
   match,

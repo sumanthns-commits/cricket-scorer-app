@@ -31,6 +31,9 @@ import {
   updateMatchOvers,
   addSubstitute,
   removeSubstitute,
+  isMatchScorer,
+  takeOverScoring,
+  subscribeMatch,
 } from '../../services/matchService';
 import { getClub, getClubMember } from '../../services/clubService';
 import { useAuthStore } from '../../store/authStore';
@@ -1432,6 +1435,26 @@ export default function LiveScoringScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  // Live-syncs just scorerId/scorerName (not the rest of the match doc — the
+  // scoring flow already keeps that in local state via commitBall etc.) so a
+  // takeover elsewhere is reflected immediately: the outgoing scorer's
+  // isScorer flips false and they lose controls without needing to
+  // background/refocus the screen, and anyone watching sees the new name.
+  useEffect(() => {
+    if (!clubId || !matchId) return;
+    const unsubscribe = subscribeMatch(clubId, matchId, (m) => {
+      if (!m) return;
+      setMatch((prev) => {
+        if (!prev || (prev.scorerId === m.scorerId && prev.scorerName === m.scorerName)) return prev;
+        if (prev.scorerId === user?.uid && m.scorerId !== user?.uid) {
+          Alert.alert('Scoring taken over', `${m.scorerName ?? 'Another admin'} has taken over scoring for this match.`);
+        }
+        return { ...prev, scorerId: m.scorerId, scorerName: m.scorerName };
+      });
+    });
+    return unsubscribe;
+  }, [clubId, matchId, user?.uid]);
+
   // Back navigation (header back button, Android hardware back, swipe-back
   // gesture) always lands on Matches directly rather than popping one screen
   // at a time — the match-setup stack (ScheduleMatch → TeamBuilder → Toss) or
@@ -1677,6 +1700,11 @@ export default function LiveScoringScreen() {
   function commitBall() {
     const input = pendingInputRef.current;
     if (!input || !innings || !match) return;
+    // Belt-and-braces: the scoring buttons that lead here are already hidden
+    // for a non-scorer, but this also covers a modal (e.g. the wicket sheet)
+    // that was already open when scoring got handed over to someone else
+    // mid-flow — the single choke point every committed ball passes through.
+    if (!isMatchScorer(match, user?.uid, isAdmin)) return;
     pendingInputRef.current = null;
 
     // ballsPerOver is match-specific (over structure); custom dismissals come
@@ -2188,6 +2216,39 @@ export default function LiveScoringScreen() {
   const onStrikeHand = innings ? (innings.handedness[innings.onStrikeId] ?? 'RHB') : 'RHB';
   const offStrikeHand = innings ? (innings.handedness[innings.offStrikeId] ?? 'RHB') : 'RHB';
 
+  // Only the current scorer gets scoring controls — isAdmin alone used to be
+  // the gate here, which let every admin score simultaneously. A non-scorer
+  // admin instead sees a "Take over scoring" option (handleTakeOverScoring
+  // below), for when the real scorer's device dies or they have to step away.
+  const isScorer = !!match && isMatchScorer(match, user?.uid, isAdmin);
+
+  async function handleTakeOverScoring() {
+    if (!user || !match) return;
+    const scorerName = playerMap[user.uid]?.displayName ?? user.displayName ?? user.email ?? 'Admin';
+    Alert.alert(
+      'Take over scoring?',
+      `${match.scorerName ?? 'The current scorer'} will immediately lose scoring controls. Use this if their device is unavailable or they've had to step away.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Take Over',
+          onPress: async () => {
+            try {
+              await takeOverScoring(clubId, match.id, { scorerId: user.uid, scorerName });
+              // Reload rather than just patching scorerId locally — this
+              // device's innings/phase state was never kept live while it
+              // was only watching, so it may be stale relative to whatever
+              // the outgoing scorer last committed.
+              await load();
+            } catch {
+              Alert.alert('Error', 'Could not take over scoring. Please try again.');
+            }
+          },
+        },
+      ],
+    );
+  }
+
   function toggleHand(id: string) {
     setInnings((prev) => {
       if (!prev) return prev;
@@ -2277,7 +2338,7 @@ export default function LiveScoringScreen() {
         </Text>
 
         {isFirstInnings ? (
-          isAdmin ? (
+          isScorer ? (
           <TouchableOpacity
             onPress={() => startSecondInnings(innings)}
             style={{ marginTop: 32, backgroundColor: theme.accent, borderRadius: 10, paddingVertical: 14, paddingHorizontal: 28 }}
@@ -2473,6 +2534,7 @@ export default function LiveScoringScreen() {
         legalBalls={innings.legalBallsInOver}
         ballsPerOver={match?.rules.ballsPerOver ?? 6}
         matchName={match ? `${match.homeTeam} vs ${match.awayTeam}` : ''}
+        scorerName={match?.scorerName}
       />
 
       {/* Overs limit — editable during the 1st innings. Once the chase-target
@@ -2524,14 +2586,14 @@ export default function LiveScoringScreen() {
 
       {/* Batter rows — tap the non-striker to give them strike;
           tap ✎ (or long-press) to select / change a batter */}
-      <TouchableOpacity activeOpacity={1} onLongPress={() => isAdmin && setChangeTarget('onStrike')}>
+      <TouchableOpacity activeOpacity={1} onLongPress={() => isScorer && setChangeTarget('onStrike')}>
         <BatterRow
           player={onStrikePlayer}
           stats={onStrikeStat}
           onStrike
           hand={onStrikeHand}
-          onToggleHand={() => isAdmin && toggleHand(innings.onStrikeId)}
-          onEdit={isAdmin ? () => setChangeTarget('onStrike') : undefined}
+          onToggleHand={() => isScorer && toggleHand(innings.onStrikeId)}
+          onEdit={isScorer ? () => setChangeTarget('onStrike') : undefined}
         />
       </TouchableOpacity>
       {isLoneBatter ? (
@@ -2541,32 +2603,32 @@ export default function LiveScoringScreen() {
       ) : (
         <TouchableOpacity
           activeOpacity={0.6}
-          onPress={isAdmin ? swapStrike : undefined}
-          onLongPress={() => isAdmin && setChangeTarget('offStrike')}
+          onPress={isScorer ? swapStrike : undefined}
+          onLongPress={() => isScorer && setChangeTarget('offStrike')}
         >
           <BatterRow
             player={offStrikePlayer}
             stats={offStrikeStat}
             onStrike={false}
             hand={offStrikeHand}
-            onToggleHand={() => isAdmin && toggleHand(innings.offStrikeId)}
-            onEdit={isAdmin ? () => setChangeTarget('offStrike') : undefined}
-            showStrikeHint={isAdmin}
+            onToggleHand={() => isScorer && toggleHand(innings.offStrikeId)}
+            onEdit={isScorer ? () => setChangeTarget('offStrike') : undefined}
+            showStrikeHint={isScorer}
           />
         </TouchableOpacity>
       )}
 
       {/* Bowler row — tap ✎ (or long-press) to select / change */}
-      <TouchableOpacity activeOpacity={1} onLongPress={() => isAdmin && setChangeTarget('bowler')}>
+      <TouchableOpacity activeOpacity={1} onLongPress={() => isScorer && setChangeTarget('bowler')}>
         <BowlerRow
           player={bowlerPlayer}
           stats={bowlerStat}
           ballsPerOver={match?.rules.ballsPerOver ?? 6}
-          onEdit={isAdmin ? () => setChangeTarget('bowler') : undefined}
+          onEdit={isScorer ? () => setChangeTarget('bowler') : undefined}
         />
       </TouchableOpacity>
 
-      {isAdmin && !scoringReady && (
+      {isScorer && !scoringReady && (
         <Text style={{ color: '#d97706', fontSize: 13, textAlign: 'center', paddingVertical: 10 }}>
           Select both batsmen and the bowler (✎) to start scoring
         </Text>
@@ -2603,7 +2665,7 @@ export default function LiveScoringScreen() {
       {/* Divider */}
       <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 16, marginBottom: 8 }} />
 
-      {isAdmin ? (
+      {isScorer ? (
         <>
         {phase === 'end-pending' ? (
           /* End condition reached but not yet sealed — the last ball can
@@ -2755,7 +2817,17 @@ export default function LiveScoringScreen() {
         </>
       ) : (
         <View style={{ alignItems: 'center', paddingVertical: 20 }}>
-          <Text style={{ color: theme.textMuted, fontSize: 13 }}>Watching live</Text>
+          <Text style={{ color: theme.textMuted, fontSize: 13 }}>
+            {isAdmin ? `${match?.scorerName ?? 'Another admin'} is scoring this match` : 'Watching live'}
+          </Text>
+          {isAdmin && match?.status === 'live' && (
+            <TouchableOpacity
+              onPress={handleTakeOverScoring}
+              style={{ marginTop: 10, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderColor: theme.accent }}
+            >
+              <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>Take over scoring</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
       </ScrollView>

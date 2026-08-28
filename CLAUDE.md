@@ -47,25 +47,65 @@ src/
 ## Match lifecycle (wizard flow)
 ScheduleMatch → TeamBuilder → Toss → LiveScoring
 
-- **ScheduleMatch**: collects match details + squad. Does NOT create a Firestore doc.
-  Passes a `MatchDraft` (JSON-serializable) through nav params to TeamBuilder/Toss.
-  "Reuse previous squad & teams" carries over teamA, teamB, captainA, captainB.
-  Uses `navigation.navigate` (not replace) so back returns to the form.
-- **TeamBuilder**: assigns squad players to Team A/B, sets captains, optional AI balance.
-  In draft mode (no matchId): reads teams from `matchDraft`, passes updated draft to Toss.
-  In edit mode (has matchId): writes directly to the existing match doc.
-  Accepts `returnTo?: 'LiveScoring'` param — replaces back to LiveScoring after confirm.
-- **Toss**: coin flip, toss winner + choice (bat/field). Scorer is auto-assigned, not
-  picked — whoever confirms the toss becomes `scorerId`/`scorerName` (name resolved via
-  `getPlayer` for the club-scoped display name, falling back to the Auth profile
-  name/email). No picker UI and no way to reassign afterward; safe because only an admin
-  ever reaches Toss (gated upstream in Matches/ClubDetail), so the confirming admin is
-  always the sole scorer for that match — closes the old gap where an unset scorer let
-  every admin get scoring controls simultaneously on separate devices.
-  In draft mode: calls `createLiveMatch()` which writes the match doc with `status:'live'`
-  and the toss in a single shot. Match never exists in Firestore as 'scheduled'.
-  In edit mode (existing matchId): calls `setMatchToss()` as before.
+- **ScheduleMatch**: collects match details + squad. Does NOT create a Firestore doc itself
+  (except the "Quick rematch" shortcut below) — passes a `MatchDraft` (JSON-serializable)
+  through nav params to TeamBuilder. "Reuse previous squad & teams" carries over teamA,
+  teamB, captainA, captainB. Uses `navigation.navigate` (not replace) so back returns to the
+  form. "Quick rematch" mode skips TeamBuilder entirely and calls `createMatch()` itself
+  (teams/captains cloned from the previous match), straight to Toss with a `matchId`.
+- **TeamBuilder**: assigns squad players to Team A/B, sets captains, optional AI balance
+  (see "AI Balance" below — now also picks captains, weighted against whoever captained in
+  the last 4 weeks). In draft mode (no matchId): on confirm, calls `createMatch()` — writes
+  the match doc as `status:'scheduled'` — then navigates to Toss with the new `matchId`. This
+  is what makes the match visible/deletable/re-editable from Matches before the toss is ever
+  confirmed (see "Match creation & scheduled state" below). In edit mode (has matchId):
+  writes directly to the existing match doc via `setMatchTeams()`. Accepts `returnTo?:
+  'LiveScoring'` param — replaces back to LiveScoring after confirm (only reachable pre-match,
+  via LiveScoring's TEAMS tab "Edit Teams" button, gated on `!matchHasStarted`).
+- **Toss**: coin flip, toss winner + choice (bat/field). Scorer is auto-assigned at
+  confirmation time, not picked — whoever confirms the toss becomes `scorerId`/`scorerName`
+  (name resolved via `getPlayer` for the club-scoped display name, falling back to the Auth
+  profile name/email), via `setMatchToss()`, which also flips `status: 'scheduled' → 'live'`.
+  Always operates on an existing `matchId` — the match doc is created earlier, by
+  `TeamBuilder`'s confirm step (see "Match creation & scheduled state" below), not here.
+  See "Scorer handover" below for reassigning `scorerId` after this point.
 - **LiveScoring**: loads match state, reconstructs innings from ball docs.
+
+## Match creation & scheduled state
+`createMatch()` (`matchService.ts`) writes a new match doc with `status:'scheduled'` —
+called from `TeamBuilder`'s draft-mode confirm and `ScheduleMatch`'s "Quick rematch" shortcut.
+A scheduled match is fully visible/manageable from `Matches`/`ClubDetail` before the toss:
+`STATUS_COLORS` includes `'scheduled'`, `handleDelete` allows deleting it, and a card with
+teams already assigned gets an "Edit Teams" link (reopens `TeamBuilder` in edit mode)
+alongside the normal "Toss →" tap action. `setMatchToss()` is the only thing that flips
+`status: 'scheduled' → 'live'`. There's no dead-end: a scheduled match can be deleted,
+re-teamed, or carried through to Toss at any point.
+
+## Scorer handover
+Only the current scorer gets scoring controls in `LiveScoring` — enforced by `isMatchScorer()`
+(`matchService.ts`, shared by `Matches`/`ClubDetail`'s routing AND `LiveScoring` itself via an
+`isScorer` check on the main scoring-controls render branch). This used to be `isAdmin`-gated
+inside `LiveScoring`, which let every admin score simultaneously regardless of `scorerId` —
+now a non-scorer admin sees the same read-only view as a spectator (`"{name} is scoring this
+match"`), plus a **"Take over scoring"** button.
+
+- `takeOverScoring()` reassigns `scorerId`/`scorerName` — a plain last-write-wins `updateDoc`
+  (not a transaction; deliberate one-off human action via a confirm `Alert`, not a tight race).
+  After a successful takeover, `LiveScoring` calls `load()` again rather than just patching
+  local state, since the new scorer's screen was never kept live while only watching and may
+  be stale relative to whatever the outgoing scorer last committed.
+- The outgoing scorer's screen doesn't need to background/refocus to notice — `LiveScoring`
+  holds a live `subscribeMatch()` listener scoped to just `scorerId`/`scorerName` (the rest of
+  `match` state stays one-shot, refreshed on focus) that flips `isScorer` false and shows an
+  Alert the moment the takeover write lands.
+- `commitBall()` re-checks `isMatchScorer` at the top as a second guard beyond hiding the
+  buttons — covers a modal (e.g. the wicket sheet) that was already open when scoring got
+  handed over mid-flow.
+- `ScoreHeader` (`components/LiveScoreboard.tsx`, shared by `LiveScoring` and
+  `MatchScorecard`'s live tab) shows `"Scoring: {scorerName}"` to everyone viewing the match —
+  scorer, other admins, and spectators alike.
+- Firestore rules do NOT enforce scorer-exclusivity (`balls`/`overs` writes only require
+  `isMember(clubId)`) — this is a client-side UX guard, not a security boundary.
 
 ## Matches list screen
 Each card shows date + time (`createdAt`, local time, 12h with AM/PM — falls back to no
@@ -76,20 +116,24 @@ the same `date`-then-`createdAt` sort to find the true most-recently-created mat
 
 ## Match data model (`clubs/{clubId}/matches/{matchId}`)
 ```
-status: 'live' | 'completed' | 'abandoned'   ← never 'scheduled' for new matches
+status: 'scheduled' | 'live' | 'completed' | 'abandoned'
 squad: string[]        — all selected player IDs
 teamA: string[]        — Team A player IDs
 teamB: string[]        — Team B player IDs
 captainA?: string      — captain ID for Team A
 captainB?: string      — captain ID for Team B
 substitutes?: string[] — mid-match substitute player IDs (arrayUnion/arrayRemove)
-toss?: MatchToss       — winner, choice (bat/field), scorerId
+toss?: MatchToss       — winner, choice (bat/field) — set once, at Toss confirm; not present
+                         while status is 'scheduled'
+scorerId?: string      — set alongside toss at Toss confirm; reassignable afterwards via
+                         takeOverScoring() — see "Scorer handover" above
+scorerName?: string    — display name for scorerId, snapshotted at assignment time
 rules: ClubRules       — snapshot at schedule time (live rules come from club doc)
 inningsSummary?        — written by onMatchCompleted Cloud Function
-createdAt?: Timestamp  — set at creation (createMatch/createLiveMatch). `date` is only a
-                         calendar day (no time-of-day), so same-day quick rematches share
-                         one `date` value — createdAt is the tiebreaker for sort order and
-                         for finding the true "previous match" to reuse a squad from.
+createdAt?: Timestamp  — set at creation (createMatch). `date` is only a calendar day
+                         (no time-of-day), so same-day quick rematches share one `date`
+                         value — createdAt is the tiebreaker for sort order and for finding
+                         the true "previous match" to reuse a squad from.
 firstInningsEnded?: boolean — set when the scorer manually confirms "End Innings" (see
                          Manual innings/match end below). Absent/false ⇒ 1st innings
                          reconstructed-complete state is still 'end-pending', not sealed.

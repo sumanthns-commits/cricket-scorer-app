@@ -531,6 +531,7 @@ export default function MatchScorecardScreen() {
             legalBalls={liveInnings.legalBallsInOver}
             ballsPerOver={liveBallsPerOver}
             matchName={match ? `${match.homeTeam} vs ${match.awayTeam}` : ''}
+            scorerName={match?.scorerName}
           />
 
           {/* Chase target (2nd innings) */}
