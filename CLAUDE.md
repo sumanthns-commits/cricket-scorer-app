@@ -405,6 +405,9 @@ Key functions:
 - `resolveJoinRequest` — ghost linking / join approval; also sends the "join approved"
   push notification to the requester
 - `onJoinRequestCreated` — notifies a club's admins of a new join request
+- `onMemberPromotedToAdmin` — sends a fun "you're an admin now" push when a player's role
+  transitions to 'admin' (update only — the club creator's initial admin role at creation
+  doesn't count as a promotion)
 - `onMatchLive` — notifies registered members (minus the scorer) when a match goes live
 - `onMatchAbandoned` — notifies registered members (minus the scorer) when a match is
   abandoned (kept separate from `onMatchCompleted`, whose guard never fires for 'abandoned')
@@ -424,12 +427,13 @@ registered against this app on Expo's servers — that's a one-time `eas credent
 needed for this; it's an account/credentials setup step only.
 
 Expo push notifications (`expo-notifications` client-side, `expo-server-sdk` v5 — pinned
-below v6 because v6+ is ESM-only and the functions repo compiles to CommonJS). Four triggers:
-new join request → club admins; join request approved → the requester; match goes live →
-registered members minus the scorer; match finishes (completed or abandoned) → registered
-members minus the scorer. Only the two match-related sends respect the per-user opt-out
+below v6 because v6+ is ESM-only and the functions repo compiles to CommonJS). Five triggers:
+new join request → club admins; join request approved → the requester; promoted to admin →
+that player (fun copy, taps through to EditClub); match goes live → registered members minus
+the scorer; match finishes (completed or abandoned) → registered members minus the scorer.
+Only the two match-related sends respect the per-user opt-out
 (`users/{uid}.notificationPrefs.matchNotifications`, default on, toggled in Profile) —
-join-request/approval notifications always send.
+join-request/approval/made-admin notifications always send.
 
 Client: `src/services/pushTokenService.ts` registers the device's Expo push token onto
 `users/{uid}.expoPushTokens` on sign-in (`useAuthListener.ts`, fire-and-forget) and removes

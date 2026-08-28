@@ -1,4 +1,5 @@
 import type { BallDoc, BallEntry, CustomDismissal, DismissalEntry, Match, Player } from '../types';
+import { emptyExtras, type ExtrasBreakdown } from '../utils/extras';
 
 // Live/replay-able snapshot of one innings' crease state and per-player
 // stats. Built by buildInningsFromBalls from the raw ball sequence — shared
@@ -20,6 +21,9 @@ export interface BowlerStats {
   completedOvers: number;
   runsConceded: number;
   wickets: number;
+  // Wide/no-ball runs conceded by this bowler (already included in
+  // runsConceded — byes/leg-byes are never charged to the bowler).
+  extras: number;
 }
 
 export interface InningsState {
@@ -28,6 +32,7 @@ export interface InningsState {
   bowlingIds: string[];
   totalRuns: number;
   totalWickets: number;
+  extras: ExtrasBreakdown;
   overNumber: number;
   legalBallsInOver: number;
   onStrikeId: string;
@@ -48,7 +53,7 @@ export function emptyBatterStats(): BatterStats {
 }
 
 export function emptyBowlerStats(): BowlerStats {
-  return { legalBalls: 0, completedOvers: 0, runsConceded: 0, wickets: 0 };
+  return { legalBalls: 0, completedOvers: 0, runsConceded: 0, wickets: 0, extras: 0 };
 }
 
 export function buildDismissalText(
@@ -152,6 +157,7 @@ export function buildInningsFromBalls(
   const batterStats: Record<string, BatterStats> = {};
   const bowlerStats: Record<string, BowlerStats> = {};
   const bowlerCompletedOvers = new Map<string, Set<number>>();
+  const extras = emptyExtras();
 
   for (const ball of balls) {
     // Runs and balls credited to the on-striker (batsmanId)
@@ -183,7 +189,14 @@ export function buildInningsFromBalls(
     const extrasType = ball.extras?.type;
     const byeLB = (extrasType === 'bye' || extrasType === 'leg-bye') ? (ball.extras?.runs ?? 0) : 0;
     const isWideNoBall = extrasType === 'wide' || extrasType === 'no-ball';
+    switch (extrasType) {
+      case 'wide': extras.wides += ball.extras?.runs ?? 0; break;
+      case 'no-ball': extras.noBalls += ball.extras?.runs ?? 0; break;
+      case 'bye': extras.byes += ball.extras?.runs ?? 0; break;
+      case 'leg-bye': extras.legByes += ball.extras?.runs ?? 0; break;
+    }
     bow.runsConceded += ball.runs + (isWideNoBall ? (ball.extras?.runs ?? 0) : 0) - byeLB;
+    if (isWideNoBall) bow.extras += ball.extras?.runs ?? 0;
     if (isLegal) bow.legalBalls++;
     if (ball.dismissal) bow.wickets++;
     if (ball.isLastBallOfOver) {
@@ -256,6 +269,7 @@ export function buildInningsFromBalls(
     bowlingIds,
     totalRuns,
     totalWickets,
+    extras,
     overNumber: activeOverNumber,
     legalBallsInOver: legalBallsInCurrentOver,
     onStrikeId,

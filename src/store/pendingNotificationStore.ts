@@ -8,6 +8,7 @@ import { create } from 'zustand';
 export type PendingNav =
   | { screen: 'JoinRequests'; params: { clubId: string } }
   | { screen: 'ClubDetail'; params: { clubId: string } }
+  | { screen: 'EditClub'; params: { clubId: string } }
   | { screen: 'MatchScorecard'; params: { clubId: string; matchId: string } };
 
 interface PendingNotificationState {

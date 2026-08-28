@@ -10,6 +10,10 @@ function targetFor(data: PushNotificationData): PendingNav {
       return { screen: 'JoinRequests', params: { clubId: data.clubId } };
     case 'join_approved':
       return { screen: 'ClubDetail', params: { clubId: data.clubId } };
+    case 'made_admin':
+      // Lands on the club's members screen — where the new admin's own
+      // "Make Admin"/"Revoke" controls live, so the tap is immediately useful.
+      return { screen: 'EditClub', params: { clubId: data.clubId } };
     case 'match_live':
     case 'match_finished':
       // MatchScorecard already handles 'live' matches via real-time
@@ -29,6 +33,9 @@ export function navigateToPending(nav: PendingNav): void {
       break;
     case 'ClubDetail':
       navigationRef.navigate('ClubDetail', nav.params);
+      break;
+    case 'EditClub':
+      navigationRef.navigate('EditClub', nav.params);
       break;
     case 'MatchScorecard':
       navigationRef.navigate('MatchScorecard', nav.params);

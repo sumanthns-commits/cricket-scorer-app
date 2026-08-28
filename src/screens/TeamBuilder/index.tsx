@@ -5,8 +5,8 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import type { MatchDraft, RootStackParamList } from '../../navigation/RootNavigator';
-import { getMatch, getClubPlayers, setMatchTeams } from '../../services/matchService';
+import type { RootStackParamList } from '../../navigation/RootNavigator';
+import { getMatch, getClubPlayers, setMatchTeams, getRecentCaptainIds, createMatch } from '../../services/matchService';
 import { askCricketAssistant } from '../../ai/cricketAssistant';
 import { TEAM_ASSIGNMENT_PROMPT, TEAM_RATIONALE_PROMPT } from '../../constants/teamSelectionPrompt';
 import { callCallableFunction } from '../../services/functionsClient';
@@ -22,13 +22,19 @@ function parseTeamSelection(text: string): TeamSelectionResult | null {
     if (!match) return null;
     const parsed = JSON.parse(match[0]) as Record<string, unknown>;
 
-    // New per-player format: { players: [{ id, team }], rationale, keyDecisions }
+    // New per-player format: { players: [{ id, team }], captainA, captainB, rationale, keyDecisions }
     if (Array.isArray(parsed.players)) {
       const rows = parsed.players as Array<{ id: string; team: string }>;
       const team_a = rows.filter((r) => r.team === 'A').map((r) => r.id);
       const team_b = rows.filter((r) => r.team === 'B').map((r) => r.id);
       if (team_a.length === 0 || team_b.length === 0) return null;
-      return { team_a, team_b, rationale: (parsed.rationale as string) ?? '', keyDecisions: (parsed.keyDecisions as string[]) ?? [] };
+      return {
+        team_a, team_b,
+        captain_a: typeof parsed.captainA === 'string' ? parsed.captainA : undefined,
+        captain_b: typeof parsed.captainB === 'string' ? parsed.captainB : undefined,
+        rationale: (parsed.rationale as string) ?? '',
+        keyDecisions: (parsed.keyDecisions as string[]) ?? [],
+      };
     }
 
     // Legacy fallback: { team_a, team_b, rationale, keyDecisions }
@@ -149,21 +155,26 @@ export default function TeamBuilderScreen() {
     try {
       // Pre-fetch squad stats — avoids a Gemini tool-call round trip.
       // In draft mode (no matchId) fetch all club players and filter by squad client-side.
-      const allStats = await callCallableFunction('get_club_player_stats', matchId ? { matchId, clubId } : { clubId }) as Array<Record<string, unknown>>;
+      const [allStats, recentCaptainIds] = await Promise.all([
+        callCallableFunction('get_club_player_stats', matchId ? { matchId, clubId } : { clubId }) as Promise<Array<Record<string, unknown>>>,
+        getRecentCaptainIds(clubId),
+      ]);
       const squadSet = new Set(squad);
-      const rawStats = matchId ? allStats : allStats.filter(p => squadSet.has(p.id as string));
+      const rawStats: Array<Record<string, unknown>> = (matchId ? allStats : allStats.filter(p => squadSet.has(p.id as string)))
+        .map((p) => ({ ...p, recentlyCaptained: recentCaptainIds.has(p.id as string) }));
 
       // Short keys (p1, p2, …) prevent the model from confusing long Firebase IDs
       const keyToId: Record<string, string> = {};
-      const statsWithKeys = rawStats.map((p, i) => {
+      const statsWithKeys: Array<Record<string, unknown>> = rawStats.map((p, i) => {
         const key = `p${i + 1}`;
         keyToId[key] = p.id as string;
         return { ...p, id: key };
       });
       const mapIds = (keys: string[]) => keys.map((k) => keyToId[k] ?? k);
+      const mapId = (k?: string) => (k ? keyToId[k] ?? k : undefined);
 
-      // ── Pass 1: team assignments only ────────────────────────────────
-      const assignMsg = `Squad data:\n${JSON.stringify(statsWithKeys)}\n\nAssign each player to Team A or Team B.`;
+      // ── Pass 1: team assignments + captains ──────────────────────────
+      const assignMsg = `Squad data:\n${JSON.stringify(statsWithKeys)}\n\nAssign each player to Team A or Team B, and pick a captain for each team.`;
       const { text: assignText } = await askCricketAssistant(assignMsg, clubId, TEAM_ASSIGNMENT_PROMPT, { noTools: true, thinkingBudget: 0 });
       const parsedRaw = parseTeamSelection(assignText);
       if (!parsedRaw) throw new Error('Could not parse team selection from AI response');
@@ -171,6 +182,13 @@ export default function TeamBuilderScreen() {
       const team_a = mapIds(parsedRaw.team_a);
       const team_b = mapIds(parsedRaw.team_b);
       setTeamA(team_a); setTeamB(team_b);
+
+      // Captain must belong to its own team — fall back to that team's first
+      // player if the model returned something invalid or omitted it.
+      const aiCaptainA = mapId(parsedRaw.captain_a);
+      const aiCaptainB = mapId(parsedRaw.captain_b);
+      setCaptainA((aiCaptainA && team_a.includes(aiCaptainA)) ? aiCaptainA : (team_a[0] ?? null));
+      setCaptainB((aiCaptainB && team_b.includes(aiCaptainB)) ? aiCaptainB : (team_b[0] ?? null));
 
       // ── Pass 2: rationale from actual assignments (async, non-blocking) ─
       const nameFor = (id: string) => (rawStats.find((s) => s.id === id)?.displayName as string | undefined) ?? id;
@@ -209,7 +227,7 @@ export default function TeamBuilderScreen() {
     finally { setAiThinking(false); }
   };
 
-  const { mutate: confirm, isPending } = useMutation({
+  const { mutate: confirm, isPending: isSavingTeams } = useMutation({
     mutationFn: () => {
       const captainAName = captainA ? playerMap.get(captainA) : undefined;
       const captainBName = captainB ? playerMap.get(captainB) : undefined;
@@ -230,27 +248,38 @@ export default function TeamBuilderScreen() {
     },
   });
 
-  const handleConfirm = () => {
-    if (matchDraft) {
-      // Draft mode: no Firestore write needed — pass teams to Toss via nav params
+  // Draft mode: creates the match doc (status:'scheduled') now that teams are
+  // set, instead of deferring creation to Toss — so the scorer can back out to
+  // Matches and see/delete/re-edit this match before the toss is confirmed.
+  const { mutate: createAndProceed, isPending: isCreatingMatch } = useMutation({
+    mutationFn: () => {
       const captainAName = captainA ? playerMap.get(captainA) : undefined;
       const captainBName = captainB ? playerMap.get(captainB) : undefined;
-      const updatedDraft: MatchDraft = {
-        ...matchDraft,
-        teamA,
-        teamB,
+      return createMatch({
+        clubId,
+        homeTeam: captainAName ? `Team ${captainAName}` : matchDraft!.homeTeam,
+        awayTeam: captainBName ? `Team ${captainBName}` : matchDraft!.awayTeam,
+        venue: matchDraft!.venue,
+        date: new Date(matchDraft!.dateMs),
+        format: matchDraft!.format,
+        rules: matchDraft!.rules,
+        squad: matchDraft!.squad,
+        teamA, teamB,
         captainA: captainA ?? undefined,
         captainB: captainB ?? undefined,
-        homeTeam: captainAName ? `Team ${captainAName}` : matchDraft.homeTeam,
-        awayTeam: captainBName ? `Team ${captainBName}` : matchDraft.awayTeam,
-      };
-      navigation.navigate('Toss', { clubId, matchDraft: updatedDraft });
-    } else {
-      confirm();
-    }
+      });
+    },
+    onSuccess: (newMatchId) => navigation.navigate('Toss', { clubId, matchId: newMatchId }),
+  });
+
+  const isSaving = isSavingTeams || isCreatingMatch;
+
+  const handleConfirm = () => {
+    if (matchDraft) createAndProceed();
+    else confirm();
   };
 
-  const canConfirm = teamA.length > 0 && teamB.length > 0 && !!captainA && !!captainB && !isPending;
+  const canConfirm = teamA.length > 0 && teamB.length > 0 && !!captainA && !!captainB && !isSaving;
 
   if ((loadingMatch && !!matchId) || loadingPlayers) {
     return <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator size="large" color={theme.accent} /></View>;
@@ -343,7 +372,7 @@ export default function TeamBuilderScreen() {
         onPress={handleConfirm} disabled={!canConfirm}
         style={{ backgroundColor: canConfirm ? theme.accent : theme.surface, borderRadius: 10, padding: 16, alignItems: 'center', marginTop: 8, marginBottom: 40 + insets.bottom, borderWidth: canConfirm ? 0 : 1, borderColor: theme.border }}
       >
-        {isPending ? <ActivityIndicator color="#ffffff" /> : <Text style={{ color: canConfirm ? '#ffffff' : theme.textMuted, fontSize: 16, fontWeight: '700' }}>Confirm Teams</Text>}
+        {isSaving ? <ActivityIndicator color="#ffffff" /> : <Text style={{ color: canConfirm ? '#ffffff' : theme.textMuted, fontSize: 16, fontWeight: '700' }}>Confirm Teams</Text>}
       </TouchableOpacity>
     </ScrollView>
   );

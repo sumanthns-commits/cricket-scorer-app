@@ -16,7 +16,7 @@ import type { RouteProp } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { getClub } from '../../services/clubService';
-import { getClubPlayers, getClubMatches } from '../../services/matchService';
+import { getClubPlayers, getClubMatches, createMatch } from '../../services/matchService';
 import type { MatchDraft } from '../../navigation/RootNavigator';
 import { useThemeStore } from '../../store/themeStore';
 import type { MatchFormat } from '../../types';
@@ -90,6 +90,7 @@ export default function ScheduleMatchScreen() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [reuseMode, setReuseMode] = useState<'none' | 'squad' | 'teams-edit' | 'teams'>('squad');
   const [prefilled, setPrefilled] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const { data: club } = useQuery({
     queryKey: ['club', clubId],
@@ -134,27 +135,34 @@ export default function ScheduleMatchScreen() {
     }
   }, [prevMatch, reuseMode, prefilled, loadingPlayers, activePlayerIds, ghostToRegistered]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!club) return;
     const matchDate = new Date(year, month, day);
 
     if (reuseMode === 'teams' && prevMatch) {
-      // Quick rematch: clone previous match exactly — teams pre-filled, go straight to Toss
+      // Quick rematch: clone previous match exactly — teams pre-filled, create
+      // as scheduled immediately (same as the TeamBuilder path) and go to Toss.
       const rules = { ...club.rules, oversPerInnings: prevMatch.rules.oversPerInnings };
-      const draft: MatchDraft = {
-        homeTeam: prevMatch.homeTeam,
-        awayTeam: prevMatch.awayTeam,
-        venue: prevMatch.venue ?? '',
-        dateMs: matchDate.getTime(),
-        format: prevMatch.format ?? 'custom',
-        rules,
-        squad: Array.from(new Set((prevMatch.squad ?? []).map(resolvePlayerId).filter(id => activePlayerIds.has(id)))),
-        teamA: Array.from(new Set((prevMatch.teamA ?? []).map(resolvePlayerId).filter(id => activePlayerIds.has(id)))),
-        teamB: Array.from(new Set((prevMatch.teamB ?? []).map(resolvePlayerId).filter(id => activePlayerIds.has(id)))),
-        captainA: prevMatch.captainA && activePlayerIds.has(resolvePlayerId(prevMatch.captainA)) ? resolvePlayerId(prevMatch.captainA) : undefined,
-        captainB: prevMatch.captainB && activePlayerIds.has(resolvePlayerId(prevMatch.captainB)) ? resolvePlayerId(prevMatch.captainB) : undefined,
-      };
-      navigation.navigate('Toss', { clubId, matchDraft: draft });
+      setSubmitting(true);
+      try {
+        const newMatchId = await createMatch({
+          clubId,
+          homeTeam: prevMatch.homeTeam,
+          awayTeam: prevMatch.awayTeam,
+          venue: prevMatch.venue ?? '',
+          date: matchDate,
+          format: prevMatch.format ?? 'custom',
+          rules,
+          squad: Array.from(new Set((prevMatch.squad ?? []).map(resolvePlayerId).filter(id => activePlayerIds.has(id)))),
+          teamA: Array.from(new Set((prevMatch.teamA ?? []).map(resolvePlayerId).filter(id => activePlayerIds.has(id)))),
+          teamB: Array.from(new Set((prevMatch.teamB ?? []).map(resolvePlayerId).filter(id => activePlayerIds.has(id)))),
+          captainA: prevMatch.captainA && activePlayerIds.has(resolvePlayerId(prevMatch.captainA)) ? resolvePlayerId(prevMatch.captainA) : undefined,
+          captainB: prevMatch.captainB && activePlayerIds.has(resolvePlayerId(prevMatch.captainB)) ? resolvePlayerId(prevMatch.captainB) : undefined,
+        });
+        navigation.navigate('Toss', { clubId, matchId: newMatchId });
+      } finally {
+        setSubmitting(false);
+      }
       return;
     }
 
@@ -212,9 +220,9 @@ export default function ScheduleMatchScreen() {
 
   const customOversValid = format !== 'custom' || parseInt(customOvers, 10) >= 1;
   const isQuickRematch = reuseMode === 'teams';
-  const canSubmit = isQuickRematch
+  const canSubmit = (isQuickRematch
     ? !!prevMatch && !!club
-    : selectedIds.size >= 2 && !!club && customOversValid;
+    : selectedIds.size >= 2 && !!club && customOversValid) && !submitting;
 
   const inputStyle = {
     backgroundColor: theme.surface,
@@ -435,9 +443,13 @@ export default function ScheduleMatchScreen() {
           borderColor: theme.border,
         }}
       >
-        <Text style={{ color: canSubmit ? '#ffffff' : theme.textMuted, fontSize: 16, fontWeight: '700' }}>
-          {reuseMode === 'teams' ? 'Quick Rematch' : 'Build Teams'}
-        </Text>
+        {submitting ? (
+          <ActivityIndicator color="#ffffff" />
+        ) : (
+          <Text style={{ color: canSubmit ? '#ffffff' : theme.textMuted, fontSize: 16, fontWeight: '700' }}>
+            {reuseMode === 'teams' ? 'Quick Rematch' : 'Build Teams'}
+          </Text>
+        )}
       </TouchableOpacity>
     </ScrollView>
     </KeyboardAvoidingView>

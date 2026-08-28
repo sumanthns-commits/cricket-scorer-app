@@ -26,6 +26,7 @@ export interface AppUser {
 export type PushNotificationData =
   | { type: 'join_request'; clubId: string }
   | { type: 'join_approved'; clubId: string }
+  | { type: 'made_admin'; clubId: string }
   | { type: 'match_live'; clubId: string; matchId: string }
   | { type: 'match_finished'; clubId: string; matchId: string };
 
@@ -350,6 +351,8 @@ export interface MatchToss {
 export interface TeamSelectionResult {
   team_a: string[];
   team_b: string[];
+  captain_a?: string;
+  captain_b?: string;
   rationale: string;
   keyDecisions: string[];
 }

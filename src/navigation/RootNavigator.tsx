@@ -27,8 +27,9 @@ import EditProfileScreen from '../screens/EditProfile';
 import ClubDetailScreen from '../screens/ClubDetail';
 
 // All match-setup data collected before the match exists in Firestore.
-// Passed through ScheduleMatch → TeamBuilder → Toss; the Toss screen
-// creates the match doc when the user confirms the toss.
+// Passed from ScheduleMatch → TeamBuilder only; TeamBuilder creates the match
+// doc (status:'scheduled') as soon as teams are confirmed, then every screen
+// after that (Toss included) addresses the match by matchId.
 export type MatchDraft = {
   homeTeam: string;
   awayTeam: string;
@@ -50,10 +51,9 @@ export type RootStackParamList = {
   EditClub: { clubId: string };
   ClubRulesAdmin: { clubId: string };
   ScheduleMatch: { clubId: string };
-  // matchId: editing an existing match's teams; matchDraft: new match setup in progress
+  // matchId: editing an existing (scheduled) match's teams; matchDraft: new match setup in progress
   TeamBuilder: { clubId: string; matchId?: string; returnTo?: 'LiveScoring'; matchDraft?: MatchDraft };
-  // matchId: existing match; matchDraft: new match (created at toss time)
-  Toss: { clubId: string; matchId?: string; matchDraft?: MatchDraft };
+  Toss: { clubId: string; matchId: string };
   LiveScoring: { clubId: string; matchId: string };
   PlayerProfile: { clubId: string; playerId: string };
   MatchScorecard: { clubId: string; matchId: string };

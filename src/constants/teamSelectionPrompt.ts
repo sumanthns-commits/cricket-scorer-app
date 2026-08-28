@@ -24,7 +24,7 @@ Respond ONLY with a single JSON object — no preamble, no explanation outside t
 
 // Pass 1 of the AI Balance button flow — assigns players to teams only, no rationale.
 // Rationale is generated separately in Pass 2 from the actual assignments.
-export const TEAM_ASSIGNMENT_PROMPT = `You are a cricket team selection assistant. Your task is to divide the available squad into two balanced teams.
+export const TEAM_ASSIGNMENT_PROMPT = `You are a cricket team selection assistant. Your task is to divide the available squad into two balanced teams and pick a captain for each team.
 
 The squad data is provided in the message. Do NOT call any tools.
 
@@ -35,18 +35,26 @@ Analyse the provided squad data:
 - Fielding: careerStats.fieldingPoints (positive = strong, negative = error-prone), totalCatches, totalRunOuts, totalStumpings
 - strengthOverride (if present): blend at ~30% weight alongside stats (70%). Missing field = rely on stats only.
 - wicketKeeping: 'keeper' = dedicated, 'can-keep' = backup, absent = cannot keep
+- recentlyCaptained: true if this player has captained a match (either team) within the last 4 weeks
 
-Rules:
+Team rules:
 - Equal team sizes (11 each, or equal split if squad < 22)
 - CRITICAL: each team must have at least one 'keeper' or 'can-keep' player
 - Balanced mix: top-order batters, middle-order, bowlers, all-rounders, comparable fielding on both sides
 
-Respond ONLY with a JSON object containing a single "players" array. Every player must appear exactly once. Use the short id exactly as provided:
+Captain selection (choose one captain per team, from that team's own players only):
+- Prefer an experienced, well-rounded player: strong overall stats and/or good recent form — someone capable of leading the side.
+- Weight AWAY from players with recentlyCaptained:true — prefer a player who has NOT captained in the last 4 weeks, to rotate leadership fairly across the squad.
+- Only pick a recentlyCaptained:true player if no other suitable candidate exists on that team.
+
+Respond ONLY with a JSON object. Every player must appear exactly once in "players". "captainA"/"captainB" must be ids present in that team's assignment. Use the short id exactly as provided:
 {
   "players": [
     { "id": "p1", "team": "A" },
     { "id": "p2", "team": "B" }
-  ]
+  ],
+  "captainA": "p1",
+  "captainB": "p2"
 }`;
 
 // Pass 2 of the AI Balance button flow — generates rationale from the actual team assignments.

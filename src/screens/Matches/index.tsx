@@ -49,12 +49,14 @@ function MatchCard({
   match,
   onPress,
   onDelete,
+  onEditTeams,
   isAdmin,
   isScorer,
 }: {
   match: Match;
   onPress: () => void;
   onDelete?: () => void;
+  onEditTeams?: () => void;
   isAdmin: boolean;
   isScorer: boolean;
 }) {
@@ -138,6 +140,11 @@ function MatchCard({
           </View>
           {actionLabel && (
             <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>{actionLabel} →</Text>
+          )}
+          {onEditTeams && (
+            <TouchableOpacity onPress={onEditTeams} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>Edit Teams</Text>
+            </TouchableOpacity>
           )}
           {onDelete && (
             <TouchableOpacity onPress={onDelete} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -355,6 +362,11 @@ export default function MatchesScreen() {
               isAdmin={isAdmin}
               isScorer={isMatchScorer(item, user?.uid, isAdmin)}
               onPress={() => handleMatchPress(item)}
+              onEditTeams={
+                isAdmin && item.status === 'scheduled' && (item.teamA?.length ?? 0) > 0
+                  ? () => navigation.navigate('TeamBuilder', { clubId: item.clubId, matchId: item.id })
+                  : undefined
+              }
               onDelete={
                 isAdmin && (item.status === 'scheduled' || item.status === 'live' || item.status === 'abandoned')
                   ? () => handleDelete(item)

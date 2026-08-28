@@ -51,6 +51,7 @@ import {
   type BowlerStats,
   type InningsState,
 } from '../../services/inningsState';
+import { emptyExtras, formatExtras } from '../../utils/extras';
 import { RHB_WAGON_LABELS, LHB_WAGON_LABELS } from '../../constants/wagonPositions';
 import { MatchStatsContent } from '../MatchStats';
 import type {
@@ -1072,11 +1073,15 @@ function Scorecard({
           </View>
         );
       })}
+      <View style={{ flexDirection: 'row', paddingVertical: 6, borderTopWidth: 1, borderTopColor: theme.border }}>
+        <Text style={{ flex: 1, color: theme.textSecondary, fontSize: 13 }}>Extras</Text>
+        <Text style={{ color: theme.textSecondary, fontSize: 13 }}>{formatExtras(inn.extras)}</Text>
+      </View>
 
       <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '700', marginTop: 22, marginBottom: 6 }}>BOWLING</Text>
       <View style={{ flexDirection: 'row', paddingBottom: 4 }}>
         <Text style={{ flex: 1, color: theme.textMuted, fontSize: 11 }}>Bowler</Text>
-        {['O', 'R', 'W', 'Econ'].map((h) => <Text key={h} style={{ ...head, width: 44 }}>{h}</Text>)}
+        {['O', 'R', 'Ex', 'W', 'Econ'].map((h) => <Text key={h} style={{ ...head, width: 36 }}>{h}</Text>)}
       </View>
       {bowlers.map((id) => {
         const b = inn.bowlerStats[id];
@@ -1085,10 +1090,11 @@ function Scorecard({
         return (
           <View key={id} style={{ flexDirection: 'row', paddingVertical: 6, borderTopWidth: 1, borderTopColor: theme.border }}>
             <Text style={{ flex: 1, color: theme.text, fontSize: 13 }}>{playerMap[id]?.displayName ?? id}</Text>
-            <Text style={bnum}>{overs}</Text>
-            <Text style={bnum}>{b.runsConceded}</Text>
-            <Text style={bnum}>{b.wickets}</Text>
-            <Text style={bnum}>{econ}</Text>
+            <Text style={{ ...bnum, width: 36 }}>{overs}</Text>
+            <Text style={{ ...bnum, width: 36 }}>{b.runsConceded}</Text>
+            <Text style={{ ...bnum, width: 36 }}>{b.extras}</Text>
+            <Text style={{ ...bnum, width: 36 }}>{b.wickets}</Text>
+            <Text style={{ ...bnum, width: 36 }}>{econ}</Text>
           </View>
         );
       })}
@@ -1559,6 +1565,7 @@ export default function LiveScoringScreen() {
       bowlingIds: bowling,
       totalRuns: 0,
       totalWickets: 0,
+      extras: emptyExtras(),
       overNumber: 0,
       legalBallsInOver: 0,
       onStrikeId: '',
@@ -1732,9 +1739,19 @@ export default function LiveScoringScreen() {
     const bow = { ...newBowlerStats[input.bowlerId] };
     const extrasType = input.extras?.type;
     const byeLB = (extrasType === 'bye' || extrasType === 'leg-bye') ? (input.extras?.runs ?? 0) : 0;
+    const isWideNoBall = extrasType === 'wide' || extrasType === 'no-ball';
     bow.runsConceded += result.runsScored - byeLB;
+    if (isWideNoBall) bow.extras += input.extras?.runs ?? 0;
     if (result.isLegalDelivery) bow.legalBalls++;
     if (result.bowlerGetsWicket) bow.wickets++;
+
+    const newExtras = { ...innings.extras };
+    switch (extrasType) {
+      case 'wide': newExtras.wides += input.extras?.runs ?? 0; break;
+      case 'no-ball': newExtras.noBalls += input.extras?.runs ?? 0; break;
+      case 'bye': newExtras.byes += input.extras?.runs ?? 0; break;
+      case 'leg-bye': newExtras.legByes += input.extras?.runs ?? 0; break;
+    }
 
     const newTotalRuns = innings.totalRuns + result.runsScored;
     const newWickets = innings.totalWickets + (result.batterIsOut ? 1 : 0);
@@ -1790,6 +1807,7 @@ export default function LiveScoringScreen() {
       ...innings,
       totalRuns: newTotalRuns,
       totalWickets: newWickets,
+      extras: newExtras,
       overNumber: newOverNumber,
       legalBallsInOver: newLegalBalls,
       onStrikeId: result.batterIsOut ? (survivorIsOnStrike ? survivorId : dismissedSlotId) : newOnStrike,

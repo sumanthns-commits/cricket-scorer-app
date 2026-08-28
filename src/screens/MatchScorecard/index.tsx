@@ -16,6 +16,7 @@ import {
   ballDocsToOverDocs,
 } from '../../services/matchService';
 import { buildInningsCard, formatDismissal, type InningsCard } from '../../services/scorecard';
+import { formatExtras } from '../../utils/extras';
 import { buildCommentary } from '../../services/commentary';
 import Commentary from '../../components/Commentary';
 import { ScoreHeader, BatterRow, BowlerRow, BallCircle } from '../../components/LiveScoreboard';
@@ -62,7 +63,7 @@ function InningsView({
 }) {
   const theme = useThemeStore((s) => s.theme);
   const num = { width: 38, textAlign: 'right' as const, color: theme.textSecondary, fontSize: 13 };
-  const bnum = { width: 44, textAlign: 'right' as const, color: theme.textSecondary, fontSize: 13 };
+  const bnum = { width: 36, textAlign: 'right' as const, color: theme.textSecondary, fontSize: 13 };
 
   return (
     <View style={{ padding: 16 }}>
@@ -99,12 +100,18 @@ function InningsView({
           </View>
         );
       })}
+      {card.extras && (
+        <View style={{ flexDirection: 'row', paddingVertical: 6, borderTopWidth: 1, borderTopColor: theme.border }}>
+          <Text style={{ flex: 1, color: theme.textSecondary, fontSize: 13 }}>Extras</Text>
+          <Text style={{ color: theme.textSecondary, fontSize: 13 }}>{formatExtras(card.extras)}</Text>
+        </View>
+      )}
 
       <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '700', marginTop: 22, marginBottom: 6 }}>BOWLING</Text>
       <View style={{ flexDirection: 'row', paddingBottom: 4 }}>
         <Text style={{ flex: 1, color: theme.textMuted, fontSize: 11 }}>Bowler</Text>
-        {['O', 'R', 'W', 'Econ'].map((h) => (
-          <Text key={h} style={{ width: 44, textAlign: 'right', color: theme.textMuted, fontSize: 11 }}>{h}</Text>
+        {['O', 'R', 'Ex', 'W', 'Econ'].map((h) => (
+          <Text key={h} style={{ width: 36, textAlign: 'right', color: theme.textMuted, fontSize: 11 }}>{h}</Text>
         ))}
       </View>
       {card.bowling.map((b) => {
@@ -118,6 +125,7 @@ function InningsView({
             </View>
             <Text style={bnum}>{Math.floor(b.balls / 6)}.{b.balls % 6}</Text>
             <Text style={bnum}>{b.runs}</Text>
+            <Text style={bnum}>{b.extras ?? '–'}</Text>
             <Text style={bnum}>{b.wickets}</Text>
             <Text style={bnum}>{econ}</Text>
           </View>
@@ -131,7 +139,7 @@ function InningsView({
 
 function SnapInningsTable({ card, nameOf, label, customDismissals }: { card: InningsCard; nameOf: (id: string) => string; label: string; customDismissals: CustomDismissal[] }) {
   const num = { width: 36, textAlign: 'right' as const, color: SNAP_MUTED, fontSize: 12 };
-  const bnum = { width: 42, textAlign: 'right' as const, color: SNAP_MUTED, fontSize: 12 };
+  const bnum = { width: 34, textAlign: 'right' as const, color: SNAP_MUTED, fontSize: 12 };
 
   return (
     <View style={{ marginTop: 12 }}>
@@ -168,13 +176,19 @@ function SnapInningsTable({ card, nameOf, label, customDismissals }: { card: Inn
           </View>
         );
       })}
+      {card.extras && (
+        <View style={{ flexDirection: 'row', paddingVertical: 5, borderTopWidth: 1, borderTopColor: SNAP_BORDER }}>
+          <Text style={{ flex: 1, color: SNAP_MUTED, fontSize: 12 }}>Extras</Text>
+          <Text style={{ color: SNAP_MUTED, fontSize: 12 }}>{formatExtras(card.extras)}</Text>
+        </View>
+      )}
 
       {/* Bowling */}
       <Text style={{ color: SNAP_MUTED, fontSize: 10, fontWeight: '700', letterSpacing: 0.8, marginTop: 10, marginBottom: 4 }}>BOWLING</Text>
       <View style={{ flexDirection: 'row', paddingBottom: 3 }}>
         <Text style={{ flex: 1, color: SNAP_MUTED, fontSize: 10 }}>Bowler</Text>
-        {['O', 'R', 'W', 'Econ'].map((h) => (
-          <Text key={h} style={{ width: 42, textAlign: 'right', color: SNAP_MUTED, fontSize: 10 }}>{h}</Text>
+        {['O', 'R', 'Ex', 'W', 'Econ'].map((h) => (
+          <Text key={h} style={{ width: 34, textAlign: 'right', color: SNAP_MUTED, fontSize: 10 }}>{h}</Text>
         ))}
       </View>
       {card.bowling.map((b) => {
@@ -185,6 +199,7 @@ function SnapInningsTable({ card, nameOf, label, customDismissals }: { card: Inn
             <Text style={{ flex: 1, color: SNAP_TEXT, fontSize: 12 }}>{nameOf(b.id)}</Text>
             <Text style={bnum}>{Math.floor(b.balls / 6)}.{b.balls % 6}</Text>
             <Text style={bnum}>{b.runs}</Text>
+            <Text style={bnum}>{b.extras ?? '–'}</Text>
             <Text style={bnum}>{b.wickets}</Text>
             <Text style={bnum}>{econ}</Text>
           </View>
@@ -721,11 +736,13 @@ function formatTextScorecard(data: { match: Match | null; nameMap: Record<string
       const sr = b.balls > 0 ? ((b.runs / b.balls) * 100).toFixed(0) : '-';
       lines.push(`  ${nameOf(b.id)} – ${b.runs}(${b.balls}) [${b.fours}x4 ${b.sixes}x6 SR:${sr}]${b.out ? '' : ' *'}`);
     });
+    if (card.extras) lines.push(`Extras: ${formatExtras(card.extras)}`);
     lines.push('Bowling:');
     card.bowling.forEach((b) => {
       const overs = `${Math.floor(b.balls / 6)}.${b.balls % 6}`;
       const econ = b.balls > 0 ? ((b.runs / (b.balls / 6))).toFixed(1) : '-';
-      lines.push(`  ${nameOf(b.id)} – ${overs}-${b.runs}-${b.wickets} (Econ: ${econ})`);
+      const exSuffix = b.extras != null ? `, Ex:${b.extras}` : '';
+      lines.push(`  ${nameOf(b.id)} – ${overs}-${b.runs}-${b.wickets} (Econ: ${econ}${exSuffix})`);
     });
     lines.push('');
   };

@@ -145,6 +145,20 @@ export async function getClubMatchesBySeason(
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Match);
 }
 
+// Player ids who captained (either team) any match within the last `weeks` weeks —
+// used by AI Balance to rotate captaincy rather than always picking the same player.
+export async function getRecentCaptainIds(clubId: string, weeks = 4): Promise<Set<string>> {
+  const since = new Date();
+  since.setDate(since.getDate() - weeks * 7);
+  const matches = await getClubMatchesBySeason(clubId, since, new Date());
+  const ids = new Set<string>();
+  for (const m of matches) {
+    if (m.captainA) ids.add(m.captainA);
+    if (m.captainB) ids.add(m.captainB);
+  }
+  return ids;
+}
+
 export async function setMatchTeams(params: {
   clubId: string;
   matchId: string;
@@ -191,47 +205,6 @@ export async function setMatchToss(
   });
 }
 
-// Creates a match that is immediately live (used when deferring creation to the Toss step).
-export async function createLiveMatch(params: {
-  clubId: string;
-  homeTeam: string;
-  awayTeam: string;
-  venue: string;
-  date: Date;
-  format: MatchFormat;
-  rules: ClubRules;
-  squad: string[];
-  teamA: string[];
-  teamB: string[];
-  captainA?: string;
-  captainB?: string;
-  toss: MatchToss;
-  scorerId?: string;
-  scorerName?: string;
-}): Promise<string> {
-  const matchRef = doc(collection(db, 'clubs', params.clubId, 'matches'));
-  const matchId = matchRef.id;
-  await setDoc(matchRef, {
-    id: matchId,
-    clubId: params.clubId,
-    homeTeam: params.homeTeam,
-    awayTeam: params.awayTeam,
-    venue: params.venue,
-    date: Timestamp.fromDate(params.date),
-    createdAt: Timestamp.now(),
-    format: params.format,
-    status: 'live',
-    rules: params.rules,
-    squad: params.squad,
-    teamA: params.teamA,
-    teamB: params.teamB,
-    ...(params.captainA ? { captainA: params.captainA } : {}),
-    ...(params.captainB ? { captainB: params.captainB } : {}),
-    toss: params.toss,
-    ...(params.scorerId ? { scorerId: params.scorerId, scorerName: params.scorerName } : {}),
-  });
-  return matchId;
-}
 
 export async function completeMatch(
   clubId: string,

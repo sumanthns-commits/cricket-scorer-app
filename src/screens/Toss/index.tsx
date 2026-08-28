@@ -6,7 +6,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
-import { getMatch, setMatchToss, createLiveMatch } from '../../services/matchService';
+import { getMatch, setMatchToss } from '../../services/matchService';
 import { getPlayer } from '../../services/playerProfileService';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
@@ -17,7 +17,7 @@ type Route = RouteProp<RootStackParamList, 'Toss'>;
 export default function TossScreen() {
   const navigation = useNavigation<Nav>();
   const { params } = useRoute<Route>();
-  const { clubId, matchId, matchDraft } = params;
+  const { clubId, matchId } = params;
   const theme = useThemeStore((s) => s.theme);
   const insets = useSafeAreaInsets();
 
@@ -32,8 +32,7 @@ export default function TossScreen() {
 
   const { data: match, isLoading } = useQuery({
     queryKey: ['match', clubId, matchId],
-    queryFn: () => getMatch(clubId, matchId!),
-    enabled: !!matchId,
+    queryFn: () => getMatch(clubId, matchId),
   });
 
   // Club-scoped display name (may differ from the Firebase Auth profile name
@@ -72,42 +71,20 @@ export default function TossScreen() {
       // (LiveScoring's routing/isMatchScorer check keys off exactly this field).
       const scorer = { scorerId: user.uid, scorerName: myPlayer?.displayName ?? user.displayName ?? user.email ?? 'Scorer' };
 
-      if (matchDraft) {
-        // Draft mode: create match and set toss in a single shot
-        const winnerName = winnerId === 'homeTeam' ? matchDraft.homeTeam : matchDraft.awayTeam;
-        return createLiveMatch({
-          clubId,
-          homeTeam: matchDraft.homeTeam,
-          awayTeam: matchDraft.awayTeam,
-          venue: matchDraft.venue,
-          date: new Date(matchDraft.dateMs),
-          format: matchDraft.format,
-          rules: matchDraft.rules,
-          squad: matchDraft.squad,
-          teamA: matchDraft.teamA ?? [],
-          teamB: matchDraft.teamB ?? [],
-          captainA: matchDraft.captainA,
-          captainB: matchDraft.captainB,
-          toss: { winnerId, winnerName, choice },
-          ...scorer,
-        });
-      }
-
-      // Existing match
       if (!match) throw new Error('Match not loaded');
       const winnerName = winnerId === 'homeTeam' ? match.homeTeam : match.awayTeam;
-      await setMatchToss(clubId, matchId!, { winnerId, winnerName, choice }, scorer);
-      return matchId!;
+      await setMatchToss(clubId, matchId, { winnerId, winnerName, choice }, scorer);
+      return matchId;
     },
     onSuccess: (resolvedMatchId) => navigation.replace('LiveScoring', { clubId, matchId: resolvedMatchId }),
   });
 
   const canConfirm = !!winnerId && !!choice && !isPending;
-  const homeTeam = matchDraft ? matchDraft.homeTeam : (match?.homeTeam ?? 'Team A');
-  const awayTeam = matchDraft ? matchDraft.awayTeam : (match?.awayTeam ?? 'Team B');
-  const venue = matchDraft ? matchDraft.venue : match?.venue;
+  const homeTeam = match?.homeTeam ?? 'Team A';
+  const awayTeam = match?.awayTeam ?? 'Team B';
+  const venue = match?.venue;
 
-  if (isLoading && !!matchId) {
+  if (isLoading) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator size="large" color={theme.accent} />

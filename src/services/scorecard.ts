@@ -1,4 +1,5 @@
 import type { CustomDismissal, DismissalEntry, OverDocument } from '../types';
+import { emptyExtras, type ExtrasBreakdown } from '../utils/extras';
 
 export interface BatterCard {
   id: string;
@@ -17,6 +18,11 @@ export interface BowlerCard {
   balls: number;
   runs: number;
   wickets: number;
+  // Wide/no-ball runs conceded by this bowler (already included in
+  // runs — byes/leg-byes are never charged to the bowler). Absent for
+  // legacy imported matches (see ImportedBowlerEntry), which never tracked
+  // extras per-ball.
+  extras?: number;
 }
 
 export interface InningsCard {
@@ -24,6 +30,9 @@ export interface InningsCard {
   bowling: BowlerCard[];
   totalRuns: number;
   totalWickets: number;
+  // Absent for legacy imported matches (see ImportedBatterEntry) — extras were
+  // never tracked per-ball for those, so there's nothing to break down.
+  extras?: ExtrasBreakdown;
   overs: string;
 }
 
@@ -40,6 +49,7 @@ export function buildInningsCard(overs: OverDocument[], ballsPerOver: number): I
   let totalRuns = 0;
   let totalWickets = 0;
   let legalBalls = 0;
+  const extras = emptyExtras();
 
   const batterOf = (id: string): BatterCard => {
     let b = batters.get(id);
@@ -53,7 +63,7 @@ export function buildInningsCard(overs: OverDocument[], ballsPerOver: number): I
   const bowlerOf = (id: string): BowlerCard => {
     let b = bowlers.get(id);
     if (!b) {
-      b = { id, balls: 0, runs: 0, wickets: 0 };
+      b = { id, balls: 0, runs: 0, wickets: 0, extras: 0 };
       bowlers.set(id, b);
     }
     return b;
@@ -69,6 +79,12 @@ export function buildInningsCard(overs: OverDocument[], ballsPerOver: number): I
 
       totalRuns += ballTotal;
       if (isLegal) legalBalls++;
+      switch (ball.extras?.type) {
+        case 'wide': extras.wides += extraRuns; break;
+        case 'no-ball': extras.noBalls += extraRuns; break;
+        case 'bye': extras.byes += extraRuns; break;
+        case 'leg-bye': extras.legByes += extraRuns; break;
+      }
 
       const bat = batterOf(ball.batsmanId);
       bat.runs += ball.runs; // runs off the bat only
@@ -78,6 +94,7 @@ export function buildInningsCard(overs: OverDocument[], ballsPerOver: number): I
 
       // Bowler concedes runs off the bat + wides/no-balls (not byes/leg-byes).
       bowler.runs += ball.runs + (isWideOrNoBall ? extraRuns : 0);
+      if (isWideOrNoBall) bowler.extras = (bowler.extras ?? 0) + extraRuns;
       if (isLegal) bowler.balls++;
 
       if (ball.dismissal) {
@@ -95,6 +112,7 @@ export function buildInningsCard(overs: OverDocument[], ballsPerOver: number): I
     bowling: [...bowlers.values()],
     totalRuns,
     totalWickets,
+    extras,
     overs: oversStr,
   };
 }
