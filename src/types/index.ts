@@ -28,7 +28,8 @@ export type PushNotificationData =
   | { type: 'join_approved'; clubId: string }
   | { type: 'made_admin'; clubId: string }
   | { type: 'match_live'; clubId: string; matchId: string }
-  | { type: 'match_finished'; clubId: string; matchId: string };
+  | { type: 'match_finished'; clubId: string; matchId: string }
+  | { type: 'match_poll'; clubId: string; pollId: string };
 
 export type JoinRequestStatus = 'pending' | 'approved' | 'rejected';
 
@@ -40,6 +41,61 @@ export interface JoinRequest {
   createdAt: Timestamp;
   resolvedAt?: Timestamp;
   resolvedBy?: string;
+}
+
+// A single choice on a match interest poll. `schedulable` is set once at poll
+// creation (see matchPollService.createMatchPoll) — it's what lets the results
+// screen show a "Schedule this match" button for e.g. "Yes"/"Sunday"/"Monday"
+// but never for "No". `proposedDate` is only present on options that map to
+// an actual candidate match date.
+export interface PollOption {
+  id: string;
+  label: string;
+  proposedDate?: Timestamp;
+  schedulable: boolean;
+}
+
+// Recorded once a schedulable option has been turned into a real match, so the
+// results screen can hide that option's "Schedule" button and link to the
+// match instead. A single poll may accumulate more than one of these (e.g. a
+// multi-date poll converted into both a Sunday and a Monday match).
+export interface ConvertedPollMatch {
+  matchId: string;
+  optionId: string;
+  convertedAt: Timestamp;
+}
+
+export interface MatchPoll {
+  id: string;
+  clubId: string;
+  createdBy: string;
+  createdByName: string;
+  question: string;
+  // false: respondent picks exactly one option (simple yes/no interest poll).
+  // true: respondent may check any number of options (multi-date poll)
+  // — deliberately no "Both"/"Neither" options exist for that case, since
+  // multi-select already covers checking two boxes or none.
+  multiSelect: boolean;
+  options: PollOption[];
+  venue?: string;
+  note?: string;
+  convertedMatches: ConvertedPollMatch[];
+  createdAt: Timestamp;
+  // One day after the max proposedDate across all options, computed once at
+  // creation (matchPollService.createMatchPoll) — once this passes, the poll
+  // is considered irrelevant: hidden from the MatchPolls list client-side,
+  // and permanently deleted (poll doc + responses) by the
+  // cleanupExpiredPolls scheduled Cloud Function.
+  expiresAt: Timestamp;
+}
+
+// clubs/{clubId}/matchPolls/{pollId}/responses/{uid} — doc id is the
+// responder's own uid, same shape as JoinRequest's self-scoped doc id.
+export interface PollResponse {
+  uid: string;
+  displayName: string;
+  optionIds: string[];
+  respondedAt: Timestamp;
 }
 
 // Public, server-written mirror of a registered player's per-club career stats

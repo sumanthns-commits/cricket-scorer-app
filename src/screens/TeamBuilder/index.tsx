@@ -7,6 +7,7 @@ import type { RouteProp } from '@react-navigation/native';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { getMatch, getClubPlayers, setMatchTeams, getRecentCaptainIds, createMatch } from '../../services/matchService';
+import { markPollOptionConverted } from '../../services/matchPollService';
 import { askCricketAssistant } from '../../ai/cricketAssistant';
 import { TEAM_ASSIGNMENT_PROMPT, TEAM_RATIONALE_PROMPT } from '../../constants/teamSelectionPrompt';
 import { callCallableFunction } from '../../services/functionsClient';
@@ -89,7 +90,7 @@ function PlayerRow({ name, badge, shared, isCaptain, onSetCaptain, onMoveA, onMo
 export default function TeamBuilderScreen() {
   const navigation = useNavigation<Nav>();
   const { params } = useRoute<Route>();
-  const { clubId, matchId, returnTo, matchDraft } = params;
+  const { clubId, matchId, returnTo, matchDraft, pollId, pollOptionId } = params;
   const theme = useThemeStore((s) => s.theme);
   const insets = useSafeAreaInsets();
 
@@ -269,7 +270,17 @@ export default function TeamBuilderScreen() {
         captainB: captainB ?? undefined,
       });
     },
-    onSuccess: (newMatchId) => navigation.navigate('Toss', { clubId, matchId: newMatchId }),
+    onSuccess: (newMatchId) => {
+      // Converting a match-interest poll option: best-effort bookkeeping so
+      // the poll's results screen can hide this option's "Schedule" button
+      // and link to the new match instead — never blocks getting to Toss.
+      if (pollId && pollOptionId) {
+        markPollOptionConverted(clubId, pollId, pollOptionId, newMatchId).catch((err) =>
+          console.error('[TeamBuilder] failed to mark poll option converted', err),
+        );
+      }
+      navigation.navigate('Toss', { clubId, matchId: newMatchId });
+    },
   });
 
   const isSaving = isSavingTeams || isCreatingMatch;

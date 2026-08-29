@@ -1,4 +1,5 @@
 import type * as Notifications from 'expo-notifications';
+import * as Linking from 'expo-linking';
 import type { PushNotificationData } from '../types';
 import { navigationRef } from '../navigation/navigationRef';
 import { usePendingNotificationStore, type PendingNav } from '../store/pendingNotificationStore';
@@ -19,6 +20,8 @@ function targetFor(data: PushNotificationData): PendingNav {
       // MatchScorecard already handles 'live' matches via real-time
       // listeners — no separate LiveScoring route needed for viewers.
       return { screen: 'MatchScorecard', params: { clubId: data.clubId, matchId: data.matchId } };
+    case 'match_poll':
+      return { screen: 'PollResponse', params: { clubId: data.clubId, pollId: data.pollId } };
   }
 }
 
@@ -39,6 +42,9 @@ export function navigateToPending(nav: PendingNav): void {
       break;
     case 'MatchScorecard':
       navigationRef.navigate('MatchScorecard', nav.params);
+      break;
+    case 'PollResponse':
+      navigationRef.navigate('PollResponse', nav.params);
       break;
   }
 }
@@ -63,5 +69,18 @@ export function handleNotificationResponse(response: Notifications.NotificationR
   if (!data?.type) return;
   const target = targetFor(data as PushNotificationData);
   usePendingNotificationStore.getState().setPending(target);
+  replayPendingNavigation();
+}
+
+// Universal/App Link (or the custom-scheme fallback) tap → queued the same
+// way as a notification tap, via the same replayPendingNavigation() choke
+// point. Only `poll/:clubId/:pollId` is recognised today; anything else is
+// ignored rather than guessed at.
+export function handleDeepLinkUrl(url: string): void {
+  const { path } = Linking.parse(url);
+  const segments = (path ?? '').split('/').filter(Boolean);
+  if (segments[0] !== 'poll' || !segments[1] || !segments[2]) return;
+  const [, clubId, pollId] = segments;
+  usePendingNotificationStore.getState().setPending({ screen: 'PollResponse', params: { clubId, pollId } });
   replayPendingNavigation();
 }

@@ -317,19 +317,38 @@ export default function ClubDetailScreen({ navigation }: Props) {
           }}
         >
           <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700' }}>Matches</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <TouchableOpacity
               onPress={() => nav.navigate('Leaderboard', { clubId })}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={{
                 backgroundColor: theme.surface,
                 borderRadius: 8,
-                paddingVertical: 8,
-                paddingHorizontal: 12,
+                width: 36,
+                height: 36,
+                alignItems: 'center',
+                justifyContent: 'center',
                 borderWidth: 1,
                 borderColor: theme.border,
               }}
             >
-              <Text style={{ color: theme.accent, fontSize: 14, fontWeight: '700' }}>🏆 Leaders</Text>
+              <Text style={{ fontSize: 16 }}>🏆</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => nav.navigate('MatchPolls', { clubId })}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{
+                backgroundColor: theme.surface,
+                borderRadius: 8,
+                width: 36,
+                height: 36,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: 1,
+                borderColor: theme.border,
+              }}
+            >
+              <Text style={{ fontSize: 16 }}>📊</Text>
             </TouchableOpacity>
             {isAdmin && (
               <TouchableOpacity

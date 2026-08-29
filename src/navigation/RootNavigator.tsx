@@ -25,6 +25,9 @@ import JoinRequestsScreen from '../screens/JoinRequests';
 import RequesterProfileScreen from '../screens/RequesterProfile';
 import EditProfileScreen from '../screens/EditProfile';
 import ClubDetailScreen from '../screens/ClubDetail';
+import MatchPollsScreen from '../screens/MatchPolls';
+import CreateMatchPollScreen from '../screens/CreateMatchPoll';
+import PollResponseScreen from '../screens/PollResponse';
 
 // All match-setup data collected before the match exists in Firestore.
 // Passed from ScheduleMatch → TeamBuilder only; TeamBuilder creates the match
@@ -51,8 +54,16 @@ export type RootStackParamList = {
   EditClub: { clubId: string };
   ClubRulesAdmin: { clubId: string };
   ScheduleMatch: { clubId: string };
-  // matchId: editing an existing (scheduled) match's teams; matchDraft: new match setup in progress
-  TeamBuilder: { clubId: string; matchId?: string; returnTo?: 'LiveScoring'; matchDraft?: MatchDraft };
+  // matchId: editing an existing (scheduled) match's teams; matchDraft: new match setup in progress;
+  // pollId/pollOptionId: set when converting a match-poll option, see PollResponse
+  TeamBuilder: {
+    clubId: string;
+    matchId?: string;
+    returnTo?: 'LiveScoring';
+    matchDraft?: MatchDraft;
+    pollId?: string;
+    pollOptionId?: string;
+  };
   Toss: { clubId: string; matchId: string };
   LiveScoring: { clubId: string; matchId: string };
   PlayerProfile: { clubId: string; playerId: string };
@@ -64,6 +75,9 @@ export type RootStackParamList = {
   JoinRequests: { clubId: string };
   RequesterProfile: { clubId: string; uid: string; displayName: string };
   EditProfile: undefined;
+  MatchPolls: { clubId: string };
+  CreateMatchPoll: { clubId: string };
+  PollResponse: { clubId: string; pollId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -160,6 +174,21 @@ export default function RootNavigator() {
           />
           <Stack.Screen name="RequesterProfile" component={RequesterProfileScreen} options={{ title: 'Player' }} />
           <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: 'Edit Profile' }} />
+          <Stack.Screen
+            name="MatchPolls"
+            component={MatchPollsScreen}
+            options={({ navigation }) => ({ title: 'Match Polls', headerLeft: () => backButton(navigation, theme.text) })}
+          />
+          <Stack.Screen
+            name="CreateMatchPoll"
+            component={CreateMatchPollScreen}
+            options={({ navigation }) => ({ title: 'New Poll', headerLeft: () => backButton(navigation, theme.text) })}
+          />
+          <Stack.Screen
+            name="PollResponse"
+            component={PollResponseScreen}
+            options={({ navigation }) => ({ title: 'Match Poll', headerLeft: () => backButton(navigation, theme.text) })}
+          />
         </>
       ) : (
         <Stack.Screen name="SignIn" component={SignInScreen} options={{ headerShown: false }} />
