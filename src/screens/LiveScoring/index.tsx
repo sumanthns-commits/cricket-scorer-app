@@ -1431,7 +1431,12 @@ export default function LiveScoringScreen() {
     } catch {
       setPhase('no-match');
     }
-  }, [clubId, matchId]);
+    // user?.uid (not the whole `user` object, which can get a new reference
+    // on token refreshes) — without it, `load` stays a stale closure if this
+    // screen mounts before Firebase Auth resolves: the admin-role check
+    // below permanently sees user=null and isAdmin never recovers even once
+    // auth catches up, silently hiding the "Take over scoring" button.
+  }, [clubId, matchId, user?.uid]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
