@@ -156,6 +156,7 @@ export default function CreateMatchPollScreen() {
   const [question, setQuestion] = useState('Cricket this Sunday at 7 AM?');
   const [venue, setVenue] = useState('');
   const [note, setNote] = useState('');
+  const [minResponses, setMinResponses] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const [simpleDate, setSimpleDate] = useState<DateParts>(() => tomorrowAt(7, 0));
@@ -179,10 +180,15 @@ export default function CreateMatchPollScreen() {
     setSubmitting(true);
     try {
       const trimmedQuestion = question.trim();
+      const parsedMin = parseInt(minResponses, 10);
+      // Applied uniformly to every schedulable option — a club's minimum
+      // headcount is usually the same regardless of which day, so this
+      // keeps the creation form to one field instead of one per date.
+      const minResponsesValue = Number.isFinite(parsedMin) && parsedMin > 0 ? parsedMin : undefined;
       const options =
         template === 'simple'
           ? [
-              { id: 'yes', label: 'Yes', proposedDate: partsToDate(simpleDate), schedulable: true },
+              { id: 'yes', label: 'Yes', proposedDate: partsToDate(simpleDate), schedulable: true, minResponses: minResponsesValue },
               { id: 'no', label: 'No', schedulable: false },
             ]
           : dateRows.map((row, i) => ({
@@ -190,6 +196,7 @@ export default function CreateMatchPollScreen() {
               label: row.label.trim() || `Option ${i + 1}`,
               proposedDate: partsToDate(row.parts),
               schedulable: true,
+              minResponses: minResponsesValue,
             }));
 
       const pollId = await createMatchPoll({
@@ -325,6 +332,20 @@ export default function CreateMatchPollScreen() {
             </Text>
           </>
         )}
+
+        <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 4 }}>MINIMUM PLAYERS NEEDED (OPTIONAL)</Text>
+        <TextInput
+          value={minResponses}
+          onChangeText={setMinResponses}
+          placeholder="e.g. 11"
+          placeholderTextColor={theme.textMuted}
+          keyboardType="numeric"
+          style={inputStyle}
+        />
+        <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: -8, marginBottom: 20 }}>
+          Applies to every date above. Once reached, the club gets a "Game's on!" push —
+          non-responders also get reminders every 4 hours until it's met.
+        </Text>
 
         <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 4 }}>VENUE (OPTIONAL)</Text>
         <TextInput

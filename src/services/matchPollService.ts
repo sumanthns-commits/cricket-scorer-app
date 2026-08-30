@@ -90,7 +90,7 @@ export async function createMatchPoll(params: {
   createdByName: string;
   question: string;
   multiSelect: boolean;
-  options: { id: string; label: string; proposedDate?: Date; schedulable: boolean }[];
+  options: { id: string; label: string; proposedDate?: Date; schedulable: boolean; minResponses?: number }[];
   venue?: string;
   note?: string;
 }): Promise<string> {
@@ -101,6 +101,7 @@ export async function createMatchPoll(params: {
     label: o.label,
     schedulable: o.schedulable,
     ...(o.proposedDate ? { proposedDate: Timestamp.fromDate(o.proposedDate) } : {}),
+    ...(o.minResponses ? { minResponses: o.minResponses } : {}),
   }));
   // Every poll template always carries at least one dated option (the "Yes"
   // option for a simple poll, every row for a multi-date poll), so this max
@@ -110,6 +111,7 @@ export async function createMatchPoll(params: {
   const ONE_DAY_MS = 24 * 60 * 60 * 1000;
   const latestMatchDateMs = Math.max(...params.options.map((o) => o.proposedDate?.getTime() ?? 0));
   const expiresAtMs = latestMatchDateMs + ONE_DAY_MS;
+  const createdAt = Timestamp.now();
   await setDoc(pollRef, {
     id: pollId,
     clubId: params.clubId,
@@ -121,8 +123,10 @@ export async function createMatchPoll(params: {
     ...(params.venue ? { venue: params.venue } : {}),
     ...(params.note ? { note: params.note } : {}),
     convertedMatches: [],
-    createdAt: Timestamp.now(),
+    createdAt,
     expiresAt: Timestamp.fromMillis(expiresAtMs),
+    lastReminderCheckAt: createdAt,
+    optionThresholdMet: {},
   });
   return pollId;
 }

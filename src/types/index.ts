@@ -53,6 +53,10 @@ export interface PollOption {
   label: string;
   proposedDate?: Timestamp;
   schedulable: boolean;
+  // Minimum respondent count for this option before it's considered "on" —
+  // only meaningful when schedulable is true. Unset means the reminder
+  // sweep and Game's on/off notifications never engage for this option.
+  minResponses?: number;
 }
 
 // Recorded once a schedulable option has been turned into a real match, so the
@@ -87,6 +91,19 @@ export interface MatchPoll {
   // and permanently deleted (poll doc + responses) by the
   // cleanupExpiredPolls scheduled Cloud Function.
   expiresAt: Timestamp;
+  // Bookkeeping for the sendPollReminders scheduled Cloud Function — when it
+  // last evaluated this poll, so the 4-hourly cadence survives the sweep's
+  // exact run timing drifting. Defaults to createdAt at poll creation, so
+  // the first eligible reminder window starts a clean 4h after the poll
+  // goes out (not immediately after the "New match poll" push).
+  lastReminderCheckAt?: Timestamp;
+  // Per schedulable optionId: true once its minResponses threshold is
+  // currently met. A live toggle, not a one-time flag — flips back to false
+  // (and fires "Game's off!") if responses drop back below the minimum
+  // after having been met, and can flip on again later. Absent/false keys
+  // mean "never reached, or currently below" — both read the same way by
+  // the reminder sweep and the response-write trigger.
+  optionThresholdMet?: Record<string, boolean>;
 }
 
 // clubs/{clubId}/matchPolls/{pollId}/responses/{uid} — doc id is the
