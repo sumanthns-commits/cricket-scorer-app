@@ -39,18 +39,16 @@ type SharablePoll = {
   options: { label: string }[];
 };
 
-// Shared by CreateMatchPoll (first share), PollResponse's plain-text share,
-// and its image-snapshot share, so the wording never drifts apart. `*text*`/
-// `_line_` use WhatsApp's own lightweight markdown so the question renders bold.
-export function buildPollShareContent(poll: SharablePoll): { message: string; url: string } {
+// `*text*`/`_line_` use WhatsApp's own lightweight markdown so the question renders bold.
+function buildPollShareContent(poll: SharablePoll): { message: string; url: string } {
   const url = `https://${POLL_HOSTING_DOMAIN}/poll/${poll.clubId}/${poll.id}`;
   const optionsLine = poll.multiSelect ? `_${poll.options.map((o) => o.label).join(' / ')}?_\n` : '';
   const message = `🏏 *${poll.question}*\n${optionsLine}Tap to say if you're in 👇`;
   return { message, url };
 }
 
-// Plain text+link share (no image) — used right after creating a poll, when
-// there are no responses yet to put in a snapshot.
+// Used both right after creating a poll and for re-sharing from the results
+// screen — identical behavior either way, no snapshot image.
 //
 // iOS's Share API takes `message` and `url` as separate items — passed that
 // way, WhatsApp shows the question as clean caption text and unfurls the

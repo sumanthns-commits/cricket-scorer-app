@@ -481,28 +481,18 @@ existing draft-mode confirm handler, after `createMatch()` succeeds, best-effort
 `markPollOptionConverted()`s if `pollId` is present — fire-and-forget, never blocks getting
 to Toss.
 
-**Sharing** (`matchPollService.ts`):
-- `sharePoll()` — plain text+link. iOS passes `message`/`url` as separate `Share.share()`
-  items so WhatsApp shows clean caption text and unfurls the link into its own preview card;
-  Android has no separate `url` field in React Native's Share API (a platform limitation,
-  not routable around), so the link is appended into the message text there.
-- `PollResponse`'s 🔗 button instead shares a **branded snapshot image** (question + each
-  option's live vote count/bar/voter names, same `react-native-view-shot` pattern as
-  `MatchScorecard`'s share) — richer than link-only. iOS combines the image with a text
-  caption (including the link) in one native share sheet — `Share.share({message, url:
-  localImageUri})` is standard, well-supported iOS behavior (UIActivityViewController
-  natively combines a local file + separate text into one shared item). **Android has no
-  equivalent** — `expo-sharing`'s `shareAsync()` (used there since React Native core's
-  `Share.share()` has no attachment support on Android at all, `url` is silently dropped by
-  the native bridge) has no caption/text parameter whatsoever, so the image shares alone;
-  WhatsApp still lets the sender type their own text before sending, same as sharing any
-  photo. Fixing this for real on Android would need a different library (e.g.
-  `react-native-share`, not currently a dependency) — not attempted. **Requires a
-  dev-client/native build** — `react-native-view-shot` has no implementation inside literal
-  Expo Go, so `snapshotRef.current` stays null there and this silently falls back to the
-  plain text share.
-- Poll IDs are a short custom 8-char id (`generateShortPollId()`), not Firestore's ~20-char
-  auto-id — kept short because it ends up visible in the shared link text.
+**Sharing** (`matchPollService.ts`'s `sharePoll()`) — plain text+link, identical whether
+it's `CreateMatchPoll`'s initial share right after creating a poll or `PollResponse`'s
+"Share" button re-sharing later; deliberately **no snapshot image** (an earlier version
+captured a branded `react-native-view-shot` card of live vote counts, same pattern as
+`MatchScorecard`'s share — dropped: Android's `expo-sharing` API used for that image has no
+caption/text parameter at all, so the image shared with no accompanying link, which defeated
+the point of a poll people need to actually tap into). iOS passes `message`/`url` as
+separate `Share.share()` items so WhatsApp shows clean caption text and unfurls the link
+into its own preview card; Android has no separate `url` field in React Native's Share API
+(a platform limitation, not routable around), so the link is appended into the message text
+there. Poll IDs are a short custom 8-char id (`generateShortPollId()`), not Firestore's
+~20-char auto-id — kept short because it ends up visible in the shared link text.
 
 **Deep linking**: shared links are `https://crease-24487.web.app/poll/{clubId}/{pollId}`
 (Universal Links/iOS, App Links/Android — `app.json`'s `associatedDomains`/`intentFilters`)
