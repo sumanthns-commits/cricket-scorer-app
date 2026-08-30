@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Platform, Share } from 'react-native';
+import ViewShot, { captureRef } from 'react-native-view-shot';
+import * as Sharing from 'expo-sharing';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -15,6 +17,7 @@ import {
   subscribeMatchPollResponses,
   respondToPoll,
   sharePoll,
+  buildPollShareContent,
   deletePoll,
 } from '../../services/matchPollService';
 import PlayerAvatar from '../../components/PlayerAvatar';
@@ -23,12 +26,87 @@ import type { MatchPoll, PollResponse } from '../../types';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'PollResponse'>;
 
+// Same branded palette as MatchScorecard's shareable snapshot, for visual
+// consistency across the app's "share as image" cards.
+const SNAPSHOT_WIDTH = 390;
+const SNAP_BG = '#0f172a';
+const SNAP_SURFACE = '#1e293b';
+const SNAP_BORDER = '#334155';
+const SNAP_TEXT = '#f1f5f9';
+const SNAP_MUTED = '#94a3b8';
+const SNAP_ACCENT = '#22c55e';
+
 function formatOptionDate(ts?: Timestamp): string | null {
   if (!ts) return null;
   const d = ts.toDate();
   const dateStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
   const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   return `${dateStr} · ${timeStr}`;
+}
+
+// Offscreen-rendered card captured via react-native-view-shot for the image
+// share — question + each option's current vote count and who picked it, so
+// the shared image itself is a live snapshot of poll state, not just the
+// question text.
+function PollSnapshot({ poll, responses }: { poll: MatchPoll; responses: PollResponse[] }) {
+  const dateStr = poll.createdAt
+    ? poll.createdAt.toDate().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+    : '';
+  const respondentsFor = (optionId: string) => responses.filter((r) => r.optionIds.includes(optionId));
+  const maxCount = Math.max(1, ...poll.options.map((o) => respondentsFor(o.id).length));
+
+  return (
+    <View style={{ width: SNAPSHOT_WIDTH, backgroundColor: SNAP_BG, padding: 20 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Text style={{ color: SNAP_ACCENT, fontSize: 22, fontWeight: '900', letterSpacing: -0.5 }}>Crease</Text>
+        <Text style={{ color: SNAP_MUTED, fontSize: 11 }}>{dateStr}</Text>
+      </View>
+
+      <View style={{ backgroundColor: SNAP_SURFACE, borderRadius: 10, padding: 14, marginBottom: 4 }}>
+        <Text style={{ color: SNAP_TEXT, fontSize: 17, fontWeight: '800' }}>🏏 {poll.question}</Text>
+        {poll.venue ? <Text style={{ color: SNAP_MUTED, fontSize: 12, marginTop: 4 }}>📍 {poll.venue}</Text> : null}
+      </View>
+
+      <View style={{ height: 1, backgroundColor: SNAP_BORDER, marginVertical: 14 }} />
+
+      {poll.options.map((option) => {
+        const respondents = respondentsFor(option.id);
+        const barPct = respondents.length > 0 ? (respondents.length / maxCount) * 100 : 0;
+        return (
+          <View key={option.id} style={{ marginBottom: 14 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <Text style={{ color: SNAP_TEXT, fontSize: 14, fontWeight: '700' }}>{option.label}</Text>
+              <Text style={{ color: SNAP_MUTED, fontSize: 12 }}>
+                {respondents.length} {respondents.length === 1 ? 'vote' : 'votes'}
+              </Text>
+            </View>
+            <View style={{ height: 5, backgroundColor: SNAP_BORDER, borderRadius: 3, marginBottom: 6 }}>
+              <View style={{ height: 5, width: `${barPct}%`, backgroundColor: SNAP_ACCENT, borderRadius: 3 }} />
+            </View>
+            {respondents.length > 0 && (
+              <Text style={{ color: SNAP_MUTED, fontSize: 11 }} numberOfLines={2}>
+                {respondents.map((r) => r.displayName).join(', ')}
+              </Text>
+            )}
+          </View>
+        );
+      })}
+
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'center',
+          marginTop: 8,
+          paddingTop: 14,
+          borderTopWidth: 1,
+          borderTopColor: SNAP_BORDER,
+        }}
+      >
+        <Text style={{ color: SNAP_MUTED, fontSize: 10 }}>Polled with </Text>
+        <Text style={{ color: SNAP_ACCENT, fontSize: 10, fontWeight: '700' }}>Crease</Text>
+      </View>
+    </View>
+  );
 }
 
 export default function PollResponseScreen() {
@@ -46,6 +124,8 @@ export default function PollResponseScreen() {
   const [respondBusy, setRespondBusy] = useState(false);
   const [joinBusy, setJoinBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [shareBusy, setShareBusy] = useState(false);
+  const snapshotRef = useRef<ViewShot>(null);
   // Which options have their voter list expanded — WhatsApp-poll style
   // (collapsed count by default, tap to reveal who voted).
   const [expandedOptionIds, setExpandedOptionIds] = useState<Set<string>>(new Set());
@@ -115,9 +195,41 @@ export default function PollResponseScreen() {
     }
   }
 
+  // Shares a live snapshot image of the poll (question + each option's
+  // current votes/names) as the primary content — richer and more "alive"
+  // than a link alone. Neither platform can cleanly combine a local image
+  // with a separate tappable link the way plain-text sharing can, so:
+  // iOS puts the link inside the caption text alongside the image (iOS can
+  // combine a local file + text in one share sheet); Android shares the
+  // image alone via expo-sharing (no caption field in that API at all —
+  // WhatsApp still lets the sender type their own text before sending from
+  // there, same as sharing any photo). Falls back to the plain text+link
+  // share if the snapshot can't be captured for some reason.
   async function handleShare() {
     if (!poll) return;
-    await sharePoll(poll);
+    if (!snapshotRef.current) {
+      await sharePoll(poll);
+      return;
+    }
+    setShareBusy(true);
+    try {
+      const uri = await captureRef(snapshotRef, { format: 'png', quality: 1, result: 'tmpfile' });
+      const { message, url } = buildPollShareContent(poll);
+      if (Platform.OS === 'ios') {
+        await Share.share({ message: `${message}\n${url}`, url: uri });
+      } else {
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Share Poll', UTI: 'public.png' });
+        } else {
+          await sharePoll(poll);
+        }
+      }
+    } catch {
+      // user cancelled or capture/share failed — nothing to do
+    } finally {
+      setShareBusy(false);
+    }
   }
 
   function handleDelete() {
@@ -267,12 +379,20 @@ export default function PollResponseScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 20 }}>
+      {/* Off-screen snapshot for the image share (rendered but positioned off-viewport) */}
+      <View style={{ position: 'absolute', top: -9999, left: 0 }} pointerEvents="none">
+        <ViewShot ref={snapshotRef} options={{ format: 'png', quality: 1 }}>
+          <PollSnapshot poll={poll} responses={responses} />
+        </ViewShot>
+      </View>
+
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
         <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700', flex: 1, marginRight: 12 }}>
           {poll.question}
         </Text>
         <TouchableOpacity
           onPress={handleShare}
+          disabled={shareBusy}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           style={{
             backgroundColor: theme.surface,
@@ -283,9 +403,10 @@ export default function PollResponseScreen() {
             justifyContent: 'center',
             borderWidth: 1,
             borderColor: theme.border,
+            opacity: shareBusy ? 0.6 : 1,
           }}
         >
-          <Text style={{ fontSize: 16 }}>🔗</Text>
+          {shareBusy ? <ActivityIndicator size="small" color={theme.accent} /> : <Text style={{ fontSize: 16 }}>🔗</Text>}
         </TouchableOpacity>
       </View>
       {poll.venue ? <Text style={{ color: theme.textSecondary, fontSize: 14, marginBottom: 4 }}>📍 {poll.venue}</Text> : null}
