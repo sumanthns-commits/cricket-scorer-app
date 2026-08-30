@@ -106,6 +106,13 @@ match"`), plus a **"Take over scoring"** button.
   scorer, other admins, and spectators alike.
 - Firestore rules do NOT enforce scorer-exclusivity (`balls`/`overs` writes only require
   `isMember(clubId)`) — this is a client-side UX guard, not a security boundary.
+- `LiveScoring`'s `load()` (the `useCallback` that fetches the match + computes `isAdmin`)
+  must list `user?.uid` in its dependency array, not just `[clubId, matchId]`. Without it,
+  if the screen mounts before Firebase Auth resolves, `load` permanently captures a stale
+  `user = null` closure — the admin-role check never re-runs once auth catches up, so
+  `isAdmin` sticks at `false` for that screen's whole lifetime and the "Take over scoring"
+  button silently never appears for a genuine admin. Fixed 2026-08; watch for the same
+  pattern in any other screen with a `useCallback`-memoized loader that reads `user`.
 
 ## Matches list screen
 Each card shows date + time (`createdAt`, local time, 12h with AM/PM — falls back to no
@@ -431,6 +438,96 @@ Screen refetches on focus (`useFocusEffect`) rather than relying on a fresh moun
 deleting a match on the Matches screen and returning here reflects it without a manual
 pull-to-refresh.
 
+## Match interest polls (IMPLEMENTED)
+Admin gauges interest before scheduling: creates a poll (`CreateMatchPoll`), shares it via
+the OS share sheet (WhatsApp is the real target), members respond in-app (`PollResponse`),
+admin converts respondents into a scheduled match's pre-filled squad.
+
+**Data model** (`clubs/{clubId}/matchPolls/{pollId}`):
+```
+question: string
+multiSelect: boolean       — false: pick exactly one (simple yes/no poll). true: check any
+                              number (multi-date poll) — no "Both"/"Neither" options exist,
+                              multi-select already covers checking two boxes or none
+options: PollOption[]      — { id, label, proposedDate?, schedulable, minResponses? }
+                              schedulable drives the "Schedule this match" button (true for
+                              "Yes"/every date row, false for "No"). minResponses is applied
+                              uniformly to every schedulable option from one creation-form field.
+venue?, note?: string
+convertedMatches: { matchId, optionId, convertedAt }[]  — one entry per match created from
+                              this poll; an option can be converted independently of others
+createdAt, expiresAt: Timestamp  — expiresAt = one day after the max proposedDate across
+                              options, computed once at creation
+lastReminderCheckAt?: Timestamp  — sendPollReminders bookkeeping (functions repo)
+optionThresholdMet?: Record<string, boolean>  — live on/off toggle per schedulable option,
+                              driven by onPollResponseWritten (functions repo)
+```
+`clubs/{clubId}/matchPolls/{pollId}/responses/{uid}` — doc id = responder's uid (one per
+member, re-tap overwrites): `{ uid, displayName, optionIds: string[], respondedAt }`.
+
+**Screens**: `MatchPolls` (list, visible to all members not just admins — status chip shows
+"Open"/"N of M scheduled"/"All scheduled"), `CreateMatchPoll` (two templates: "Simple
+interest poll" builds Yes/No options sharing one date; "Multiple dates" builds one
+schedulable option per admin-added candidate date), `PollResponse` (respond — tapping an
+option saves immediately, no separate submit button; results — vote-share bar + expandable
+"who voted" list per option, WhatsApp-poll style; admin — per-option "Schedule this match"
+button once responses exist, "Delete Poll").
+
+**Conversion**: "Schedule {option}'s match" builds a `MatchDraft` (squad = every respondent
+whose `optionIds` includes that option; `rules`/`format` defaulted from `club.rules`) and
+navigates `TeamBuilder({ clubId, matchDraft, pollId, pollOptionId })` — reuses the exact
+draft-mode path `ScheduleMatch` already uses, no new match-creation code. `TeamBuilder`'s
+existing draft-mode confirm handler, after `createMatch()` succeeds, best-effort
+`markPollOptionConverted()`s if `pollId` is present — fire-and-forget, never blocks getting
+to Toss.
+
+**Sharing** (`matchPollService.ts`):
+- `sharePoll()` — plain text+link. iOS passes `message`/`url` as separate `Share.share()`
+  items so WhatsApp shows clean caption text and unfurls the link into its own preview card;
+  Android has no separate `url` field in React Native's Share API (a platform limitation,
+  not routable around), so the link is appended into the message text there.
+- `PollResponse`'s 🔗 button instead shares a **branded snapshot image** (question + each
+  option's live vote count/bar/voter names, same `react-native-view-shot` pattern as
+  `MatchScorecard`'s share) — richer than link-only. iOS combines the image with a text
+  caption (including the link) in one native share sheet — `Share.share({message, url:
+  localImageUri})` is standard, well-supported iOS behavior (UIActivityViewController
+  natively combines a local file + separate text into one shared item). **Android has no
+  equivalent** — `expo-sharing`'s `shareAsync()` (used there since React Native core's
+  `Share.share()` has no attachment support on Android at all, `url` is silently dropped by
+  the native bridge) has no caption/text parameter whatsoever, so the image shares alone;
+  WhatsApp still lets the sender type their own text before sending, same as sharing any
+  photo. Fixing this for real on Android would need a different library (e.g.
+  `react-native-share`, not currently a dependency) — not attempted. **Requires a
+  dev-client/native build** — `react-native-view-shot` has no implementation inside literal
+  Expo Go, so `snapshotRef.current` stays null there and this silently falls back to the
+  plain text share.
+- Poll IDs are a short custom 8-char id (`generateShortPollId()`), not Firestore's ~20-char
+  auto-id — kept short because it ends up visible in the shared link text.
+
+**Deep linking**: shared links are `https://crease-24487.web.app/poll/{clubId}/{pollId}`
+(Universal Links/iOS, App Links/Android — `app.json`'s `associatedDomains`/`intentFilters`)
+with a `cricket-scorer-app://poll/{clubId}/{pollId}` custom-scheme fallback. Deliberately
+**not** wired through React Navigation's `linking` prop — `RootNavigator` only registers its
+full screen set once signed in (see "Tap-to-navigate" under Push notifications below), which
+would silently drop a `linking`-driven navigation arriving while signed out. Routed through
+the same `pendingNotificationStore` queue as notification taps instead (`App.tsx`'s
+`Linking.addEventListener('url', ...)` + `Linking.getInitialURL()` → `handleDeepLinkUrl()` in
+`notificationNavigation.ts`), so it replays once auth resolves. `PollResponse` itself handles
+the "signed in but not a club member" state (poll doc is readable by any signed-in user, same
+precedent as the `clubs/{clubId}` doc rule, so the question shows before prompting to join).
+
+**Reminders & Game's on/off**: `minResponses` on a schedulable option, set once at creation,
+drives two Cloud Functions in the functions repo — `sendPollReminders` (4-hourly nudge to
+non-responders, stops per-option once resolved) and `onPollResponseWritten` (live on/off
+toggle per option, broadcasts "Game's on!"/"Game's off!" to the whole club on each crossing,
+can fire more than once if responses fluctuate). See functions repo CLAUDE.md for the logic.
+
+**Expiry & cleanup**: `MatchPolls` list filters out expired polls client-side
+(`getClubPolls`); the `cleanupExpiredPolls` scheduled Cloud Function (functions repo)
+permanently deletes them a day after their last candidate date. Admin can also delete a poll
+manually any time (`deletePoll` — clears the `responses` subcollection first, Firestore
+doesn't cascade-delete).
+
 ## Self-service claim lifecycle (PLANNED — NOT implemented)
 Stats resolver only PREVIEWS a claim snapshot. Ghost→member linking is admin-only today.
 open → cooldown → merged | cooldown → contested → admin resolves | merged → reverted
@@ -458,8 +555,18 @@ Key functions:
 - `linkGhost` / `unlinkGhost` — admin callable stat merge/reversal
 - AI callables: `getAvailablePlayers`, `getPlayerStats`, `getPlayerForm`,
   `getBattingInsights`, `getBowlingInsights`, `getHeadToHead`, `getMatchContext`
+- `onPollCreated` — notifies registered members (minus the creator) of a new match poll
+- `onPollResponseWritten` — flips `optionThresholdMet` and sends "Game's on!"/"Game's off!"
+  when a schedulable option's `minResponses` is crossed (see "Match interest polls" above)
+- `sendPollReminders` — every 4h, nudges non-responders on still-open polls
+- `cleanupExpiredPolls` — every 24h, deletes polls a day past their last candidate date
+- `pollLandingPage` — HTTPS function behind the `crease-24487.web.app/poll/**` Hosting
+  rewrite; branded static Open Graph card + redirect to the app for shared poll links
 
-Deploy: `firebase deploy --only functions` from `functions/` subdirectory.
+Deploy: `firebase deploy --only functions` from `functions/` subdirectory. Also
+`firebase deploy --only hosting` if `firebase.json`/`public/` changed (this repo now has a
+Hosting site backing `pollLandingPage` and the Universal/App Links `.well-known` files — see
+functions repo CLAUDE.md).
 
 ## Push notifications
 **Delivery needs `eas credentials` run once, as of 2026-07-11 — until then, do not assume
@@ -471,13 +578,15 @@ registered against this app on Expo's servers — that's a one-time `eas credent
 needed for this; it's an account/credentials setup step only.
 
 Expo push notifications (`expo-notifications` client-side, `expo-server-sdk` v5 — pinned
-below v6 because v6+ is ESM-only and the functions repo compiles to CommonJS). Five triggers:
-new join request → club admins; join request approved → the requester; promoted to admin →
-that player (fun copy, taps through to EditClub); match goes live → registered members minus
-the scorer; match finishes (completed or abandoned) → registered members minus the scorer.
-Only the two match-related sends respect the per-user opt-out
-(`users/{uid}.notificationPrefs.matchNotifications`, default on, toggled in Profile) —
-join-request/approval/made-admin notifications always send.
+below v6 because v6+ is ESM-only and the functions repo compiles to CommonJS). Triggers: new
+join request → club admins; join request approved → the requester; promoted to admin → that
+player (fun copy, taps through to EditClub); match goes live → registered members minus the
+scorer; match finishes (completed or abandoned) → registered members minus the scorer; new
+match poll / poll reminder / "Game's on!" / "Game's off!" → registered members (see "Match
+interest polls" above). Match- and poll-related sends respect the per-user opt-out
+(`users/{uid}.notificationPrefs.matchNotifications`, default on, toggled in Profile —
+poll sends go through `notifyRegisteredMembers`, which hardcodes this) — join-request/
+approval/made-admin notifications always send regardless.
 
 Client: `src/services/pushTokenService.ts` registers the device's Expo push token onto
 `users/{uid}.expoPushTokens` on sign-in (`useAuthListener.ts`, fire-and-forget) and removes
@@ -493,7 +602,11 @@ possible (signed out, or a cold start racing `onAuthStateChanged`) queues into
 `src/store/pendingNotificationStore.ts`; `replayPendingNavigation()` is the single choke
 point that flushes it, called both from an auth-change effect in `RootNavigator.tsx` and
 from `NavigationContainer`'s `onReady` in `App.tsx` — needed both ways round, since either
-"auth resolves" or "nav becomes ready" can be the one that happens second.
+"auth resolves" or "nav becomes ready" can be the one that happens second. Shared match-poll
+deep links (`https://crease-24487.web.app/poll/...` / `cricket-scorer-app://poll/...`) go
+through this exact same queue via `handleDeepLinkUrl()` — deliberately not React Navigation's
+`linking` prop, for the same "RootNavigator only registers its full screen set once signed
+in" reason. See "Match interest polls" above.
 
 Push delivery cannot be exercised in the iOS Simulator at all, and needs a native rebuild
 (`expo-notifications` bundles native code) plus, for iOS, a one-time APNs key via
