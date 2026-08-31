@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Alert, Switch } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Alert, Switch, KeyboardAvoidingView, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { useNavigation } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
@@ -22,70 +23,15 @@ type Nav = CompositeNavigationProp<
   NativeStackNavigationProp<RootStackParamList>
 >;
 
-function ThemePicker() {
+// One grouped card for account-level settings (not club-scoped, so this
+// renders in both the no-active-club and normal branches below) — a single
+// bordered card with row dividers reads as far less cluttered than three
+// separately-labeled, separately-bordered blocks stacked on top of each other.
+function SettingsCard() {
+  const navigation = useNavigation<Nav>();
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
-
-  return (
-    <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
-      <Text style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>
-        Appearance
-      </Text>
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        {THEMES.map((t) => {
-          const active = t.id === theme.id;
-          return (
-            <TouchableOpacity
-              key={t.id}
-              onPress={() => setTheme(t.id)}
-              style={{ alignItems: 'center', gap: 6 }}
-            >
-              <View
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 22,
-                  backgroundColor: t.bg,
-                  borderWidth: active ? 2 : 1.5,
-                  borderColor: active ? t.accent : t.border,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  overflow: 'hidden',
-                }}
-              >
-                <View
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 10,
-                    backgroundColor: t.accent,
-                  }}
-                />
-              </View>
-              <Text
-                style={{
-                  color: active ? theme.accent : theme.textMuted,
-                  fontSize: 10,
-                  fontWeight: active ? '700' : '400',
-                }}
-              >
-                {t.name}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
-// Account-level, not club-scoped, so this renders in both the
-// no-active-club and normal render branches below. Opt-out only affects
-// match-live/match-finished pushes — join-request/approval pushes always
-// send regardless of this toggle. Missing/undefined means ON (default).
-function NotificationSettings() {
   const user = useAuthStore((s) => s.user);
-  const theme = useThemeStore((s) => s.theme);
   const queryClient = useQueryClient();
 
   const { data: profile } = useQuery({
@@ -93,6 +39,9 @@ function NotificationSettings() {
     queryFn: () => getUserProfile(user!.uid),
     enabled: !!user,
   });
+  // Opt-out only affects match-live/match-finished/poll pushes — join-request/
+  // approval pushes always send regardless of this toggle. Missing/undefined
+  // means ON (default).
   const matchNotifications = profile?.notificationPrefs?.matchNotifications ?? true;
 
   async function handleToggle(value: boolean) {
@@ -107,13 +56,45 @@ function NotificationSettings() {
     }
   }
 
+  const rowStyle = { flexDirection: 'row' as const, alignItems: 'center' as const, padding: 14 };
+  const divider = <View style={{ height: 1, backgroundColor: theme.border }} />;
+
   return (
-    <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
-      <Text style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>
-        Notifications
-      </Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Text style={{ color: theme.textSecondary, flex: 1, fontSize: 15 }}>Match notifications</Text>
+    <View style={{ backgroundColor: theme.surface, borderRadius: 12, borderWidth: 1, borderColor: theme.border, overflow: 'hidden' }}>
+      <TouchableOpacity onPress={() => navigation.navigate('EditProfile')} style={rowStyle}>
+        <Text style={{ color: theme.text, fontSize: 15, flex: 1 }}>Edit default profile</Text>
+        <Text style={{ color: theme.textMuted, fontSize: 18 }}>›</Text>
+      </TouchableOpacity>
+      {divider}
+      <View style={rowStyle}>
+        <Text style={{ color: theme.text, fontSize: 15, flex: 1 }}>Appearance</Text>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {THEMES.map((t) => {
+            const active = t.id === theme.id;
+            return (
+              <TouchableOpacity key={t.id} onPress={() => setTheme(t.id)}>
+                <View
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    backgroundColor: t.bg,
+                    borderWidth: active ? 2 : 1.5,
+                    borderColor: active ? t.accent : t.border,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: t.accent }} />
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+      {divider}
+      <View style={rowStyle}>
+        <Text style={{ color: theme.text, fontSize: 15, flex: 1 }}>Match notifications</Text>
         <Switch
           value={matchNotifications}
           onValueChange={handleToggle}
@@ -125,30 +106,24 @@ function NotificationSettings() {
   );
 }
 
-function EditProfileButton() {
-  const navigation = useNavigation<Nav>();
-  const theme = useThemeStore((s) => s.theme);
-  return (
-    <TouchableOpacity
-      onPress={() => navigation.navigate('EditProfile')}
-      style={{
-        backgroundColor: theme.surface,
-        borderRadius: 8,
-        paddingVertical: 10,
-        paddingHorizontal: 14,
-        borderWidth: 1,
-        borderColor: theme.border,
-        alignItems: 'center',
-      }}
-    >
-      <Text style={{ color: theme.accent, fontSize: 14, fontWeight: '700' }}>Edit Profile</Text>
-    </TouchableOpacity>
-  );
-}
-
-function DeleteAccountButton() {
+function AccountActions() {
   const setActiveClubId = useClubStore((s) => s.setActiveClubId);
+  const theme = useThemeStore((s) => s.theme);
   const [deleting, setDeleting] = useState(false);
+
+  function handleSignOut() {
+    Alert.alert('Sign out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: () => {
+          setActiveClubId(null);
+          signOut().catch(() => {});
+        },
+      },
+    ]);
+  }
 
   function handleDeleteAccount() {
     Alert.alert(
@@ -175,93 +150,71 @@ function DeleteAccountButton() {
   }
 
   return (
-    <TouchableOpacity
-      onPress={handleDeleteAccount}
-      disabled={deleting}
-      style={{
-        marginHorizontal: 16,
-        marginBottom: 16,
-        paddingVertical: 12,
-        alignItems: 'center',
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: '#dc2626',
-        opacity: deleting ? 0.6 : 1,
-      }}
-    >
-      <Text style={{ color: '#dc2626', fontSize: 14, fontWeight: '700' }}>
-        {deleting ? 'Deleting…' : 'Delete Account'}
-      </Text>
-    </TouchableOpacity>
+    <View style={{ gap: 10 }}>
+      <TouchableOpacity
+        onPress={handleSignOut}
+        style={{ paddingVertical: 14, alignItems: 'center', borderRadius: 10, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }}
+      >
+        <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>Sign Out</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={handleDeleteAccount}
+        disabled={deleting}
+        style={{
+          paddingVertical: 14,
+          alignItems: 'center',
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: '#dc2626',
+          opacity: deleting ? 0.6 : 1,
+        }}
+      >
+        <Text style={{ color: '#dc2626', fontSize: 14, fontWeight: '700' }}>
+          {deleting ? 'Deleting…' : 'Delete Account'}
+        </Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 export default function ProfileScreen() {
   const user = useAuthStore((s) => s.user);
   const activeClubId = useClubStore((s) => s.activeClubId);
-  const setActiveClubId = useClubStore((s) => s.setActiveClubId);
   const theme = useThemeStore((s) => s.theme);
-
-  function handleSignOut() {
-    Alert.alert('Sign out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign out',
-        style: 'destructive',
-        onPress: () => {
-          setActiveClubId(null);
-          signOut().catch(() => {});
-        },
-      },
-    ]);
-  }
-
-  if (!activeClubId || !user) {
-    return (
-      <ScrollView style={{ flex: 1, backgroundColor: theme.bg }}>
-        <View style={{ alignItems: 'center', justifyContent: 'center', padding: 32, paddingTop: 48 }}>
-          <Text style={{ color: theme.textSecondary, fontSize: 18, marginBottom: 8 }}>No club selected</Text>
-          <Text style={{ color: theme.textMuted, fontSize: 14, textAlign: 'center', marginBottom: 24 }}>
-            Go to Home and tap a club to view your club profile.
-          </Text>
-          <EditProfileButton />
-        </View>
-        <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 16 }} />
-        <ThemePicker />
-        <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 16 }} />
-        <NotificationSettings />
-        <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: 16, marginTop: 8 }} />
-        <TouchableOpacity
-          onPress={handleSignOut}
-          style={{ margin: 16, paddingVertical: 14, alignItems: 'center', borderRadius: 8, backgroundColor: '#dc2626' }}
-        >
-          <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '700' }}>Sign Out</Text>
-        </TouchableOpacity>
-        <DeleteAccountButton />
-      </ScrollView>
-    );
-  }
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
-        <EditProfileButton />
-      </View>
-      <ThemePicker />
-      <View style={{ height: 1, backgroundColor: theme.border }} />
-      <NotificationSettings />
-      <View style={{ height: 1, backgroundColor: theme.border }} />
-      <PlayerProfileView clubId={activeClubId} playerId={user.uid} canEdit />
-      <TouchableOpacity
-        onPress={handleSignOut}
-        style={{ margin: 16, paddingVertical: 14, alignItems: 'center', borderRadius: 8, backgroundColor: '#dc2626' }}
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 32 + insets.bottom }}
+        keyboardShouldPersistTaps="handled"
       >
-        <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '700' }}>Sign Out</Text>
-      </TouchableOpacity>
-      <DeleteAccountButton />
-      <Text style={{ textAlign: 'center', color: theme.textMuted, fontSize: 11, marginBottom: 16, opacity: 0.5 }}>
-        v{Constants.expoConfig?.version ?? '—'}
-      </Text>
-    </View>
+        <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700', marginBottom: 16 }}>Profile</Text>
+
+        <SettingsCard />
+
+        {!activeClubId || !user ? (
+          <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+            <Text style={{ color: theme.textSecondary, fontSize: 16, marginBottom: 8 }}>No club selected</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 14, textAlign: 'center' }}>
+              Go to Home and tap a club to view your club profile.
+            </Text>
+          </View>
+        ) : (
+          <View style={{ marginTop: 20, marginHorizontal: -16 }}>
+            <PlayerProfileView clubId={activeClubId} playerId={user.uid} canEdit embedded />
+          </View>
+        )}
+
+        <View style={{ marginTop: 20 }}>
+          <AccountActions />
+        </View>
+
+        <Text style={{ textAlign: 'center', color: theme.textMuted, fontSize: 11, marginTop: 20, opacity: 0.5 }}>
+          v{Constants.expoConfig?.version ?? '—'}
+        </Text>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

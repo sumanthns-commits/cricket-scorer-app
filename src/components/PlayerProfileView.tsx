@@ -218,11 +218,18 @@ export default function PlayerProfileView({
   playerId,
   canEdit = false,
   isAdmin = false,
+  // Set by ProfileScreen, which embeds this inside its own single page-wide
+  // ScrollView (see that screen for why — this component's own scroll only
+  // makes sense when it IS the whole screen, as it is for PlayerProfileScreen).
+  // Embedded mode renders the same content as a plain View, no ScrollView/
+  // KeyboardAvoidingView/flex:1 of its own.
+  embedded = false,
 }: {
   clubId: string;
   playerId: string;
   canEdit?: boolean;
   isAdmin?: boolean;
+  embedded?: boolean;
 }) {
   const theme = useThemeStore((s) => s.theme);
   const insets = useSafeAreaInsets();
@@ -490,9 +497,8 @@ export default function PlayerProfileView({
   const showProvisional = !!player.activeClaim && claim?.status === 'cooldown';
   const mergeAtMs = claim?.mergeScheduledAt ? claim.mergeScheduledAt.toMillis() : null;
 
-  return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 48 + insets.bottom }} keyboardShouldPersistTaps="handled">
+  const content = (
+    <>
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
         <PlayerAvatar name={player.displayName} photoURL={player.photoURL} seed={player.id} size={64} />
@@ -978,8 +984,11 @@ export default function PlayerProfileView({
           />
         </View>
       </Section>
-    </ScrollView>
+    </>
+  );
 
+  const modals = (
+    <>
     <Modal visible={showRatingInfo} transparent animationType="fade" onRequestClose={() => setShowRatingInfo(false)}>
       <TouchableOpacity
         style={{ flex: 1, backgroundColor: '#00000088', justifyContent: 'center', padding: 24 }}
@@ -1091,7 +1100,28 @@ export default function PlayerProfileView({
         </TouchableOpacity>
       </KeyboardAvoidingView>
     </Modal>
+    </>
+  );
 
+  if (embedded) {
+    return (
+      <>
+        <View style={{ paddingHorizontal: 16 }}>{content}</View>
+        {modals}
+      </>
+    );
+  }
+
+  return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: theme.bg }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 48 + insets.bottom }}
+        keyboardShouldPersistTaps="handled"
+      >
+        {content}
+      </ScrollView>
+      {modals}
     </KeyboardAvoidingView>
   );
 }
