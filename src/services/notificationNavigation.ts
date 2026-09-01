@@ -4,8 +4,9 @@ import type { PushNotificationData } from '../types';
 import { navigationRef } from '../navigation/navigationRef';
 import { usePendingNotificationStore, type PendingNav } from '../store/pendingNotificationStore';
 import { useAuthStore } from '../store/authStore';
+import { getClubMember } from './clubService';
 
-function targetFor(data: PushNotificationData): PendingNav {
+async function targetFor(data: PushNotificationData): Promise<PendingNav> {
   switch (data.type) {
     case 'join_request':
       return { screen: 'JoinRequests', params: { clubId: data.clubId } };
@@ -15,10 +16,26 @@ function targetFor(data: PushNotificationData): PendingNav {
       // Lands on the club's members screen — where the new admin's own
       // "Make Admin"/"Revoke" controls live, so the tap is immediately useful.
       return { screen: 'EditClub', params: { clubId: data.clubId } };
-    case 'match_live':
+    case 'match_live': {
+      // Mirrors Matches/ClubDetail's handleMatchPress routing: an admin
+      // (whether or not they're the current scorer) goes to LiveScoring,
+      // where a non-scorer admin lands on the read-only branch with a "Take
+      // over scoring" button — MatchScorecard has no such affordance at
+      // all. Best-effort admin check: if we can't tell yet (e.g. a cold
+      // start racing auth resolution, so there's no signed-in uid to check
+      // against), fall back to MatchScorecard, which is always valid for
+      // anyone.
+      const uid = useAuthStore.getState().user?.uid;
+      const isAdmin = uid
+        ? await getClubMember(data.clubId, uid).then((m) => m?.role === 'admin').catch(() => false)
+        : false;
+      return isAdmin
+        ? { screen: 'LiveScoring', params: { clubId: data.clubId, matchId: data.matchId } }
+        : { screen: 'MatchScorecard', params: { clubId: data.clubId, matchId: data.matchId } };
+    }
     case 'match_finished':
-      // MatchScorecard already handles 'live' matches via real-time
-      // listeners — no separate LiveScoring route needed for viewers.
+      // Nothing left to take over once a match is finished — MatchScorecard
+      // for everyone.
       return { screen: 'MatchScorecard', params: { clubId: data.clubId, matchId: data.matchId } };
     case 'match_poll':
       return { screen: 'PollResponse', params: { clubId: data.clubId, pollId: data.pollId } };
@@ -43,6 +60,9 @@ export function navigateToPending(nav: PendingNav): void {
     case 'MatchScorecard':
       navigationRef.navigate('MatchScorecard', nav.params);
       break;
+    case 'LiveScoring':
+      navigationRef.navigate('LiveScoring', nav.params);
+      break;
     case 'PollResponse':
       navigationRef.navigate('PollResponse', nav.params);
       break;
@@ -64,10 +84,10 @@ export function replayPendingNavigation(): void {
   usePendingNotificationStore.getState().clearPending();
 }
 
-export function handleNotificationResponse(response: Notifications.NotificationResponse): void {
+export async function handleNotificationResponse(response: Notifications.NotificationResponse): Promise<void> {
   const data = response.notification.request.content.data as unknown as Partial<PushNotificationData>;
   if (!data?.type) return;
-  const target = targetFor(data as PushNotificationData);
+  const target = await targetFor(data as PushNotificationData);
   usePendingNotificationStore.getState().setPending(target);
   replayPendingNavigation();
 }

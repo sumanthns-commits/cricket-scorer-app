@@ -10,6 +10,7 @@ export type PendingNav =
   | { screen: 'ClubDetail'; params: { clubId: string } }
   | { screen: 'EditClub'; params: { clubId: string } }
   | { screen: 'MatchScorecard'; params: { clubId: string; matchId: string } }
+  | { screen: 'LiveScoring'; params: { clubId: string; matchId: string } }
   | { screen: 'PollResponse'; params: { clubId: string; pollId: string } };
 
 interface PendingNotificationState {

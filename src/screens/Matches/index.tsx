@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -14,11 +14,12 @@ import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useClubStore } from '../../store/clubStore';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
-import { getClubMatchesBySeason, deleteMatch, getMatchOvers, isMatchScorer } from '../../services/matchService';
+import { getClubMatches, getClubMatchesBySeason, deleteMatch, getMatchOvers, isMatchScorer } from '../../services/matchService';
 import { getClub, getClubMember } from '../../services/clubService';
 import {
   currentSeasonInfo,
   generateSeasonRange,
+  seasonLabel,
   type Hemisphere,
   type SeasonInfo,
 } from '../../utils/seasons';
@@ -205,6 +206,32 @@ export default function MatchesScreen() {
     }, [refetch])
   );
 
+  // The auto-selected (calendar-current) season can come up empty even
+  // though the club has matches — e.g. a match scheduled for "today" lands
+  // right on a season-quarter boundary (1 Mar/Jun/Sep/Dec) and files under
+  // the *next* bucket. Rather than silently showing an empty list by
+  // default, fall back to whichever season the club's most recent match
+  // actually belongs to. Only kicks in when the user hasn't explicitly
+  // picked a season themselves, and only once the default season is
+  // confirmed empty (avoids the extra read on the common non-empty case).
+  useEffect(() => {
+    if (selectedSeason || !activeClubId || !effectiveSeason || isLoading) return;
+    if (!matches || matches.length > 0) return;
+
+    let cancelled = false;
+    getClubMatches(activeClubId).then((all) => {
+      if (cancelled || all.length === 0) return;
+      const mostRecent = all.reduce((a, b) => (b.date.toMillis() > a.date.toMillis() ? b : a));
+      const label = seasonLabel(mostRecent.date.toDate(), hemisphere);
+      if (label === effectiveSeason.label) return;
+      const target = seasons.find((s) => s.label === label);
+      if (target) setSelectedSeason(target);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSeason, activeClubId, effectiveSeason, isLoading, matches, hemisphere, seasons]);
+
   const sortedMatches = useMemo(() => {
     if (!matches) return matches;
     return [...matches].sort((a, b) => {
@@ -231,14 +258,14 @@ export default function MatchesScreen() {
       return;
     }
     if (match.status === 'live') {
-      // Only the scorer gets the ball-entry screen — everyone else
-      // (including other admins) watches via MatchScorecard's real-time
-      // subscription, so two devices don't both end up with live scoring
-      // controls open on the same match.
-      navigation.navigate(
-        isMatchScorer(match, user?.uid, isAdmin) ? 'LiveScoring' : 'MatchScorecard',
-        { clubId, matchId }
-      );
+      // The scorer gets the ball-entry screen; a non-scorer admin still goes
+      // to LiveScoring too, but lands on its read-only branch with a "Take
+      // over scoring" button (isMatchScorer is false for them there, so they
+      // don't get scoring controls — just the option to claim them). Only a
+      // plain member (no admin rights, nothing to do with a takeover) goes
+      // to MatchScorecard instead — isMatchScorer always implies isAdmin, so
+      // this is equivalent to routing on isAdmin alone.
+      navigation.navigate(isAdmin ? 'LiveScoring' : 'MatchScorecard', { clubId, matchId });
       return;
     }
     if (hasToss) {

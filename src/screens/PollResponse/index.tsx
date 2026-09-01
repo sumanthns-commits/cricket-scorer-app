@@ -10,6 +10,7 @@ import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import { getClub, getClubMember } from '../../services/clubService';
+import { getMatch } from '../../services/matchService';
 import { requestToJoin, getMyJoinRequest, cancelJoinRequest } from '../../services/joinRequestService';
 import {
   subscribeMatchPoll,
@@ -190,6 +191,30 @@ export default function PollResponseScreen() {
     }
   }
 
+  // Converted matches are only ever created as status:'scheduled' — not
+  // 'live' yet, since Toss hasn't run — so unconditionally sending this tap
+  // to MatchScorecard used to land on an empty, contextless scorecard (that
+  // screen has no branch for 'scheduled' at all, and no toss info to show
+  // regardless). Resolve the match's actual current status on tap instead
+  // and route the same way Matches/ClubDetail's handleMatchPress already
+  // does: completed/abandoned/live → MatchScorecard (or LiveScoring for a
+  // non-scorer admin on a live match); scheduled → Toss for an admin
+  // (teams already exist from conversion), nothing for a non-admin.
+  async function handleOpenConvertedMatch(matchId: string) {
+    const m = await getMatch(clubId, matchId);
+    if (!m) return;
+    if (m.status === 'completed' || m.status === 'abandoned') {
+      navigation.navigate('MatchScorecard', { clubId, matchId });
+      return;
+    }
+    if (m.status === 'live') {
+      navigation.navigate(isAdmin ? 'LiveScoring' : 'MatchScorecard', { clubId, matchId });
+      return;
+    }
+    if (!isAdmin) return;
+    navigation.navigate((m.teamA?.length ?? 0) > 0 ? 'Toss' : 'TeamBuilder', { clubId, matchId });
+  }
+
   function handleSchedule(optionId: string) {
     if (!poll || !club) return;
     const option = poll.options.find((o) => o.id === optionId);
@@ -359,7 +384,7 @@ export default function PollResponseScreen() {
                     {dateLabel ? <Text style={{ color: theme.textMuted, fontSize: 12 }}>{dateLabel}</Text> : null}
                   </View>
                   {converted && (
-                    <TouchableOpacity onPress={() => navigation.navigate('MatchScorecard', { clubId, matchId: converted.matchId })}>
+                    <TouchableOpacity onPress={() => handleOpenConvertedMatch(converted.matchId)}>
                       <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '700' }}>Scheduled →</Text>
                     </TouchableOpacity>
                   )}

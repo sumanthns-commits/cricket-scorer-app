@@ -76,15 +76,14 @@ export default function ScheduleMatchScreen() {
   const theme = useThemeStore((s) => s.theme);
   const insets = useSafeAreaInsets();
 
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  const today = new Date();
 
   const [homeTeam, setHomeTeam] = useState('');
   const [awayTeam, setAwayTeam] = useState('');
   const [venue, setVenue] = useState('');
-  const [day, setDay] = useState(tomorrow.getDate());
-  const [month, setMonth] = useState(tomorrow.getMonth());
-  const [year, setYear] = useState(tomorrow.getFullYear());
+  const [day, setDay] = useState(today.getDate());
+  const [month, setMonth] = useState(today.getMonth());
+  const [year, setYear] = useState(today.getFullYear());
   const [format, setFormat] = useState<MatchFormat>('custom');
   const [customOvers, setCustomOvers] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());

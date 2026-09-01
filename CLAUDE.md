@@ -52,7 +52,13 @@ ScheduleMatch → TeamBuilder → Toss → LiveScoring
   through nav params to TeamBuilder. "Reuse previous squad & teams" carries over teamA,
   teamB, captainA, captainB. Uses `navigation.navigate` (not replace) so back returns to the
   form. "Quick rematch" mode skips TeamBuilder entirely and calls `createMatch()` itself
-  (teams/captains cloned from the previous match), straight to Toss with a `matchId`.
+  (teams/captains cloned from the previous match), straight to Toss with a `matchId`. The
+  day/month/year picker (shared by every mode, incl. Quick rematch — its copy is literally
+  "only pick the date") **defaults to today**, not tomorrow — it used to default to
+  tomorrow, which meant an unedited Quick rematch landed on the first of a season-quarter
+  boundary month (Mar/Jun/Sep/Dec 1) whenever "today" was the last day of one, silently
+  filing the new match under next season on the Matches screen (see "Matches list screen"
+  below for the client-side half of that fix). Fixed 2026-09.
 - **TeamBuilder**: assigns squad players to Team A/B, sets captains, optional AI balance
   (see "AI Balance" below — now also picks captains, weighted against whoever captained in
   the last 4 weeks). In draft mode (no matchId): on confirm, calls `createMatch()` — writes
@@ -113,6 +119,16 @@ match"`), plus a **"Take over scoring"** button.
   `isAdmin` sticks at `false` for that screen's whole lifetime and the "Take over scoring"
   button silently never appears for a genuine admin. Fixed 2026-08; watch for the same
   pattern in any other screen with a `useCallback`-memoized loader that reads `user`.
+- The "Take over scoring" button only exists inside `LiveScoring`'s read-only branch — but
+  `Matches`/`ClubDetail`'s `handleMatchPress` routing for a `status:'live'` match used to send
+  anyone who wasn't the current scorer (including other admins) to `MatchScorecard` instead,
+  on the reasoning that only the scorer needs the ball-entry screen. That meant a non-scorer
+  admin could never actually reach the takeover button — not a rendering bug, a routing one:
+  the button's own gating (`isAdmin && match?.status === 'live'`) was always correct, but the
+  screen it lives on was unreachable for exactly the audience it's for. Fixed 2026-09: both
+  routing sites now send any admin to `LiveScoring` (landing on the read-only branch with the
+  button, since `isMatchScorer` is still false for them there — no scoring controls handed
+  out just from routing there) and only a plain non-admin member to `MatchScorecard`.
 
 ## Matches list screen
 Each card shows date + time (`createdAt`, local time, 12h with AM/PM — falls back to no
@@ -120,6 +136,19 @@ time shown for pre-`createdAt` matches, never crashes). Sort is live-first, then
 descending, then `createdAt` descending as a tiebreak for same-day matches (see `createdAt`
 note below). `ScheduleMatch`'s "previous match" lookup (for squad reuse / quick rematch) uses
 the same `date`-then-`createdAt` sort to find the true most-recently-created match.
+
+The season dropdown auto-selects `currentSeasonInfo(hemisphere)` (today's calendar season) by
+default. That can land on a season with zero matches even though the club has some — a
+match's `date` only needs to cross a season-quarter boundary (1 Mar/Jun/Sep/Dec) from
+"today" for it to file under the *next* bucket, which used to happen routinely from
+`ScheduleMatch`'s old tomorrow-default (see above; fixed) and can still happen from a
+manually-picked date near a boundary. Rather than ever showing an empty list by default, an
+effect checks: once the auto-selected season's query resolves empty (and the user hasn't
+explicitly picked a season themselves — `selectedSeason` still null), it fetches the club's
+single most-recent match unfiltered (`getClubMatches`), resolves *its* season via
+`seasonLabel()`, and switches `selectedSeason` there if different. Only fires on the
+empty-result path — the common case (current season already has matches) never pays for the
+extra read. Fixed 2026-09.
 
 ## Match data model (`clubs/{clubId}/matches/{matchId}`)
 ```
@@ -481,6 +510,16 @@ existing draft-mode confirm handler, after `createMatch()` succeeds, best-effort
 `markPollOptionConverted()`s if `pollId` is present — fire-and-forget, never blocks getting
 to Toss.
 
+Once converted, each option's row shows a "Scheduled →" link (`converted.matchId` from the
+option's `convertedMatches` entry). Tapping it resolves the match's actual current status
+on tap (`handleOpenConvertedMatch`) rather than hardcoding a destination — a freshly
+converted match is always `status:'scheduled'` (Toss hasn't run yet), and `MatchScorecard`
+has no branch for that status at all, so a hardcoded link there used to land on an empty,
+contextless scorecard. Routes the same way `Matches`/`ClubDetail`'s `handleMatchPress`
+already does: completed/abandoned/live → `MatchScorecard` (or `LiveScoring` for a non-scorer
+admin on a live match, same as elsewhere — see "Scorer handover" above); scheduled → `Toss`
+for an admin (teams already exist from conversion), nothing for a non-admin. Fixed 2026-09.
+
 **Sharing** (`matchPollService.ts`'s `sharePoll()`) — plain text+link, identical whether
 it's `CreateMatchPoll`'s initial share right after creating a poll or `PollResponse`'s
 "Share" button re-sharing later; deliberately **no snapshot image** (an earlier version
@@ -597,6 +636,16 @@ deep links (`https://crease-24487.web.app/poll/...` / `cricket-scorer-app://poll
 through this exact same queue via `handleDeepLinkUrl()` — deliberately not React Navigation's
 `linking` prop, for the same "RootNavigator only registers its full screen set once signed
 in" reason. See "Match interest polls" above.
+
+`targetFor()`'s `match_live` case is `async` (the only one that is) — it needs a Firestore
+read to check whether the tapping user is an admin of `data.clubId`, mirroring
+`Matches`/`ClubDetail`'s routing (see "Scorer handover" above): an admin goes to
+`LiveScoring` (reaching the read-only branch's "Take over scoring" button if they're not the
+current scorer), a plain member to `MatchScorecard`. If there's no signed-in uid yet to check
+against (cold start racing `onAuthStateChanged`), it falls back to `MatchScorecard` — always
+valid for anyone — rather than blocking the tap on auth resolving first. `match_finished`
+stays unconditionally `MatchScorecard` — nothing left to take over once a match is done.
+Fixed 2026-09.
 
 Push delivery cannot be exercised in the iOS Simulator at all, and needs a native rebuild
 (`expo-notifications` bundles native code) plus, for iOS, a one-time APNs key via

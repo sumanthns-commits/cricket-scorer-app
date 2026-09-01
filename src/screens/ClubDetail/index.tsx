@@ -222,12 +222,11 @@ export default function ClubDetailScreen({ navigation }: Props) {
       return;
     }
     if (match.status === 'live') {
-      // Only the scorer gets the ball-entry screen — everyone else watches
-      // via MatchScorecard's real-time subscription.
-      nav.navigate(
-        isMatchScorer(match, user?.uid, isAdmin) ? 'LiveScoring' : 'MatchScorecard',
-        { clubId, matchId }
-      );
+      // The scorer gets the ball-entry screen; a non-scorer admin still goes
+      // to LiveScoring too, but lands on its read-only branch with a "Take
+      // over scoring" button. Only a plain member goes to MatchScorecard —
+      // see the matching comment in Matches/index.tsx's handleMatchPress.
+      nav.navigate(isAdmin ? 'LiveScoring' : 'MatchScorecard', { clubId, matchId });
       return;
     }
     if (hasToss) {
