@@ -96,11 +96,21 @@ export async function handleNotificationResponse(response: Notifications.Notific
 // way as a notification tap, via the same replayPendingNavigation() choke
 // point. Only `poll/:clubId/:pollId` is recognised today; anything else is
 // ignored rather than guessed at.
+//
+// The two link shapes place "poll" in different parts of the URL once
+// parsed: `https://crease-24487.web.app/poll/:clubId/:pollId` has "poll" as
+// path segment 0 (hostname is the web domain), but the custom-scheme
+// fallback `cricket-scorer-app://poll/:clubId/:pollId` (what pollLandingPage
+// JS-redirects to for anyone intercepted into an in-app browser, e.g.
+// WhatsApp's — see functions repo CLAUDE.md) has no host/path separator
+// after "poll", so standard URL parsing puts "poll" itself in `hostname`
+// and only `:clubId/:pollId` in `path`. Both shapes must be checked, or the
+// custom-scheme fallback silently no-ops instead of navigating.
 export function handleDeepLinkUrl(url: string): void {
-  const { path } = Linking.parse(url);
+  const { hostname, path } = Linking.parse(url);
   const segments = (path ?? '').split('/').filter(Boolean);
-  if (segments[0] !== 'poll' || !segments[1] || !segments[2]) return;
-  const [, clubId, pollId] = segments;
+  const [clubId, pollId] = hostname === 'poll' ? segments : segments[0] === 'poll' ? segments.slice(1) : [];
+  if (!clubId || !pollId) return;
   usePendingNotificationStore.getState().setPending({ screen: 'PollResponse', params: { clubId, pollId } });
   replayPendingNavigation();
 }

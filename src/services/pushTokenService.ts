@@ -30,8 +30,19 @@ export async function registerForPushNotificationsAsync(uid: string): Promise<vo
     if (!Device.isDevice) return; // simulators/emulators without push support
 
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'default',
+      // Channel id bumped from 'default' to 'default-v2': Android channels are
+      // immutable once created — a device that got the 'default' channel
+      // before this DEFAULT-importance call existed (or with a lower
+      // importance for any other reason) keeps that setting forever; this
+      // call becomes a permanent no-op on it. A new channel id forces every
+      // device, old installs included, to create it fresh with the importance
+      // set here (status bar icon is suppressed to a plain dot for
+      // below-DEFAULT-importance channels, which is what motivated this).
+      // Display name changed from 'default' to 'General' too — otherwise
+      // this and the orphaned old 'default' channel would show up as two
+      // identically-labelled entries in the system notification settings.
+      await Notifications.setNotificationChannelAsync('default-v2', {
+        name: 'General',
         importance: Notifications.AndroidImportance.DEFAULT,
       });
     }
