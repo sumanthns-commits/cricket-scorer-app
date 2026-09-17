@@ -169,10 +169,10 @@ describe('standard dismissals', () => {
     expect(r.bowlerGetsWicket).toBe(false);
   });
 
-  test('stumped: batter out, bowler does NOT get wicket', () => {
+  test('stumped: batter out, bowler gets wicket', () => {
     const r = recordBall(state0, ball({ dismissal: { type: 'stumped', fielderId: fieldId } }), cfg6);
     expect(r.batterIsOut).toBe(true);
-    expect(r.bowlerGetsWicket).toBe(false);
+    expect(r.bowlerGetsWicket).toBe(true);
   });
 
   test('hit-wicket: batter out, bowler gets wicket', () => {
