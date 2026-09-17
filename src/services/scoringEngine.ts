@@ -34,7 +34,7 @@ const STD_WICKET: Record<StandardDismissalType, { bowlerGetsWicket: boolean }> =
   bowled:              { bowlerGetsWicket: true },
   lbw:                 { bowlerGetsWicket: true },
   'run-out':           { bowlerGetsWicket: false },
-  stumped:             { bowlerGetsWicket: false },
+  stumped:             { bowlerGetsWicket: true },
   'hit-wicket':        { bowlerGetsWicket: true },
   'obstructing-field': { bowlerGetsWicket: false },
   'timed-out':         { bowlerGetsWicket: false },

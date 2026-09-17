@@ -40,7 +40,14 @@ export interface InningsCard {
 const BOWLER_CREDIT = new Set(['bowled', 'caught', 'lbw', 'stumped', 'hit-wicket']);
 
 /** Aggregate a read-only scorecard for one innings from its over documents. */
-export function buildInningsCard(overs: OverDocument[], ballsPerOver: number): InningsCard {
+export function buildInningsCard(
+  overs: OverDocument[],
+  ballsPerOver: number,
+  customDismissals: CustomDismissal[] = [],
+): InningsCard {
+  const customBowlerCredit = new Map(customDismissals.map((cd) => [cd.id, cd.bowlerGetsWicket]));
+  const creditsBowler = (type: string): boolean =>
+    BOWLER_CREDIT.has(type) || customBowlerCredit.get(type) === true;
   const sorted = [...overs].sort((a, b) => a.overNumber - b.overNumber);
 
   const batters = new Map<string, BatterCard>();
@@ -101,7 +108,7 @@ export function buildInningsCard(overs: OverDocument[], ballsPerOver: number): I
         totalWickets++;
         bat.out = true;
         bat.dismissal = ball.dismissal;
-        if (BOWLER_CREDIT.has(ball.dismissal.type)) bowler.wickets++;
+        if (creditsBowler(ball.dismissal.type)) bowler.wickets++;
       }
     }
   }

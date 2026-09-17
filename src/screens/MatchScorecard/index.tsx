@@ -391,8 +391,8 @@ export default function MatchScorecardScreen() {
       ]) as Record<string, 'RHB' | 'LHB' | undefined>,
       ball1: balls.filter((b) => b.inningsId === 'innings-1'),
       ball2: balls.filter((b) => b.inningsId === 'innings-2'),
-      card1: first.length ? buildInningsCard(first, ballsPerOver) : summary?.['1'] ?? null,
-      card2: second.length ? buildInningsCard(second, ballsPerOver) : summary?.['2'] ?? null,
+      card1: first.length ? buildInningsCard(first, ballsPerOver, currentMatch.rules.customDismissals) : summary?.['1'] ?? null,
+      card2: second.length ? buildInningsCard(second, ballsPerOver, currentMatch.rules.customDismissals) : summary?.['2'] ?? null,
     };
   }, [currentMatch, isLive, liveBalls, staticData, players, matchId]);
 

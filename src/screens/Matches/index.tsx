@@ -73,6 +73,19 @@ function MatchCard({
     ? `${match.awayTeam} vs ${match.homeTeam}`
     : `${match.homeTeam} vs ${match.awayTeam}`;
 
+  // A preset format's canonical overs (T20=20, ODI=50) can drift once a
+  // scorer edits overs mid-match (LiveScoring's handleSaveOvers only ever
+  // touches rules.oversPerInnings, never format) — show the actual current
+  // overs whenever it no longer matches the preset, instead of the stale
+  // format label.
+  const presetOvers = match.format === 'T20' ? 20 : match.format === 'ODI' ? 50 : undefined;
+  const oversOverridden = presetOvers != null && match.rules.oversPerInnings !== presetOvers;
+  const oversLabel = !match.format
+    ? ''
+    : match.format === 'custom' || oversOverridden
+    ? `${match.rules.oversPerInnings ?? '?'} ov`
+    : match.format;
+
   const liveLabel = isScorer ? 'Live' : 'Watch';
   const adminActionLabel =
     match.status === 'live'
@@ -109,9 +122,7 @@ function MatchCard({
           ) : null}
           <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 4 }}>
             {dateStr}{timeStr ? `, ${timeStr}` : ''}
-            {match.format
-              ? ` · ${match.format === 'custom' ? `${match.rules.oversPerInnings ?? '?'} ov` : match.format}`
-              : ''}
+            {oversLabel ? ` · ${oversLabel}` : ''}
           </Text>
         </View>
         <View style={{ alignItems: 'flex-end', gap: 6 }}>

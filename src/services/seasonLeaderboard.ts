@@ -217,7 +217,7 @@ export async function buildSeasonLeaderboard(
     const inningsIds = [...new Set(overs.map((o) => o.inningsId))];
     for (const inningsId of inningsIds) {
       const inningsOvers = overs.filter((o) => o.inningsId === inningsId);
-      const card = buildInningsCard(inningsOvers, ballsPerOver);
+      const card = buildInningsCard(inningsOvers, ballsPerOver, match.rules.customDismissals ?? []);
 
       for (const bat of card.batting) {
         const a = batAcc(resolve(bat.id));

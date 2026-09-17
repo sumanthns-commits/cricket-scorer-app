@@ -56,6 +56,9 @@ export function emptyBowlerStats(): BowlerStats {
   return { legalBalls: 0, completedOvers: 0, runsConceded: 0, wickets: 0, extras: 0 };
 }
 
+// Dismissal types that credit the bowler (the rest are run-outs etc.).
+const BOWLER_CREDIT = new Set(['bowled', 'caught', 'lbw', 'stumped', 'hit-wicket']);
+
 export function buildDismissalText(
   d: DismissalEntry,
   getName: (id: string) => string,
@@ -198,7 +201,11 @@ export function buildInningsFromBalls(
     bow.runsConceded += ball.runs + (isWideNoBall ? (ball.extras?.runs ?? 0) : 0) - byeLB;
     if (isWideNoBall) bow.extras += ball.extras?.runs ?? 0;
     if (isLegal) bow.legalBalls++;
-    if (ball.dismissal) bow.wickets++;
+    if (ball.dismissal) {
+      const custom = m.rules.customDismissals.find((cd) => cd.id === ball.dismissal!.type);
+      const bowlerGetsWicket = custom ? custom.bowlerGetsWicket : BOWLER_CREDIT.has(ball.dismissal.type);
+      if (bowlerGetsWicket) bow.wickets++;
+    }
     if (ball.isLastBallOfOver) {
       if (!bowlerCompletedOvers.has(ball.bowlerId)) bowlerCompletedOvers.set(ball.bowlerId, new Set());
       bowlerCompletedOvers.get(ball.bowlerId)!.add(ball.overNumber);

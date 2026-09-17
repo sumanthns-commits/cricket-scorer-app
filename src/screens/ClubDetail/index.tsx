@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
@@ -61,6 +61,19 @@ function MatchCard({
   const hasToss = !!match.toss;
   const isFinished = match.status === 'completed' || match.status === 'abandoned';
 
+  // A preset format's canonical overs (T20=20, ODI=50) can drift once a
+  // scorer edits overs mid-match (LiveScoring's handleSaveOvers only ever
+  // touches rules.oversPerInnings, never format) — show the actual current
+  // overs whenever it no longer matches the preset, instead of the stale
+  // format label.
+  const presetOvers = match.format === 'T20' ? 20 : match.format === 'ODI' ? 50 : undefined;
+  const oversOverridden = presetOvers != null && match.rules.oversPerInnings !== presetOvers;
+  const oversLabel = !match.format
+    ? ''
+    : match.format === 'custom' || oversOverridden
+    ? `${match.rules.oversPerInnings ?? '?'} ov`
+    : match.format;
+
   const liveLabel = isScorer ? 'Live' : 'Watch';
   const adminActionLabel =
     match.status === 'live'
@@ -97,9 +110,7 @@ function MatchCard({
           ) : null}
           <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 4 }}>
             {dateStr}
-            {match.format
-              ? ` · ${match.format === 'custom' ? `${match.rules.oversPerInnings ?? '?'} ov` : match.format}`
-              : ''}
+            {oversLabel ? ` · ${oversLabel}` : ''}
           </Text>
         </View>
         <View style={{ alignItems: 'flex-end', gap: 6 }}>
@@ -192,6 +203,16 @@ export default function ClubDetailScreen({ navigation }: Props) {
     queryFn: () => getClubMatchesBySeason(clubId, effectiveSeason!.start, effectiveSeason!.end),
     enabled: !!clubId && !!effectiveSeason,
   });
+
+  // Refetch whenever this screen (re)gains focus — e.g. returning from
+  // LiveScoring after editing overs mid-match — so the match card reflects
+  // it without the user having to pull-to-refresh manually. Mirrors
+  // Matches/index.tsx's identical focus-refetch for the same reason.
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
 
   async function handleJoinToggle() {
     if (!user) return;

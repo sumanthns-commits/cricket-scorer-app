@@ -34,6 +34,7 @@ import {
   isMatchScorer,
   takeOverScoring,
   subscribeMatch,
+  subscribeMatchBalls,
 } from '../../services/matchService';
 import { getClub, getClubMember } from '../../services/clubService';
 import { useAuthStore } from '../../store/authStore';
@@ -1372,62 +1373,8 @@ export default function LiveScoringScreen() {
       setPlayers(clubPlayers);
       setClubRules(club?.rules ?? liveMatch.rules);
 
-      const lastManStands = club?.rules.lastManStands ?? liveMatch.rules.lastManStands;
-      const oversPerInnings = liveMatch.rules.oversPerInnings;
-
       const allBalls = await getMatchBalls(clubId, liveMatch.id);
-
-      if (allBalls.length === 0) {
-        setInningsNumber(1);
-        setFirstInningsBalls([]);
-        setActiveBalls([]);
-        beginInnings(liveMatch, 1);
-        return;
-      }
-
-      // Initialise the monotonic counter from the last stored seq so writes
-      // that follow never collide with existing ball docs.
-      seqRef.current = allBalls[allBalls.length - 1].seq + 1;
-      lastBallIdRef.current = allBalls[allBalls.length - 1].id;
-
-      const autoRotateEoO = club?.rules.autoRotateStrikeEoO ?? liveMatch.rules.autoRotateStrikeEoO ?? true;
-      const firstBalls = allBalls.filter((b) => b.inningsId === 'innings-1');
-      const secondBalls = allBalls.filter((b) => b.inningsId === 'innings-2');
-
-      if (secondBalls.length > 0) {
-        const firstInn = buildInningsFromBalls(firstBalls, liveMatch, 1, clubPlayers, autoRotateEoO);
-        setFirstInnings(firstInn);
-        setFirstInningsRuns(firstInn.totalRuns);
-        setFirstInningsBalls(firstBalls);
-        setActiveBalls(secondBalls);
-        setInningsNumber(2);
-        const reconstructed = buildInningsFromBalls(secondBalls, liveMatch, 2, clubPlayers, autoRotateEoO);
-        const chased = reconstructed.totalRuns >= firstInn.totalRuns + 1;
-        // `load()` only reaches here when status is still 'live'/'scheduled' (see
-        // the guard above) — completeMatch() flips status to 'completed' the
-        // moment the scorer seals it, at which point a reload shows 'no-match'
-        // instead. So a complete 2nd innings reaching this point is always
-        // unsealed — resume to 'end-pending', never straight to 'innings-over'.
-        const resolvedPhase = resumePhaseFromBalls(
-          secondBalls,
-          reconstructed,
-          chased || isInningsComplete(reconstructed, lastManStands, oversPerInnings),
-          false
-        );
-        applyResolvedPhase(reconstructed, resolvedPhase);
-      } else {
-        setInningsNumber(1);
-        setFirstInningsBalls([]);
-        setActiveBalls(firstBalls);
-        const reconstructed = buildInningsFromBalls(firstBalls, liveMatch, 1, clubPlayers, autoRotateEoO);
-        const resolvedPhase = resumePhaseFromBalls(
-          firstBalls,
-          reconstructed,
-          isInningsComplete(reconstructed, lastManStands, oversPerInnings),
-          !!liveMatch.firstInningsEnded
-        );
-        applyResolvedPhase(reconstructed, resolvedPhase);
-      }
+      applyBallsToState(allBalls, liveMatch, clubPlayers, club?.rules);
     } catch {
       setPhase('no-match');
     }
@@ -1552,6 +1499,74 @@ export default function LiveScoringScreen() {
   // buildInningsFromBalls, computeNextBatsmen, firstInningsBatters/Bowlers,
   // and battingForInnings/bowlingForInnings now live in
   // ../../services/inningsState (shared with MatchScorecard's live view).
+
+  // Rebuilds innings/phase state from a ball-doc list. Called both by load()
+  // (one-shot, on focus) and by the live balls listener below (kept in sync
+  // for non-scorer viewers, who otherwise never see updates until they
+  // refocus the screen — the scorer's own screen doesn't need this since
+  // commitBall/handleUndo already drive its state optimistically).
+  function applyBallsToState(
+    allBalls: BallDoc[],
+    liveMatch: Match,
+    clubPlayers: Player[],
+    rules: ClubRules | undefined,
+  ) {
+    if (allBalls.length === 0) {
+      setInningsNumber(1);
+      setFirstInningsBalls([]);
+      setActiveBalls([]);
+      beginInnings(liveMatch, 1);
+      return;
+    }
+
+    // Initialise the monotonic counter from the last stored seq so writes
+    // that follow never collide with existing ball docs.
+    seqRef.current = allBalls[allBalls.length - 1].seq + 1;
+    lastBallIdRef.current = allBalls[allBalls.length - 1].id;
+
+    const lastManStands = rules?.lastManStands ?? liveMatch.rules.lastManStands;
+    const oversPerInnings = liveMatch.rules.oversPerInnings;
+    const autoRotateEoO = rules?.autoRotateStrikeEoO ?? liveMatch.rules.autoRotateStrikeEoO ?? true;
+    const firstBalls = allBalls.filter((b) => b.inningsId === 'innings-1');
+    const secondBalls = allBalls.filter((b) => b.inningsId === 'innings-2');
+
+    if (secondBalls.length > 0) {
+      const firstInn = buildInningsFromBalls(firstBalls, liveMatch, 1, clubPlayers, autoRotateEoO);
+      setFirstInnings(firstInn);
+      setFirstInningsRuns(firstInn.totalRuns);
+      setFirstInningsBalls(firstBalls);
+      setActiveBalls(secondBalls);
+      setInningsNumber(2);
+      const reconstructed = buildInningsFromBalls(secondBalls, liveMatch, 2, clubPlayers, autoRotateEoO);
+      const chased = reconstructed.totalRuns >= firstInn.totalRuns + 1;
+      // This only reaches here when status is still 'live'/'scheduled' (see
+      // load()'s guard, and the live listener only fires from ball writes
+      // that happen while the match is live) — completeMatch() flips status
+      // to 'completed' the moment the scorer seals it, at which point a
+      // reload shows 'no-match' instead. So a complete 2nd innings reaching
+      // this point is always unsealed — resume to 'end-pending', never
+      // straight to 'innings-over'.
+      const resolvedPhase = resumePhaseFromBalls(
+        secondBalls,
+        reconstructed,
+        chased || isInningsComplete(reconstructed, lastManStands, oversPerInnings),
+        false
+      );
+      applyResolvedPhase(reconstructed, resolvedPhase);
+    } else {
+      setInningsNumber(1);
+      setFirstInningsBalls([]);
+      setActiveBalls(firstBalls);
+      const reconstructed = buildInningsFromBalls(firstBalls, liveMatch, 1, clubPlayers, autoRotateEoO);
+      const resolvedPhase = resumePhaseFromBalls(
+        firstBalls,
+        reconstructed,
+        isInningsComplete(reconstructed, lastManStands, oversPerInnings),
+        !!liveMatch.firstInningsEnded
+      );
+      applyResolvedPhase(reconstructed, resolvedPhase);
+    }
+  }
 
   // 2nd-innings match result, e.g. "Team <captain name> won by 12 runs 🏆".
   // Falls back to the home/away team name when no captain is set. Shared by
@@ -2026,6 +2041,10 @@ export default function LiveScoringScreen() {
   function handleSaveOvers(newOvers: number) {
     if (!match) return;
     setShowEditOvers(false);
+    // Belt-and-braces: the "✎ Edit" trigger is already hidden for a
+    // non-scorer via canEditOvers, but this also covers the modal staying
+    // open across a scoring handover mid-flow — same pattern as commitBall.
+    if (!isMatchScorer(match, user?.uid, isAdmin)) return;
     if (newOvers === match.rules.oversPerInnings) return;
     // Optimistically apply so the over-limit / chase maths update immediately.
     const updated: Match = { ...match, rules: { ...match.rules, oversPerInnings: newOvers } };
@@ -2136,7 +2155,12 @@ export default function LiveScoringScreen() {
   // ── New bowler / new batter handlers ────────────────────────────
 
   function handleNewBowler(id: string) {
-    if (!innings) return;
+    if (!innings || !match) return;
+    // Belt-and-braces: the picker's visibility is driven by `phase`, which is
+    // computed the same way for every viewer (not role-aware) — same choke
+    // point pattern as commitBall, since a non-scorer can otherwise still
+    // interact with this modal after any over completes.
+    if (!isMatchScorer(match, user?.uid, isAdmin)) return;
     setInnings((prev) => {
       if (!prev) return prev;
       return {
@@ -2151,7 +2175,11 @@ export default function LiveScoringScreen() {
   }
 
   function handleNewBatter(id: string) {
-    if (!innings) return;
+    if (!innings || !match) return;
+    // Belt-and-braces: same role-agnostic `phase` gap as handleNewBowler —
+    // this one actually persists (updateBallNextBatsman below), so the guard
+    // matters more here.
+    if (!isMatchScorer(match, user?.uid, isAdmin)) return;
     const end = newBatterEndRef.current;
     newBatterEndRef.current = 'onStrike';
     const newOnStrikeId = end === 'offStrike' ? innings.onStrikeId : id;
@@ -2226,6 +2254,35 @@ export default function LiveScoringScreen() {
   // admin instead sees a "Take over scoring" option (handleTakeOverScoring
   // below), for when the real scorer's device dies or they have to step away.
   const isScorer = !!match && isMatchScorer(match, user?.uid, isAdmin);
+
+  // Mirror render-time values into refs so the live balls listener below
+  // (registered once, not re-subscribed per render) always reads current
+  // data instead of closing over whatever was current at mount.
+  const isScorerRef = useRef(isScorer);
+  useEffect(() => { isScorerRef.current = isScorer; }, [isScorer]);
+  const matchForBallsRef = useRef(match);
+  useEffect(() => { matchForBallsRef.current = match; }, [match]);
+  const playersForBallsRef = useRef(players);
+  useEffect(() => { playersForBallsRef.current = players; }, [players]);
+  const clubRulesForBallsRef = useRef(clubRules);
+  useEffect(() => { clubRulesForBallsRef.current = clubRules; }, [clubRules]);
+
+  // Live-updates innings/phase for non-scorer viewers, who otherwise only see
+  // the match state as of their last screen focus (see applyBallsToState's
+  // doc comment). The scorer's own screen ignores this — commitBall/handleUndo
+  // already drive its state optimistically, and reconciling an echo of its
+  // own writes against in-flight local edits isn't needed since the scorer is
+  // the only one making them.
+  useEffect(() => {
+    if (!clubId || !matchId) return;
+    const unsubscribe = subscribeMatchBalls(clubId, matchId, (allBalls) => {
+      if (isScorerRef.current) return;
+      const liveMatch = matchForBallsRef.current;
+      if (!liveMatch) return;
+      applyBallsToState(allBalls, liveMatch, playersForBallsRef.current, clubRulesForBallsRef.current ?? undefined);
+    });
+    return unsubscribe;
+  }, [clubId, matchId]);
 
   async function handleTakeOverScoring() {
     if (!user || !match) return;
@@ -2363,6 +2420,24 @@ export default function LiveScoringScreen() {
           </Text>
         )}
 
+        {/* Between-innings/just-finished screens are a separate early return
+            from the main scoring layout, so they need their own take-over
+            entry point too — otherwise a non-scorer admin has no way to take
+            over scoring during exactly this window (see the read-only
+            branch below for the equivalent when phase is 'scoring'/
+            'end-pending'/etc). Match may already be 'completed' by the time
+            a stale-focus non-scorer session renders the 2nd-innings-just-
+            finished variant of this screen — status==='live' keeps the
+            button from showing once there's nothing left to take over. */}
+        {!isScorer && isAdmin && match?.status === 'live' && (
+          <TouchableOpacity
+            onPress={handleTakeOverScoring}
+            style={{ marginTop: 20, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderColor: theme.accent }}
+          >
+            <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>Take over scoring</Text>
+          </TouchableOpacity>
+        )}
+
         <Text style={{ color: theme.textMuted, fontSize: 13, marginTop: 24, textAlign: 'center' }}>
           {match ? `${match.homeTeam} vs ${match.awayTeam}` : ''}
         </Text>
@@ -2405,7 +2480,7 @@ export default function LiveScoringScreen() {
   // Overs can only be edited while the 1st innings is in progress, and never
   // below the overs already bowled (a part-bowled over counts as one).
   const oversFloor = Math.max(1, innings.overNumber + (innings.legalBallsInOver > 0 ? 1 : 0));
-  const canEditOvers = isAdmin && inningsNumber === 1 && phase === 'scoring' && match?.rules.oversPerInnings != null;
+  const canEditOvers = isScorer && inningsNumber === 1 && phase === 'scoring' && match?.rules.oversPerInnings != null;
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingBottom: insets.bottom }}>
@@ -2876,7 +2951,7 @@ export default function LiveScoringScreen() {
       />
 
       <SelectPlayerModal
-        visible={phase === 'new-bowler'}
+        visible={isScorer && phase === 'new-bowler'}
         title="New bowler"
         players={notBowlingPlayers}
         excludeIds={[]}
@@ -2884,7 +2959,7 @@ export default function LiveScoringScreen() {
       />
 
       <SelectPlayerModal
-        visible={phase === 'new-batter'}
+        visible={isScorer && phase === 'new-batter'}
         title="New batsman"
         players={nextBatters}
         excludeIds={[]}
