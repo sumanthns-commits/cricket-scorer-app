@@ -9,6 +9,8 @@ import { useThemeStore } from '../../store/themeStore';
 import { getClub, getClubMember, updateClubDetails, archiveClub, unarchiveClub, setMemberRole } from '../../services/clubService';
 import { getClubSquad } from '../../services/squadService';
 import type { Hemisphere } from '../../utils/seasons';
+import { DEFAULT_CLUB_TIMEZONE } from '../../constants/timezones';
+import { TimezoneDropdown } from '../../components/TimezoneDropdown';
 
 const ARCHIVE_RETENTION_DAYS = 30;
 type Props = NativeStackScreenProps<RootStackParamList, 'EditClub'>;
@@ -23,6 +25,7 @@ export default function EditClubScreen({ route, navigation }: Props) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [hemisphere, setHemisphere] = useState<Hemisphere>('N');
+  const [timezone, setTimezone] = useState(DEFAULT_CLUB_TIMEZONE);
   const [hydrated, setHydrated] = useState(false);
   const [saving, setSaving] = useState(false);
   const [archiving, setArchiving] = useState(false);
@@ -51,6 +54,7 @@ export default function EditClubScreen({ route, navigation }: Props) {
       setName(data.club.name);
       setDescription(data.club.description ?? '');
       setHemisphere(data.club.hemisphere ?? 'N');
+      setTimezone(data.club.timezone ?? DEFAULT_CLUB_TIMEZONE);
       setHydrated(true);
     }
   }, [data, hydrated]);
@@ -60,7 +64,7 @@ export default function EditClubScreen({ route, navigation }: Props) {
     if (!trimmedName) { setError('Club name is required.'); return; }
     setSaving(true); setError(null);
     try {
-      await updateClubDetails(clubId, { name: trimmedName, description: description.trim(), hemisphere });
+      await updateClubDetails(clubId, { name: trimmedName, description: description.trim(), hemisphere, timezone });
       await Promise.all([queryClient.invalidateQueries({ queryKey: ['clubs'] }), queryClient.invalidateQueries({ queryKey: ['club', clubId] })]);
       navigation.goBack();
     } catch (err) {
@@ -149,6 +153,12 @@ export default function EditClubScreen({ route, navigation }: Props) {
               </TouchableOpacity>
             );
           })}
+        </View>
+
+        <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 6 }}>LOCATION</Text>
+        <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 8 }}>Used to show the right day/time in match notifications.</Text>
+        <View style={{ marginBottom: 32 }}>
+          <TimezoneDropdown selected={timezone} onSelect={setTimezone} />
         </View>
 
         {error && <Text style={{ color: '#dc2626', marginBottom: 16, fontSize: 14 }}>{error}</Text>}

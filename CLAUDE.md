@@ -493,6 +493,13 @@ optionThresholdMet?: Record<string, boolean>  — live on/off toggle per schedul
 ```
 `clubs/{clubId}/matchPolls/{pollId}/responses/{uid}` — doc id = responder's uid (one per
 member, re-tap overwrites): `{ uid, displayName, optionIds: string[], respondedAt }`.
+`displayName` is written from the responder's **club-profile** `displayName` (`getPlayer`),
+not the Firebase Auth profile — same distinction as `Toss`'s `scorerName` resolution (see
+"Scorer handover" above); an admin-renamed player must show their club name here too, not
+whatever their Google/Apple account is called. `PollResponse` additionally resolves the
+displayed voter names **live** from the current squad (`getClubSquad`) rather than trusting
+the stored snapshot — self-heals any already-cast vote that was written before this fix, or
+whose responder was renamed since voting, without needing a backfill. Fixed 2026-09.
 
 **Screens**: `MatchPolls` (list, visible to all members not just admins — status chip shows
 "Open"/"N of M scheduled"/"All scheduled"), `CreateMatchPoll` (two templates: "Simple
@@ -556,6 +563,27 @@ can fire more than once if responses fluctuate). See functions repo CLAUDE.md fo
 permanently deletes them a day after their last candidate date. Admin can also delete a poll
 manually any time (`deletePoll` — clears the `responses` subcollection first, Firestore
 doesn't cascade-delete).
+
+## Club location (IMPLEMENTED)
+`Club.timezone` (`types/index.ts`) — an IANA timezone string (e.g. `"Australia/Sydney"`),
+set from a curated list in `constants/timezones.ts` (`CLUB_TIMEZONES`,
+`DEFAULT_CLUB_TIMEZONE = "Australia/Sydney"`, `timezoneLabel()`). Picked via the shared
+`components/TimezoneDropdown.tsx` (same modal-list pattern as `SeasonDropdown`) on both
+`CreateClub` (new clubs default to `DEFAULT_CLUB_TIMEZONE`) and `EditClub` (admin-only,
+alongside name/description/hemisphere — `updateClubDetails`). Optional on the type: a club
+created before this field existed, or never explicitly changed from the default, simply has
+no `timezone` set and is treated as `DEFAULT_CLUB_TIMEZONE` by readers.
+
+**Why it exists**: the functions repo's `onPollResponseWritten` (poll "Game's on!"/"Game's
+off!" notifications) needs the club's local day/time to format `option.proposedDate`
+correctly — the Cloud Functions runtime itself is UTC, so without an explicit per-club
+timezone, a match whose time crosses UTC midnight relative to the club's local day would
+show the wrong weekday. See functions repo CLAUDE.md's "Match interest polls" section for
+the read side (`clubSnap.data()?.timezone ?? DEFAULT_CLUB_TIMEZONE`, mirrored as a local
+constant there since the functions repo doesn't share this file).
+
+No backfill/migration for existing clubs — the fallback in the functions repo makes an
+explicit `timezone` write optional, not required, for correct behavior.
 
 ## Self-service claim lifecycle (PLANNED — NOT implemented)
 Stats resolver only PREVIEWS a claim snapshot. Ghost→member linking is admin-only today.

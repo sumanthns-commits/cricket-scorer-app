@@ -80,6 +80,7 @@ function resolveRules(raw: Partial<ClubRules>): ClubRules {
       wicketTypes: e.wicketTypes ?? [],
     })),
     fieldingOverlayEveryBall: raw.fieldingOverlayEveryBall ?? false,
+    strengthOverridesEnabled: raw.strengthOverridesEnabled ?? false,
   };
 }
 
@@ -677,6 +678,24 @@ export default function ClubRulesAdminScreen({ route, navigation }: Props) {
             min={1}
             onFocus={handleInputFocus}
           />
+
+          {/* ── AI TEAM SELECTION ── */}
+          <SectionHeader title="AI TEAM SELECTION" />
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+            <Text style={{ color: theme.textSecondary, flex: 1, fontSize: 15 }}>Strength override sliders</Text>
+            <Switch
+              value={draft.strengthOverridesEnabled}
+              onValueChange={(v) => setField('strengthOverridesEnabled', v)}
+              disabled={readOnly}
+              trackColor={{ false: theme.border, true: theme.accentDim }}
+              thumbColor={draft.strengthOverridesEnabled ? theme.accent : theme.textMuted}
+            />
+          </View>
+          <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: -8, marginBottom: 14, lineHeight: 17 }}>
+            Off by default. When on, player profiles show sliders to subjectively rate a
+            player&apos;s batting/bowling/fielding/keeping — only used to nudge AI team
+            balancing, never recorded stats.
+          </Text>
 
           {/* ── FIELDING EVENTS ── */}
           <SectionHeader title="FIELDING EVENTS" />

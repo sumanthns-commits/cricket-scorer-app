@@ -10,6 +10,8 @@ import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import { createClub, ClubNameTakenError } from '../../services/clubService';
 import { detectHemisphere, type Hemisphere } from '../../utils/seasons';
+import { DEFAULT_CLUB_TIMEZONE } from '../../constants/timezones';
+import { TimezoneDropdown } from '../../components/TimezoneDropdown';
 import { useQueryClient } from '@tanstack/react-query';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CreateClub'>;
@@ -23,6 +25,7 @@ export default function CreateClubScreen({ navigation }: Props) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [hemisphere, setHemisphere] = useState<Hemisphere>(() => detectHemisphere());
+  const [timezone, setTimezone] = useState(DEFAULT_CLUB_TIMEZONE);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,7 +39,7 @@ export default function CreateClubScreen({ navigation }: Props) {
       await createClub(
         user.uid, trimmedName, description.trim(),
         { displayName: user.displayName ?? user.email ?? 'Me', email: user.email ?? undefined, photoURL: user.photoURL ?? undefined },
-        hemisphere
+        hemisphere, timezone
       );
       await queryClient.invalidateQueries({ queryKey: ['clubs', user.uid] });
       navigation.goBack();
@@ -90,6 +93,14 @@ export default function CreateClubScreen({ navigation }: Props) {
               </TouchableOpacity>
             );
           })}
+        </View>
+
+        <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 6 }}>LOCATION</Text>
+        <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 8 }}>
+          Used to show the right day/time in match notifications.
+        </Text>
+        <View style={{ marginBottom: 32 }}>
+          <TimezoneDropdown selected={timezone} onSelect={setTimezone} />
         </View>
 
         {error && <Text style={{ color: '#dc2626', marginBottom: 16, fontSize: 14 }}>{error}</Text>}

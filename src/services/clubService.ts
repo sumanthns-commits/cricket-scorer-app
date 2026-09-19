@@ -18,6 +18,7 @@ import {
 import { db } from './firebase';
 import { normalizeClubName } from '../utils/clubName';
 import { callCallableFunction } from './functionsClient';
+import { DEFAULT_CLUB_TIMEZONE } from '../constants/timezones';
 import type { Club, ClubMember, ClubRules, Match, CareerStats, PlayerType } from '../types';
 
 // Thrown by createClub when another club already reserves the same (normalised)
@@ -45,6 +46,7 @@ const defaultRules: ClubRules = {
   maxBowlerOvers: undefined,
   fieldingEvents: [],
   fieldingOverlayEveryBall: false,
+  strengthOverridesEnabled: false,
 };
 
 const emptyStats: CareerStats = {
@@ -66,7 +68,8 @@ export async function createClub(
   name: string,
   description: string,
   creator: { displayName: string; email?: string; photoURL?: string },
-  hemisphere: 'N' | 'S'
+  hemisphere: 'N' | 'S',
+  timezone: string = DEFAULT_CLUB_TIMEZONE
 ): Promise<string> {
   const clubRef = doc(collection(db, 'clubs'));
   const clubId = clubRef.id;
@@ -89,6 +92,7 @@ export async function createClub(
       createdAt: serverTimestamp(),
       createdBy: uid,
       hemisphere,
+      timezone,
       archivedAt: null,
     });
     tx.set(nameRef, { clubId, name, normalized, createdBy: uid });
@@ -221,7 +225,7 @@ export async function saveClubRules(clubId: string, rules: ClubRules): Promise<v
 // screen also gates the UI to admins; this just writes the editable fields.
 export async function updateClubDetails(
   clubId: string,
-  details: { name: string; description: string; hemisphere: 'N' | 'S' }
+  details: { name: string; description: string; hemisphere: 'N' | 'S'; timezone: string }
 ): Promise<void> {
   await updateDoc(doc(db, 'clubs', clubId), details);
 }

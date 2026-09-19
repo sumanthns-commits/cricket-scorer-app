@@ -10,6 +10,8 @@ import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import { getClub, getClubMember } from '../../services/clubService';
+import { getPlayer } from '../../services/playerProfileService';
+import { getClubSquad } from '../../services/squadService';
 import { getMatch } from '../../services/matchService';
 import { requestToJoin, getMyJoinRequest, cancelJoinRequest } from '../../services/joinRequestService';
 import {
@@ -66,6 +68,29 @@ export default function PollResponseScreen() {
   });
   const isMember = !!member;
   const isAdmin = member?.role === 'admin';
+
+  // Club-scoped profile name (admin-editable, can diverge from the Auth
+  // profile) — this, not user.displayName, is what every other member sees
+  // for this person elsewhere in the app (squad, scorecards, "Scoring: X").
+  // Poll responses must record the same name, not the Auth one.
+  const { data: myPlayer } = useQuery({
+    queryKey: ['player', clubId, user?.uid],
+    queryFn: () => getPlayer(clubId, user!.uid),
+    enabled: !!clubId && !!user && isMember,
+  });
+  const myDisplayName = myPlayer?.displayName ?? user?.displayName ?? user?.email ?? 'Player';
+
+  // Respondent names shown below are resolved live from each voter's current
+  // club-profile displayName, not the (possibly stale, possibly Auth-name)
+  // snapshot stored on the response doc at vote time — an admin rename after
+  // the fact must be reflected here too.
+  const { data: squad } = useQuery({
+    queryKey: ['clubSquad', clubId],
+    queryFn: () => getClubSquad(clubId),
+    enabled: !!clubId && isMember,
+  });
+  const squadNameById = new Map((squad ?? []).map((e) => [e.player.id, e.player.displayName]));
+  const resolveDisplayName = (r: PollResponse) => squadNameById.get(r.uid) ?? r.displayName;
 
   const { data: joinRequest } = useQuery({
     queryKey: ['joinRequest', clubId, user?.uid],
@@ -180,7 +205,7 @@ export default function PollResponseScreen() {
       await respondToPoll(
         clubId,
         pollId,
-        { uid: user.uid, displayName: user.displayName ?? user.email ?? 'Player' },
+        { uid: user.uid, displayName: myDisplayName },
         next,
       );
     } catch {
@@ -409,12 +434,15 @@ export default function PollResponseScreen() {
 
                 {expanded && (
                   <View style={{ paddingHorizontal: 14, paddingBottom: 12, gap: 8 }}>
-                    {respondents.map((r) => (
-                      <View key={r.uid} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        <PlayerAvatar name={r.displayName} seed={r.uid} size={26} />
-                        <Text style={{ color: theme.text, fontSize: 13 }}>{r.displayName}</Text>
-                      </View>
-                    ))}
+                    {respondents.map((r) => {
+                      const name = resolveDisplayName(r);
+                      return (
+                        <View key={r.uid} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <PlayerAvatar name={name} seed={r.uid} size={26} />
+                          <Text style={{ color: theme.text, fontSize: 13 }}>{name}</Text>
+                        </View>
+                      );
+                    })}
                   </View>
                 )}
               </View>

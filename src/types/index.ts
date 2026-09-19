@@ -258,6 +258,11 @@ export interface ClubRules {
   // When false (default), it's skipped for normal runs to keep scoring quick —
   // fielders are still always selected when a wicket falls.
   fieldingOverlayEveryBall: boolean;
+  // When true, PlayerProfileView shows the subjective strength-override sliders
+  // (batting/bowling/fielding/keeping) admins can set to nudge AI team
+  // selection. Off by default — most clubs never need to touch it, and the
+  // sliders can otherwise be mistaken for something that affects real stats.
+  strengthOverridesEnabled?: boolean;
 }
 
 export interface Club {
@@ -274,6 +279,10 @@ export interface Club {
   // Cloud Function permanently deletes the club and all its matches 30 days
   // after this timestamp.
   archivedAt?: Timestamp | null;
+  // IANA timezone (e.g. "Australia/Sydney") used server-side to render dates/times
+  // in poll notifications. Optional: clubs created before this field existed, or
+  // that never had it set, read as DEFAULT_CLUB_TIMEZONE (constants/timezones.ts).
+  timezone?: string;
 }
 
 export interface ClubMember {

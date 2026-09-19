@@ -7,7 +7,7 @@ import Slider from '@react-native-community/slider';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { resolvePlayerStats } from '../services/statsResolver';
 import { linkGhost, unlinkGhost, getClubGhosts, getClubRegisteredMembers } from '../services/joinRequestService';
-import { leaveClub, removeMember } from '../services/clubService';
+import { getClub, leaveClub, removeMember } from '../services/clubService';
 import {
   computeDerivedStats,
   computeSkillRating,
@@ -256,6 +256,12 @@ export default function PlayerProfileView({
     queryFn: () => getClubRegisteredMembers(clubId),
     enabled: showMemberPicker,
   });
+
+  const { data: club } = useQuery({
+    queryKey: ['club', clubId],
+    queryFn: () => getClub(clubId),
+  });
+  const strengthOverridesEnabled = club?.rules?.strengthOverridesEnabled ?? false;
 
   const handleLink = () => {
     if (!selectedGhostId) return;
@@ -799,25 +805,27 @@ export default function PlayerProfileView({
               onDeselect={() => { setKeepingDraft(undefined); saveAttr({ wicketKeeping: null }); }}
             />
           </Section>
-          <Section title="STRENGTH OVERRIDE">
-            <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 12 }}>
-              Drag bars to set subjective skill levels for AI team balancing. Does not affect recorded stats.
-            </Text>
-            <View
-              style={{
-                backgroundColor: theme.surfaceAlt,
-                borderRadius: 10,
-                padding: 14,
-                borderWidth: 1,
-                borderColor: theme.border,
-              }}
-            >
-              <StrengthSlider label="Batting" value={strengthDraft.batting} onCommit={(v) => commitStrength('batting', v)} editable />
-              <StrengthSlider label="Bowling" value={strengthDraft.bowling} onCommit={(v) => commitStrength('bowling', v)} editable />
-              <StrengthSlider label="Fielding" value={strengthDraft.fielding} onCommit={(v) => commitStrength('fielding', v)} editable />
-              <StrengthSlider label="Wicket keeping" value={strengthDraft.keeping} onCommit={(v) => commitStrength('keeping', v)} editable />
-            </View>
-          </Section>
+          {strengthOverridesEnabled && (
+            <Section title="STRENGTH OVERRIDE">
+              <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 12 }}>
+                Drag bars to set subjective skill levels for AI team balancing. Does not affect recorded stats.
+              </Text>
+              <View
+                style={{
+                  backgroundColor: theme.surfaceAlt,
+                  borderRadius: 10,
+                  padding: 14,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                }}
+              >
+                <StrengthSlider label="Batting" value={strengthDraft.batting} onCommit={(v) => commitStrength('batting', v)} editable />
+                <StrengthSlider label="Bowling" value={strengthDraft.bowling} onCommit={(v) => commitStrength('bowling', v)} editable />
+                <StrengthSlider label="Fielding" value={strengthDraft.fielding} onCommit={(v) => commitStrength('fielding', v)} editable />
+                <StrengthSlider label="Wicket keeping" value={strengthDraft.keeping} onCommit={(v) => commitStrength('keeping', v)} editable />
+              </View>
+            </Section>
+          )}
         </>
       ) : (
         <>
@@ -828,7 +836,7 @@ export default function PlayerProfileView({
               <StatBox label="Keeping" value={WICKET_KEEPING_OPTIONS.find((k) => k.value === player.wicketKeeping)?.label ?? '—'} />
             </View>
           </Section>
-          {player.strengthOverride && (
+          {strengthOverridesEnabled && player.strengthOverride && (
             <Section title="STRENGTHS">
               <View
                 style={{
