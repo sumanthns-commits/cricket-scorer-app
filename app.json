@@ -7,11 +7,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#16a34a"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.crease.app",
@@ -66,6 +61,12 @@
         "icon": "./assets/android-icon-monochrome.png",
         "color": "#16a34a",
         "defaultChannel": "default-v2"
+      }],
+      "expo-status-bar",
+      ["expo-splash-screen", {
+        "image": "./assets/splash-icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#16a34a"
       }],
       "./plugins/withReleaseSigningConfig"
     ],

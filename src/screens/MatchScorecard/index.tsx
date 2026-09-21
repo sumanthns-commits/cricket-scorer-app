@@ -3,7 +3,7 @@ import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, Share, Pla
 import { useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
-import ViewShot, { captureRef } from 'react-native-view-shot';
+import ViewShot, { captureRef, type ViewShotRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import {
@@ -273,7 +273,7 @@ export default function MatchScorecardScreen() {
   const [tab, setTab] = useState<'live' | 'scorecard' | 'commentary' | 'teams'>('scorecard');
   const [sharing, setSharing] = useState(false);
   const theme = useThemeStore((s) => s.theme);
-  const snapshotRef = useRef<ViewShot>(null);
+  const snapshotRef = useRef<ViewShotRef>(null);
 
   // Gate fetch (one-shot): determines whether the match is currently live.
   // Only 'live' matches get real-time listeners below — completed/abandoned
