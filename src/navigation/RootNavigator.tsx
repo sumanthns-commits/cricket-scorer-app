@@ -28,6 +28,8 @@ import ClubDetailScreen from '../screens/ClubDetail';
 import MatchPollsScreen from '../screens/MatchPolls';
 import CreateMatchPollScreen from '../screens/CreateMatchPoll';
 import PollResponseScreen from '../screens/PollResponse';
+import PollSchedulesScreen from '../screens/PollSchedules';
+import EditPollScheduleScreen from '../screens/EditPollSchedule';
 
 // All match-setup data collected before the match exists in Firestore.
 // Passed from ScheduleMatch → TeamBuilder only; TeamBuilder creates the match
@@ -78,6 +80,8 @@ export type RootStackParamList = {
   MatchPolls: { clubId: string };
   CreateMatchPoll: { clubId: string };
   PollResponse: { clubId: string; pollId: string };
+  PollSchedules: { clubId: string };
+  EditPollSchedule: { clubId: string; scheduleId?: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -188,6 +192,19 @@ export default function RootNavigator() {
             name="PollResponse"
             component={PollResponseScreen}
             options={({ navigation }) => ({ title: 'Match Poll', headerLeft: () => backButton(navigation, theme.text) })}
+          />
+          <Stack.Screen
+            name="PollSchedules"
+            component={PollSchedulesScreen}
+            options={({ navigation }) => ({ title: 'Recurring Polls', headerLeft: () => backButton(navigation, theme.text) })}
+          />
+          <Stack.Screen
+            name="EditPollSchedule"
+            component={EditPollScheduleScreen}
+            options={({ navigation, route }) => ({
+              title: route.params.scheduleId ? 'Edit Schedule' : 'New Schedule',
+              headerLeft: () => backButton(navigation, theme.text),
+            })}
           />
         </>
       ) : (

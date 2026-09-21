@@ -17,6 +17,7 @@ import { useAuthStore } from '../../store/authStore';
 import { getClubSquad, type SquadEntry } from '../../services/squadService';
 import { computeSkillRating, createGhostPlayer } from '../../services/playerProfileService';
 import { getClubMember } from '../../services/clubService';
+import { useKeyboardScrollIntoView } from '../../hooks/useKeyboardScrollIntoView';
 import PlayerAvatar from '../../components/PlayerAvatar';
 import type { BattingHand, BowlingStyle, PlayerType, WicketKeepingAbility } from '../../types';
 
@@ -166,6 +167,7 @@ export default function SquadScreen() {
   });
   const isAdmin = me?.role === 'admin';
 
+  const { scrollRef, kbHeight, handleInputFocus, onScroll } = useKeyboardScrollIntoView();
   const [modalVisible, setModalVisible] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [battingHand, setBattingHand] = useState<BattingHand | null>(null);
@@ -299,13 +301,21 @@ export default function SquadScreen() {
                   Add Ghost Player
                 </Text>
 
-                <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <ScrollView
+                  ref={scrollRef}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  scrollEventThrottle={16}
+                  onScroll={onScroll}
+                  contentContainerStyle={kbHeight > 0 ? { paddingBottom: 20 } : undefined}
+                >
                   <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600', marginBottom: 6 }}>
                     PLAYER NAME *
                   </Text>
                   <TextInput
                     value={displayName}
                     onChangeText={setDisplayName}
+                    onFocus={handleInputFocus}
                     placeholder="Full name"
                     placeholderTextColor={theme.textMuted}
                     autoFocus

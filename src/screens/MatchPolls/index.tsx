@@ -100,12 +100,27 @@ export default function MatchPollsScreen() {
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700' }}>Match Polls</Text>
         {isAdmin && (
-          <TouchableOpacity
-            onPress={() => navigation.navigate('CreateMatchPoll', { clubId })}
-            style={{ backgroundColor: theme.accent, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 14 }}
-          >
-            <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '700' }}>+ New Poll</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('PollSchedules', { clubId })}
+              style={{
+                backgroundColor: theme.surface,
+                borderRadius: 8,
+                paddingVertical: 8,
+                paddingHorizontal: 14,
+                borderWidth: 1,
+                borderColor: theme.border,
+              }}
+            >
+              <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>Automate</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('CreateMatchPoll', { clubId })}
+              style={{ backgroundColor: theme.accent, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 14 }}
+            >
+              <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: '700' }}>+ New Poll</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
 

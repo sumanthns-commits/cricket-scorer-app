@@ -1,13 +1,11 @@
 import { useState } from 'react';
-import {
-  View, Text, TextInput, TouchableOpacity, ActivityIndicator,
-  KeyboardAvoidingView, Platform, ScrollView,
-} from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
+import { useKeyboardScrollIntoView } from '../../hooks/useKeyboardScrollIntoView';
 import { createClub, ClubNameTakenError } from '../../services/clubService';
 import { detectHemisphere, type Hemisphere } from '../../utils/seasons';
 import { DEFAULT_CLUB_TIMEZONE } from '../../constants/timezones';
@@ -21,6 +19,7 @@ export default function CreateClubScreen({ navigation }: Props) {
   const queryClient = useQueryClient();
   const theme = useThemeStore((s) => s.theme);
   const insets = useSafeAreaInsets();
+  const { scrollRef, kbHeight, handleInputFocus, onScroll } = useKeyboardScrollIntoView();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -60,16 +59,23 @@ export default function CreateClubScreen({ navigation }: Props) {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 24 + insets.bottom }}>
+    <ScrollView
+      ref={scrollRef}
+      style={{ flex: 1, backgroundColor: theme.bg }}
+      contentContainerStyle={{ padding: 24, paddingBottom: 24 + kbHeight + insets.bottom }}
+      keyboardShouldPersistTaps="handled"
+      scrollEventThrottle={16}
+      onScroll={onScroll}
+    >
         <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700', marginBottom: 24 }}>Create Club</Text>
 
         <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 6 }}>CLUB NAME *</Text>
-        <TextInput value={name} onChangeText={setName} placeholder="e.g. Wanderers CC" placeholderTextColor={theme.textMuted} style={inputStyle} />
+        <TextInput value={name} onChangeText={setName} onFocus={handleInputFocus} placeholder="e.g. Wanderers CC" placeholderTextColor={theme.textMuted} style={inputStyle} />
 
         <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 6 }}>DESCRIPTION</Text>
         <TextInput
           value={description} onChangeText={setDescription}
+          onFocus={handleInputFocus}
           placeholder="A short description of your club" placeholderTextColor={theme.textMuted}
           multiline numberOfLines={3}
           style={{ ...inputStyle, marginBottom: 32, textAlignVertical: 'top', minHeight: 80 }}
@@ -108,7 +114,6 @@ export default function CreateClubScreen({ navigation }: Props) {
         <TouchableOpacity onPress={handleCreate} disabled={loading} style={{ backgroundColor: theme.accent, borderRadius: 8, paddingVertical: 14, alignItems: 'center', opacity: loading ? 0.6 : 1 }}>
           {loading ? <ActivityIndicator color="#ffffff" /> : <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '700' }}>Create Club</Text>}
         </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </ScrollView>
   );
 }

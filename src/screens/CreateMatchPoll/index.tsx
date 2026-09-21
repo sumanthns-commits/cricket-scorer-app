@@ -6,8 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -16,6 +14,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
+import { useKeyboardScrollIntoView } from '../../hooks/useKeyboardScrollIntoView';
 import { createMatchPoll, sharePoll } from '../../services/matchPollService';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -151,6 +150,7 @@ export default function CreateMatchPollScreen() {
   const user = useAuthStore((s) => s.user);
   const theme = useThemeStore((s) => s.theme);
   const insets = useSafeAreaInsets();
+  const { scrollRef, kbHeight, handleInputFocus, onScroll } = useKeyboardScrollIntoView();
 
   const [template, setTemplate] = useState<'simple' | 'multiDate'>('simple');
   const [question, setQuestion] = useState('Cricket this Sunday at 7 AM?');
@@ -233,11 +233,13 @@ export default function CreateMatchPollScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView
+        ref={scrollRef}
         style={{ flex: 1, backgroundColor: theme.bg }}
-        contentContainerStyle={{ padding: 16 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 16 + kbHeight }}
         keyboardShouldPersistTaps="handled"
+        scrollEventThrottle={16}
+        onScroll={onScroll}
       >
         <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 8 }}>POLL TYPE</Text>
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
@@ -272,6 +274,7 @@ export default function CreateMatchPollScreen() {
         <TextInput
           value={question}
           onChangeText={setQuestion}
+          onFocus={handleInputFocus}
           placeholder="Cricket this Sunday at 7 AM?"
           placeholderTextColor={theme.textMuted}
           style={inputStyle}
@@ -305,6 +308,7 @@ export default function CreateMatchPollScreen() {
                   <TextInput
                     value={row.label}
                     onChangeText={(text) => updateDateRow(row.id, { label: text })}
+                    onFocus={handleInputFocus}
                     placeholder={`Option ${i + 1} label (e.g. "Sunday")`}
                     placeholderTextColor={theme.textMuted}
                     style={{ ...inputStyle, flex: 1, marginBottom: 0 }}
@@ -337,6 +341,7 @@ export default function CreateMatchPollScreen() {
         <TextInput
           value={minResponses}
           onChangeText={setMinResponses}
+          onFocus={handleInputFocus}
           placeholder="e.g. 11"
           placeholderTextColor={theme.textMuted}
           keyboardType="numeric"
@@ -351,6 +356,7 @@ export default function CreateMatchPollScreen() {
         <TextInput
           value={venue}
           onChangeText={setVenue}
+          onFocus={handleInputFocus}
           placeholder="Ground name"
           placeholderTextColor={theme.textMuted}
           style={inputStyle}
@@ -360,6 +366,7 @@ export default function CreateMatchPollScreen() {
         <TextInput
           value={note}
           onChangeText={setNote}
+          onFocus={handleInputFocus}
           placeholder="Anything else players should know"
           placeholderTextColor={theme.textMuted}
           style={{ ...inputStyle, marginBottom: 20 }}
@@ -388,6 +395,5 @@ export default function CreateMatchPollScreen() {
           )}
         </TouchableOpacity>
       </ScrollView>
-    </KeyboardAvoidingView>
   );
 }

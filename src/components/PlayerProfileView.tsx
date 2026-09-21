@@ -5,6 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Slider from '@react-native-community/slider';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useKeyboardScrollIntoView } from '../hooks/useKeyboardScrollIntoView';
 import { resolvePlayerStats } from '../services/statsResolver';
 import { linkGhost, unlinkGhost, getClubGhosts, getClubRegisteredMembers } from '../services/joinRequestService';
 import { getClub, leaveClub, removeMember } from '../services/clubService';
@@ -234,6 +235,8 @@ export default function PlayerProfileView({
   const theme = useThemeStore((s) => s.theme);
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+  const { scrollRef: nameScrollRef, kbHeight: nameKbHeight, handleInputFocus: handleNameFocus, onScroll: onNameScroll } =
+    useKeyboardScrollIntoView();
 
   const [showRatingInfo, setShowRatingInfo] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
@@ -1059,50 +1062,59 @@ export default function PlayerProfileView({
     </Modal>
 
     <Modal visible={showEditName} transparent animationType="fade" onRequestClose={() => setShowEditName(false)}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <TouchableOpacity
           style={{ flex: 1, backgroundColor: '#00000088', justifyContent: 'center', padding: 24 }}
           activeOpacity={1}
           onPress={() => setShowEditName(false)}
         >
           <TouchableOpacity activeOpacity={1} onPress={() => {}}>
-            <View style={{ backgroundColor: theme.surface, borderRadius: 16, padding: 20, gap: 14 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ backgroundColor: theme.surface, borderRadius: 16, padding: 20, maxHeight: '80%' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                 <Text style={{ color: theme.text, fontSize: 17, fontWeight: '800' }}>Edit name</Text>
                 <TouchableOpacity onPress={() => setShowEditName(false)}>
                   <Text style={{ color: theme.textMuted, fontSize: 20, lineHeight: 22 }}>✕</Text>
                 </TouchableOpacity>
               </View>
-              <TextInput
-                value={nameDraft}
-                onChangeText={setNameDraft}
-                onSubmitEditing={saveName}
-                autoFocus
-                placeholder="Player name"
-                placeholderTextColor={theme.textMuted}
-                style={{
-                  backgroundColor: theme.surfaceAlt, color: theme.text, borderRadius: 8,
-                  paddingHorizontal: 12, paddingVertical: 10, fontSize: 15,
-                  borderWidth: 1, borderColor: nameError ? '#dc2626' : theme.border,
-                }}
-              />
-              {nameError && (
-                <Text style={{ color: '#dc2626', fontSize: 12 }}>Couldn't save. Please try again.</Text>
-              )}
-              <TouchableOpacity
-                onPress={saveName}
-                disabled={savingName || !nameDraft.trim()}
-                style={{
-                  backgroundColor: theme.accent, borderRadius: 10, paddingVertical: 14, alignItems: 'center',
-                  opacity: (savingName || !nameDraft.trim()) ? 0.6 : 1,
-                }}
+              <ScrollView
+                ref={nameScrollRef}
+                keyboardShouldPersistTaps="handled"
+                scrollEventThrottle={16}
+                onScroll={onNameScroll}
+                contentContainerStyle={{ gap: 14, paddingBottom: nameKbHeight > 0 ? 12 : 0 }}
               >
-                {savingName ? (
-                  <ActivityIndicator color="#ffffff" />
-                ) : (
-                  <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '700' }}>Save</Text>
+                <TextInput
+                  value={nameDraft}
+                  onChangeText={setNameDraft}
+                  onFocus={handleNameFocus}
+                  onSubmitEditing={saveName}
+                  autoFocus
+                  placeholder="Player name"
+                  placeholderTextColor={theme.textMuted}
+                  style={{
+                    backgroundColor: theme.surfaceAlt, color: theme.text, borderRadius: 8,
+                    paddingHorizontal: 12, paddingVertical: 10, fontSize: 15,
+                    borderWidth: 1, borderColor: nameError ? '#dc2626' : theme.border,
+                  }}
+                />
+                {nameError && (
+                  <Text style={{ color: '#dc2626', fontSize: 12 }}>Couldn't save. Please try again.</Text>
                 )}
-              </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={saveName}
+                  disabled={savingName || !nameDraft.trim()}
+                  style={{
+                    backgroundColor: theme.accent, borderRadius: 10, paddingVertical: 14, alignItems: 'center',
+                    opacity: (savingName || !nameDraft.trim()) ? 0.6 : 1,
+                  }}
+                >
+                  {savingName ? (
+                    <ActivityIndicator color="#ffffff" />
+                  ) : (
+                    <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '700' }}>Save</Text>
+                  )}
+                </TouchableOpacity>
+              </ScrollView>
             </View>
           </TouchableOpacity>
         </TouchableOpacity>

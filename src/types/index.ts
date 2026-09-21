@@ -115,6 +115,43 @@ export interface PollResponse {
   respondedAt: Timestamp;
 }
 
+export type PollScheduleTemplate = 'simple' | 'multiDate';
+
+// clubs/{clubId}/pollSchedules/{scheduleId} — admin-configured recurring poll,
+// fired weekly by the functions repo's autoCreateMatchPolls scheduled Cloud
+// Function, which writes a normal MatchPoll doc using this schedule's fields.
+// `createDayOfWeek`/`createHour` control when the poll itself gets posted;
+// `eventDaysOfWeek`/`eventHour`/`eventMinute` control the day(s)/time of the
+// match(es) it proposes — exactly one entry in eventDaysOfWeek for 'simple',
+// one or more for 'multiDate' (each cycle proposes the *next* occurrence of
+// each configured weekday, not a literal fixed date). All times are
+// club-local (see Club.timezone). `enabled:false` simply stops it from
+// firing — the schedule doc and any polls it already created are untouched.
+export interface PollSchedule {
+  id: string;
+  clubId: string;
+  template: PollScheduleTemplate;
+  enabled: boolean;
+  question: string;
+  venue?: string;
+  note?: string;
+  minResponses?: number;
+  createDayOfWeek: number; // 0=Sun..6=Sat — day the poll is posted
+  createHour: number; // 0-23, club-local
+  eventDaysOfWeek: number[];
+  eventHour: number;
+  eventMinute: number;
+  createdBy: string;
+  createdByName: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  // Bookkeeping for autoCreateMatchPolls: when it last fired, and which poll
+  // it created — used to skip a cycle if that poll hasn't expired yet rather
+  // than posting an overlapping duplicate.
+  lastRunAt?: Timestamp;
+  lastCreatedPollId?: string;
+}
+
 // Public, server-written mirror of a registered player's per-club career stats
 // (publicPlayerStats/{uid}_{clubId}). Lets a club admin review a requester's
 // record across every club without reading member-private player docs.

@@ -6,8 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -19,6 +17,7 @@ import { getClub } from '../../services/clubService';
 import { getClubPlayers, getClubMatches, createMatch } from '../../services/matchService';
 import type { MatchDraft } from '../../navigation/RootNavigator';
 import { useThemeStore } from '../../store/themeStore';
+import { useKeyboardScrollIntoView } from '../../hooks/useKeyboardScrollIntoView';
 import type { MatchFormat } from '../../types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -75,6 +74,7 @@ export default function ScheduleMatchScreen() {
   const { clubId } = params;
   const theme = useThemeStore((s) => s.theme);
   const insets = useSafeAreaInsets();
+  const { scrollRef, kbHeight, handleInputFocus, onScroll } = useKeyboardScrollIntoView();
 
   const today = new Date();
 
@@ -235,11 +235,13 @@ export default function ScheduleMatchScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <ScrollView
+      ref={scrollRef}
       style={{ flex: 1, backgroundColor: theme.bg }}
-      contentContainerStyle={{ padding: 16 }}
+      contentContainerStyle={{ padding: 16, paddingBottom: 16 + kbHeight }}
       keyboardShouldPersistTaps="handled"
+      scrollEventThrottle={16}
+      onScroll={onScroll}
     >
       {prevMatch && (
         <>
@@ -285,6 +287,7 @@ export default function ScheduleMatchScreen() {
           <TextInput
             value={homeTeam}
             onChangeText={setHomeTeam}
+            onFocus={handleInputFocus}
             placeholder={club?.name ?? 'Home team name'}
             placeholderTextColor={theme.textMuted}
             style={inputStyle}
@@ -294,6 +297,7 @@ export default function ScheduleMatchScreen() {
           <TextInput
             value={awayTeam}
             onChangeText={setAwayTeam}
+            onFocus={handleInputFocus}
             placeholder="Opponents"
             placeholderTextColor={theme.textMuted}
             style={inputStyle}
@@ -303,6 +307,7 @@ export default function ScheduleMatchScreen() {
           <TextInput
             value={venue}
             onChangeText={setVenue}
+            onFocus={handleInputFocus}
             placeholder="Ground name"
             placeholderTextColor={theme.textMuted}
             style={{ ...inputStyle, marginBottom: 20 }}
@@ -346,6 +351,7 @@ export default function ScheduleMatchScreen() {
               <TextInput
                 value={customOvers}
                 onChangeText={setCustomOvers}
+                onFocus={handleInputFocus}
                 placeholder="Overs per innings (required)"
                 placeholderTextColor={theme.textMuted}
                 keyboardType="numeric"
@@ -451,6 +457,5 @@ export default function ScheduleMatchScreen() {
         )}
       </TouchableOpacity>
     </ScrollView>
-    </KeyboardAvoidingView>
   );
 }

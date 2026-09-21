@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, ScrollView, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
+import { useKeyboardScrollIntoView } from '../../hooks/useKeyboardScrollIntoView';
 import { getClub, getClubMember, updateClubDetails, archiveClub, unarchiveClub, setMemberRole } from '../../services/clubService';
 import { getClubSquad } from '../../services/squadService';
 import type { Hemisphere } from '../../utils/seasons';
@@ -21,6 +22,7 @@ export default function EditClubScreen({ route, navigation }: Props) {
   const queryClient = useQueryClient();
   const theme = useThemeStore((s) => s.theme);
   const insets = useSafeAreaInsets();
+  const { scrollRef, kbHeight, handleInputFocus, onScroll } = useKeyboardScrollIntoView();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -132,15 +134,21 @@ export default function EditClubScreen({ route, navigation }: Props) {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 24 + insets.bottom }} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      ref={scrollRef}
+      style={{ flex: 1, backgroundColor: theme.bg }}
+      contentContainerStyle={{ padding: 24, paddingBottom: 24 + kbHeight + insets.bottom }}
+      keyboardShouldPersistTaps="handled"
+      scrollEventThrottle={16}
+      onScroll={onScroll}
+    >
         <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700', marginBottom: 24 }}>Edit Club</Text>
 
         <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 6 }}>CLUB NAME *</Text>
-        <TextInput value={name} onChangeText={setName} placeholder="e.g. Wanderers CC" placeholderTextColor={theme.textMuted} style={inputStyle} />
+        <TextInput value={name} onChangeText={setName} onFocus={handleInputFocus} placeholder="e.g. Wanderers CC" placeholderTextColor={theme.textMuted} style={inputStyle} />
 
         <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 6 }}>DESCRIPTION</Text>
-        <TextInput value={description} onChangeText={setDescription} placeholder="A short description of your club" placeholderTextColor={theme.textMuted} multiline numberOfLines={3} style={{ ...inputStyle, marginBottom: 20, textAlignVertical: 'top', minHeight: 80 }} />
+        <TextInput value={description} onChangeText={setDescription} onFocus={handleInputFocus} placeholder="A short description of your club" placeholderTextColor={theme.textMuted} multiline numberOfLines={3} style={{ ...inputStyle, marginBottom: 20, textAlignVertical: 'top', minHeight: 80 }} />
 
         <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 6 }}>HEMISPHERE</Text>
         <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 8 }}>Sets how seasons are named (Summer / Winter).</Text>
@@ -222,7 +230,6 @@ export default function EditClubScreen({ route, navigation }: Props) {
             </>
           )}
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </ScrollView>
   );
 }
