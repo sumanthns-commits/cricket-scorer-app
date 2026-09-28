@@ -43,6 +43,7 @@ import { useWagonViewStore } from '../../store/wagonViewStore';
 import { recordBall } from '../../services/scoringEngine';
 import { buildCommentary } from '../../services/commentary';
 import Commentary from '../../components/Commentary';
+import EditOversModal from '../../components/EditOversModal';
 import { ScoreHeader, BatterRow, BowlerRow, BallCircle } from '../../components/LiveScoreboard';
 import {
   buildDismissalText,
@@ -466,86 +467,6 @@ function ExtrasRunsModal({
 // ─── Edit overs modal ───────────────────────────────────────────────
 // Mid-innings overs adjustment. minOvers is the number already bowled, so the
 // limit can be raised freely but never cut below overs that have been played.
-
-function EditOversModal({
-  visible,
-  current,
-  minOvers,
-  onConfirm,
-  onCancel,
-}: {
-  visible: boolean;
-  current: number;
-  minOvers: number;
-  onConfirm: (overs: number) => void;
-  onCancel: () => void;
-}) {
-  const [value, setValue] = useState(current);
-
-  useEffect(() => { if (visible) setValue(Math.max(current, minOvers)); }, [visible, current, minOvers]);
-
-  const dec = () => setValue((v) => Math.max(minOvers, v - 1));
-  const inc = () => setValue((v) => v + 1);
-  const canDec = value > minOvers;
-  const changed = value !== current;
-
-  return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={{ flex: 1, backgroundColor: '#000000cc', justifyContent: 'center', alignItems: 'center' }}>
-        <View style={{ backgroundColor: '#0a1628', borderRadius: 16, padding: 20, width: 320 }}>
-          <Text style={{ color: '#ffffff', fontSize: 20, fontWeight: '700', textAlign: 'center' }}>
-            Overs per innings
-          </Text>
-          <Text style={{ color: '#6b7280', fontSize: 13, textAlign: 'center', marginTop: 4, marginBottom: 20 }}>
-            Can be raised any time, but not below the {minOvers} over{minOvers !== 1 ? 's' : ''} already bowled.
-          </Text>
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 24 }}>
-            <TouchableOpacity
-              onPress={dec}
-              disabled={!canDec}
-              style={{
-                width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center',
-                backgroundColor: '#1e2d45', borderWidth: 1.5, borderColor: canDec ? '#2d3f58' : '#162033',
-              }}
-            >
-              <Text style={{ color: canDec ? '#ffffff' : '#374151', fontSize: 28, fontWeight: '800' }}>−</Text>
-            </TouchableOpacity>
-
-            <Text style={{ color: '#ffffff', fontSize: 44, fontWeight: '800', minWidth: 70, textAlign: 'center' }}>
-              {value}
-            </Text>
-
-            <TouchableOpacity
-              onPress={inc}
-              style={{
-                width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center',
-                backgroundColor: '#1e2d45', borderWidth: 1.5, borderColor: '#2d3f58',
-              }}
-            >
-              <Text style={{ color: '#ffffff', fontSize: 28, fontWeight: '800' }}>+</Text>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity
-            onPress={() => onConfirm(value)}
-            disabled={!changed}
-            style={{
-              marginTop: 24, padding: 14, borderRadius: 10, alignItems: 'center',
-              backgroundColor: changed ? '#4ade80' : '#1e2d45',
-              borderWidth: changed ? 0 : 1, borderColor: '#2d3f58',
-            }}
-          >
-            <Text style={{ color: changed ? '#0a1628' : '#9ca3af', fontWeight: '700' }}>Save</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={onCancel} style={{ marginTop: 10, padding: 10, alignItems: 'center' }}>
-            <Text style={{ color: '#9ca3af', fontWeight: '600' }}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-}
 
 function CustomRunsModal({
   visible,
@@ -2049,6 +1970,11 @@ export default function LiveScoringScreen() {
     // Optimistically apply so the over-limit / chase maths update immediately.
     const updated: Match = { ...match, rules: { ...match.rules, oversPerInnings: newOvers } };
     setMatch(updated);
+    // End-of-innings is normally detected when a ball is committed, so setting
+    // the limit to exactly the overs already completed would otherwise leave
+    // the scorer able to keep scoring past it. Same 'end-pending' state (Undo
+    // still available) that commitBall lands on when the limit is reached.
+    if (innings && innings.legalBallsInOver === 0 && innings.overNumber >= newOvers) setPhase('end-pending');
     updateMatchOvers(clubId, match.id, newOvers).catch(() => {
       Alert.alert('Could not update overs. Please try again.');
       load();
@@ -2478,9 +2404,12 @@ export default function LiveScoringScreen() {
   const commentaryEntries = buildCommentary(commentaryBalls, getPlayerName, handOf, match?.rules.customDismissals ?? []);
 
   // Overs can only be edited while the 1st innings is in progress, and never
-  // below the overs already bowled (a part-bowled over counts as one).
+  // below the overs already bowled (a part-bowled over counts as one). Also
+  // applies to a match with NO limit yet (e.g. one created from a poll before
+  // overs were asked for) — the scorer can set one, it just can't be unset.
   const oversFloor = Math.max(1, innings.overNumber + (innings.legalBallsInOver > 0 ? 1 : 0));
-  const canEditOvers = isScorer && inningsNumber === 1 && phase === 'scoring' && match?.rules.oversPerInnings != null;
+  const hasOversLimit = match?.rules.oversPerInnings != null;
+  const canEditOvers = isScorer && inningsNumber === 1 && phase === 'scoring';
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingBottom: insets.bottom }}>
@@ -2622,7 +2551,7 @@ export default function LiveScoringScreen() {
           (RRR already implies the overs limit) and dropped to keep the two
           banners from stacking — that stacked height is what pushed the
           Wicket/Undo/Abandon row below the screen during a run-chase. */}
-      {match?.rules.oversPerInnings != null && !(inningsNumber === 2 && firstInningsRuns != null) && (
+      {(hasOversLimit || canEditOvers) && !(inningsNumber === 2 && firstInningsRuns != null) && (
         <TouchableOpacity
           disabled={!canEditOvers}
           onPress={() => setShowEditOvers(true)}
@@ -2633,9 +2562,13 @@ export default function LiveScoringScreen() {
           }}
         >
           <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-            {match.rules.oversPerInnings} over match
+            {hasOversLimit ? `${match?.rules.oversPerInnings} over match` : 'No overs limit set'}
           </Text>
-          {canEditOvers && <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '600' }}>✎ Edit</Text>}
+          {canEditOvers && (
+            <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '600' }}>
+              {hasOversLimit ? '✎ Edit' : '✎ Set overs'}
+            </Text>
+          )}
         </TouchableOpacity>
       )}
 
@@ -2987,8 +2920,10 @@ export default function LiveScoringScreen() {
 
       <EditOversModal
         visible={showEditOvers}
-        current={match?.rules.oversPerInnings ?? oversFloor}
+        current={match?.rules.oversPerInnings ?? Math.max(oversFloor, 6)}
         minOvers={oversFloor}
+        allowUnchanged={!hasOversLimit}
+        subtitle={hasOversLimit ? undefined : `This match has no overs limit. Set one now — it can be raised later, but not below the ${oversFloor} over${oversFloor !== 1 ? 's' : ''} already bowled.`}
         onConfirm={handleSaveOvers}
         onCancel={() => setShowEditOvers(false)}
       />

@@ -84,8 +84,11 @@ export default function ScheduleMatchScreen() {
   const [day, setDay] = useState(today.getDate());
   const [month, setMonth] = useState(today.getMonth());
   const [year, setYear] = useState(today.getFullYear());
-  const [format, setFormat] = useState<MatchFormat>('custom');
-  const [customOvers, setCustomOvers] = useState('');
+  // Overs per innings, as typed. Source of truth for the limit in every mode
+  // (incl. Quick rematch); `format` is purely derived from it below, so the
+  // two can never disagree (e.g. 'custom' saved alongside 20 overs).
+  const [overs, setOvers] = useState('');
+  const [oversTouched, setOversTouched] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [reuseMode, setReuseMode] = useState<'none' | 'squad' | 'teams-edit' | 'teams'>('squad');
   const [prefilled, setPrefilled] = useState(false);
@@ -141,7 +144,7 @@ export default function ScheduleMatchScreen() {
     if (reuseMode === 'teams' && prevMatch) {
       // Quick rematch: clone previous match exactly — teams pre-filled, create
       // as scheduled immediately (same as the TeamBuilder path) and go to Toss.
-      const rules = { ...club.rules, oversPerInnings: prevMatch.rules.oversPerInnings };
+      const rules = { ...club.rules, oversPerInnings: parseInt(overs, 10) };
       setSubmitting(true);
       try {
         const newMatchId = await createMatch({
@@ -150,7 +153,7 @@ export default function ScheduleMatchScreen() {
           awayTeam: prevMatch.awayTeam,
           venue: prevMatch.venue ?? '',
           date: matchDate,
-          format: prevMatch.format ?? 'custom',
+          format,
           rules,
           squad: Array.from(new Set((prevMatch.squad ?? []).map(resolvePlayerId).filter(id => activePlayerIds.has(id)))),
           teamA: Array.from(new Set((prevMatch.teamA ?? []).map(resolvePlayerId).filter(id => activePlayerIds.has(id)))),
@@ -165,9 +168,7 @@ export default function ScheduleMatchScreen() {
       return;
     }
 
-    const oversPerInnings =
-      format === 'T20' ? 20 : format === 'ODI' ? 50 : parseInt(customOvers, 10) || undefined;
-    const rules = { ...club.rules, oversPerInnings };
+    const rules = { ...club.rules, oversPerInnings: parseInt(overs, 10) };
     const carryTeams = reuseMode === 'teams-edit' && !!prevMatch;
     const draft: MatchDraft = {
       homeTeam: homeTeam.trim() || club.name,
@@ -217,11 +218,38 @@ export default function ScheduleMatchScreen() {
     }
   };
 
-  const customOversValid = format !== 'custom' || parseInt(customOvers, 10) >= 1;
+  const oversValid = parseInt(overs, 10) >= 1;
   const isQuickRematch = reuseMode === 'teams';
   const canSubmit = (isQuickRematch
-    ? !!prevMatch && !!club
-    : selectedIds.size >= 2 && !!club && customOversValid) && !submitting;
+    ? !!prevMatch && !!club && oversValid
+    : selectedIds.size >= 2 && !!club && oversValid) && !submitting;
+
+  const formatForOvers = (n: number): MatchFormat => (n === 20 ? 'T20' : n === 50 ? 'ODI' : 'custom');
+  const format = formatForOvers(parseInt(overs, 10));
+
+  // Prefill from the previous match (Quick rematch / reuse), else the club's
+  // default — until the user edits the field. Re-runs as the club/matches
+  // queries resolve, so whichever arrives last still wins while untouched.
+  useEffect(() => {
+    if (oversTouched) return;
+    const initial = prevMatch?.rules.oversPerInnings ?? club?.rules.oversPerInnings;
+    if (initial == null) return;
+    setOvers(String(initial));
+  }, [prevMatch, club, oversTouched]);
+
+  const handleOversChange = (text: string) => {
+    const digits = text.replace(/[^0-9]/g, '');
+    setOversTouched(true);
+    setOvers(digits);
+  };
+
+  const handleFormatPress = (f: MatchFormat) => {
+    if (f === format) return;
+    setOversTouched(true);
+    // T20/ODI fill the field; Custom clears a preset value so a different
+    // number can be typed (a non-preset value is already "custom").
+    setOvers(f === 'T20' ? '20' : f === 'ODI' ? '50' : '');
+  };
 
   const inputStyle = {
     backgroundColor: theme.surface,
@@ -325,11 +353,11 @@ export default function ScheduleMatchScreen() {
       {!isQuickRematch && (
         <>
           <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 8 }}>FORMAT</Text>
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: format === 'custom' ? 8 : 20 }}>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
             {(['T20', 'ODI', 'custom'] as MatchFormat[]).map((f) => (
               <TouchableOpacity
                 key={f}
-                onPress={() => setFormat(f)}
+                onPress={() => handleFormatPress(f)}
                 style={{
                   flex: 1,
                   padding: 10,
@@ -346,29 +374,34 @@ export default function ScheduleMatchScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          {format === 'custom' && (
-            <>
-              <TextInput
-                value={customOvers}
-                onChangeText={setCustomOvers}
-                onFocus={handleInputFocus}
-                placeholder="Overs per innings (required)"
-                placeholderTextColor={theme.textMuted}
-                keyboardType="numeric"
-                style={{
-                  ...inputStyle,
-                  marginBottom: customOversValid ? 20 : 4,
-                  borderColor: customOversValid ? theme.border : '#dc2626',
-                }}
-              />
-              {!customOversValid && (
-                <Text style={{ color: '#dc2626', fontSize: 12, marginBottom: 20 }}>
-                  Enter the number of overs per innings
-                </Text>
-              )}
-            </>
-          )}
+        </>
+      )}
 
+      {/* Shown in every mode, Quick rematch included — prefilled from the
+          previous match / club default, editable before scheduling. */}
+      <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 4 }}>OVERS PER INNINGS</Text>
+      <TextInput
+        value={overs}
+        onChangeText={handleOversChange}
+        onFocus={handleInputFocus}
+        placeholder="e.g. 6 (required)"
+        placeholderTextColor={theme.textMuted}
+        keyboardType="numeric"
+        maxLength={3}
+        style={{
+          ...inputStyle,
+          marginBottom: oversValid ? 20 : 4,
+          borderColor: oversValid ? theme.border : '#dc2626',
+        }}
+      />
+      {!oversValid && (
+        <Text style={{ color: '#dc2626', fontSize: 12, marginBottom: 20 }}>
+          Enter the number of overs per innings
+        </Text>
+      )}
+
+      {!isQuickRematch && (
+        <>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <Text style={{ color: theme.textMuted, fontSize: 12 }}>
               SQUAD ({selectedIds.size} of {players.length} selected)

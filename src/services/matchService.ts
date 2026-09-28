@@ -82,6 +82,14 @@ export async function createMatch(params: {
   captainA?: string;
   captainB?: string;
 }): Promise<string> {
+  // Every creation path (ScheduleMatch, Quick rematch, poll conversion via
+  // TeamBuilder) must pick overs — an unlimited match can't be ended by the
+  // scorer's over count, which is how two FCC matches ended up with dummy
+  // "all out" balls. Screens validate first; this is the backstop.
+  const overs = params.rules.oversPerInnings;
+  if (overs == null || !Number.isFinite(overs) || overs < 1) {
+    throw new Error('Overs per innings must be set before scheduling a match.');
+  }
   const matchRef = doc(collection(db, 'clubs', params.clubId, 'matches'));
   const matchId = matchRef.id;
   await setDoc(matchRef, {

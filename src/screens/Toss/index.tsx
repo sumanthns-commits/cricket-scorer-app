@@ -1,12 +1,13 @@
 import { useState, useRef } from 'react';
-import { View, Text, TouchableOpacity, Animated, Easing, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, Animated, Easing, ActivityIndicator, ScrollView, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { RootStackParamList } from '../../navigation/RootNavigator';
-import { getMatch, setMatchToss } from '../../services/matchService';
+import { getMatch, setMatchToss, updateMatchOvers } from '../../services/matchService';
+import EditOversModal from '../../components/EditOversModal';
 import { getPlayer } from '../../services/playerProfileService';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
@@ -30,7 +31,10 @@ export default function TossScreen() {
 
   const flipAnim = useRef(new Animated.Value(0)).current;
 
-  const { data: match, isLoading } = useQuery({
+  const [showOvers, setShowOvers] = useState(false);
+  const queryClient = useQueryClient();
+
+  const { data: match, isLoading, refetch } = useQuery({
     queryKey: ['match', clubId, matchId],
     queryFn: () => getMatch(clubId, matchId),
   });
@@ -72,6 +76,7 @@ export default function TossScreen() {
       const scorer = { scorerId: user.uid, scorerName: myPlayer?.displayName ?? user.displayName ?? user.email ?? 'Scorer' };
 
       if (!match) throw new Error('Match not loaded');
+      if (oversMissing) throw new Error('Set overs per innings before starting the match');
       const winnerName = winnerId === 'homeTeam' ? match.homeTeam : match.awayTeam;
       await setMatchToss(clubId, matchId, { winnerId, winnerName, choice }, scorer);
       return matchId;
@@ -79,7 +84,10 @@ export default function TossScreen() {
     onSuccess: (resolvedMatchId) => navigation.replace('LiveScoring', { clubId, matchId: resolvedMatchId }),
   });
 
-  const canConfirm = !!winnerId && !!choice && !isPending;
+  // A match scheduled before overs were required (e.g. from a poll) can have
+  // no limit — it must get one here, before the toss starts it.
+  const oversMissing = !!match && !((match.rules.oversPerInnings ?? 0) >= 1);
+  const canConfirm = !!winnerId && !!choice && !oversMissing && !isPending;
   const homeTeam = match?.homeTeam ?? 'Team A';
   const awayTeam = match?.awayTeam ?? 'Team B';
   const venue = match?.venue;
@@ -179,6 +187,21 @@ export default function TossScreen() {
         </Text>
       </View>
 
+      {oversMissing && (
+        <View style={{ backgroundColor: theme.surface, borderRadius: 10, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#dc2626' }}>
+          <Text style={{ color: '#dc2626', fontSize: 14, fontWeight: '700' }}>Overs per innings not set</Text>
+          <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2, marginBottom: 10 }}>
+            This match has no overs limit. Set one to start the match.
+          </Text>
+          <TouchableOpacity
+            onPress={() => setShowOvers(true)}
+            style={{ backgroundColor: theme.accent, borderRadius: 8, padding: 10, alignItems: 'center' }}
+          >
+            <Text style={{ color: '#ffffff', fontWeight: '700' }}>Set overs</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {error instanceof Error && (
         <Text style={{ color: '#dc2626', textAlign: 'center', marginBottom: 12 }}>{error.message}</Text>
       )}
@@ -193,6 +216,25 @@ export default function TossScreen() {
           <Text style={{ color: canConfirm ? '#ffffff' : theme.textMuted, fontSize: 16, fontWeight: '700' }}>Start Match</Text>
         )}
       </TouchableOpacity>
+
+      <EditOversModal
+        visible={showOvers}
+        current={6}
+        minOvers={1}
+        allowUnchanged
+        subtitle="How many overs per innings? The scorer can still change it during the 1st innings."
+        onConfirm={(n) => {
+          setShowOvers(false);
+          updateMatchOvers(clubId, matchId, n)
+            .then(() => {
+              refetch();
+              // Matches/ClubDetail cards show "N ov" — keep them in step.
+              queryClient.invalidateQueries({ queryKey: ['matches', clubId] });
+            })
+            .catch(() => Alert.alert('Could not set overs', 'Check your connection and try again.'));
+        }}
+        onCancel={() => setShowOvers(false)}
+      />
     </ScrollView>
   );
 }

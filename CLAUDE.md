@@ -59,6 +59,13 @@ ScheduleMatch → TeamBuilder → Toss → LiveScoring
   boundary month (Mar/Jun/Sep/Dec 1) whenever "today" was the last day of one, silently
   filing the new match under next season on the Matches screen (see "Matches list screen"
   below for the client-side half of that fix). Fixed 2026-09.
+  **Overs per innings** is a single always-visible numeric field (`overs` state) in every
+  mode, Quick rematch included — required (≥ 1), prefilled from the previous match's
+  `rules.oversPerInnings`, else the club default, until the user edits it. The T20/ODI/Custom
+  T20/ODI chips just fill it (20/50), Custom clears a preset value, and `format` is
+  purely derived from the typed value (20→T20, 50→ODI, else custom) — not separate state, so
+  the two can't disagree. Fixed 2026-09 — Quick rematch used to clone the previous match's
+  overs with no way to see or change them.
 - **TeamBuilder**: assigns squad players to Team A/B, sets captains, optional AI balance
   (see "AI Balance" below — now also picks captains, weighted against whoever captained in
   the last 4 weeks). In draft mode (no matchId): on confirm, calls `createMatch()` — writes
@@ -86,6 +93,24 @@ teams already assigned gets an "Edit Teams" link (reopens `TeamBuilder` in edit 
 alongside the normal "Toss →" tap action. `setMatchToss()` is the only thing that flips
 `status: 'scheduled' → 'live'`. There's no dead-end: a scheduled match can be deleted,
 re-teamed, or carried through to Toss at any point.
+
+**Overs are mandatory before a match can start** — enforced at every step, since an unlimited
+match can't be ended by the over count (two FCC matches were scored that way and needed dummy
+"all out" balls removed from prod by hand, 2026-09): `ScheduleMatch` disables its button until
+overs ≥ 1 (both modes); `TeamBuilder` disables Confirm for a draft with no
+`rules.oversPerInnings`; `createMatch()` throws if it's missing/< 1 (backstop for every
+creation path); and `Toss` blocks "Start Match" on a scheduled match that has none (created
+before this rule, e.g. from a poll) with a "Set overs" card → `updateMatchOvers()`.
+
+## Overs limit editing (LiveScoring)
+The scorer can change `rules.oversPerInnings` during the 1st innings (`phase==='scoring'`, never
+below overs already bowled) via the "✎ Edit" banner + `components/EditOversModal.tsx` →
+`updateMatchOvers()`. A match with NO limit (`oversPerInnings` unset — e.g. created before the
+poll fix above) shows "No overs limit set · ✎ Set overs" instead, so a limit can be added
+mid-match (it can't be removed again). If the chosen limit equals the overs already completed
+(`legalBallsInOver === 0 && overNumber >= newOvers`), `handleSaveOvers` moves straight to
+`'end-pending'` — end-of-innings is otherwise only detected on the next committed ball, which
+would let the scorer keep scoring past the limit just set. Not editable in the 2nd innings.
 
 ## Scorer handover
 Only the current scorer gets scoring controls in `LiveScoring` — enforced by `isMatchScorer()`
@@ -509,8 +534,13 @@ option saves immediately, no separate submit button; results — vote-share bar 
 "who voted" list per option, WhatsApp-poll style; admin — per-option "Schedule this match"
 button once responses exist, "Delete Poll").
 
-**Conversion**: "Schedule {option}'s match" builds a `MatchDraft` (squad = every respondent
-whose `optionIds` includes that option; `rules`/`format` defaulted from `club.rules`) and
+**Conversion**: "Schedule {option}'s match" first opens the shared `EditOversModal`
+(prefilled from `club.rules.oversPerInnings`, else 6) and then builds a `MatchDraft` (squad =
+every respondent whose `optionIds` includes that option; `rules` = `club.rules` with the
+chosen `oversPerInnings`, `format:'custom'`). The overs step exists because this path used to
+pass `club.rules` untouched, so any club without a default "max overs" got an UNLIMITED match
+(`ScheduleMatch` always requires overs, so this was the only way to create one) — fixed
+2026-09 after two FCC matches were scored with no over limit. Then it
 navigates `TeamBuilder({ clubId, matchDraft, pollId, pollOptionId })` — reuses the exact
 draft-mode path `ScheduleMatch` already uses, no new match-creation code. `TeamBuilder`'s
 existing draft-mode confirm handler, after `createMatch()` succeeds, best-effort

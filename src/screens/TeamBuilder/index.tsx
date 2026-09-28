@@ -290,7 +290,11 @@ export default function TeamBuilderScreen() {
     else confirm();
   };
 
-  const canConfirm = teamA.length > 0 && teamB.length > 0 && !!captainA && !!captainB && !isSaving;
+  // Draft mode only — a match being re-teamed (matchId) already exists and is
+  // checked at Toss instead.
+  const draftOversMissing =
+    !!matchDraft && !((matchDraft.rules.oversPerInnings ?? 0) >= 1);
+  const canConfirm = teamA.length > 0 && teamB.length > 0 && !!captainA && !!captainB && !draftOversMissing && !isSaving;
 
   if ((loadingMatch && !!matchId) || loadingPlayers) {
     return <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator size="large" color={theme.accent} /></View>;
@@ -303,6 +307,11 @@ export default function TeamBuilderScreen() {
           <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700' }}>{match?.homeTeam ?? 'Home'} vs {match?.awayTeam ?? 'Away'}</Text>
           <Text style={{ color: theme.textMuted, fontSize: 13, marginTop: 2 }}>{squad.length} players · {teamA.length}A / {teamB.length}B / {unassigned.length} unassigned</Text>
           {allowShared && <Text style={{ color: '#d97706', fontSize: 11, marginTop: 2 }}>Odd squad — tap A and B on one player to share them across both teams</Text>}
+          {draftOversMissing && (
+            <Text style={{ color: '#dc2626', fontSize: 11, marginTop: 2 }}>
+              Overs per innings isn't set — go back and set it to continue
+            </Text>
+          )}
           {(!captainA || !captainB) && (teamA.length > 0 || teamB.length > 0) && (
             <Text style={{ color: '#d97706', fontSize: 11, marginTop: 2 }}>
               {!captainA && !captainB ? 'Set a captain for both teams to confirm' : !captainA ? 'Set a captain for Team A to confirm' : 'Set a captain for Team B to confirm'}

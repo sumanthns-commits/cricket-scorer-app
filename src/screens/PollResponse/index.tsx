@@ -22,6 +22,7 @@ import {
   deletePoll,
 } from '../../services/matchPollService';
 import PlayerAvatar from '../../components/PlayerAvatar';
+import EditOversModal from '../../components/EditOversModal';
 import type { MatchPoll, PollResponse } from '../../types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -51,6 +52,8 @@ export default function PollResponseScreen() {
   const [joinBusy, setJoinBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [shareBusy, setShareBusy] = useState(false);
+  // Option whose "Schedule this match" is waiting on the overs picker.
+  const [oversForOptionId, setOversForOptionId] = useState<string | null>(null);
   // Which options have their voter list expanded — WhatsApp-poll style
   // (collapsed count by default, tap to reveal who voted).
   const [expandedOptionIds, setExpandedOptionIds] = useState<Set<string>>(new Set());
@@ -240,13 +243,32 @@ export default function PollResponseScreen() {
     navigation.navigate((m.teamA?.length ?? 0) > 0 ? 'Toss' : 'TeamBuilder', { clubId, matchId });
   }
 
+  // Step 1: validate, then ask for overs. A poll-created match used to inherit
+  // club.rules as-is, so any club without a default "max overs" got an
+  // unlimited match — ScheduleMatch never allows that (overs are required
+  // there), so the poll path now asks too.
   function handleSchedule(optionId: string) {
     if (!poll || !club) return;
     const option = poll.options.find((o) => o.id === optionId);
     if (!option) return;
+    const squad = responses.some((r) => r.optionIds.includes(optionId));
+    if (!squad) {
+      Alert.alert('No respondents yet', `Nobody has said they're in for "${option.label}" yet.`);
+      return;
+    }
+    setOversForOptionId(optionId);
+  }
+
+  // Step 2: overs chosen — build the draft and continue to TeamBuilder.
+  function handleOversChosen(oversPerInnings: number) {
+    const optionId = oversForOptionId;
+    setOversForOptionId(null);
+    if (!poll || !club || !optionId) return;
+    const option = poll.options.find((o) => o.id === optionId);
+    if (!option) return;
     const squad = Array.from(new Set(responses.filter((r) => r.optionIds.includes(optionId)).map((r) => r.uid)));
     if (squad.length === 0) {
-      Alert.alert('No respondents yet', `Nobody has said they're in for "${option.label}" yet.`);
+      Alert.alert('No respondents yet', `Nobody has said they're in for "${option.label}" any more.`);
       return;
     }
     navigation.navigate('TeamBuilder', {
@@ -257,7 +279,7 @@ export default function PollResponseScreen() {
         venue: poll.venue ?? '',
         dateMs: (option.proposedDate?.toDate() ?? new Date()).getTime(),
         format: 'custom',
-        rules: club.rules,
+        rules: { ...club.rules, oversPerInnings },
         squad,
       },
       pollId: poll.id,
@@ -498,6 +520,17 @@ export default function PollResponseScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      <EditOversModal
+        visible={oversForOptionId !== null}
+        current={club?.rules.oversPerInnings ?? 6}
+        minOvers={1}
+        allowUnchanged
+        saveLabel="Continue"
+        subtitle="How many overs per innings? The scorer can still change it during the 1st innings."
+        onConfirm={handleOversChosen}
+        onCancel={() => setOversForOptionId(null)}
+      />
     </ScrollView>
   );
 }
