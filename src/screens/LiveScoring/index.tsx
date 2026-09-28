@@ -2631,7 +2631,7 @@ export default function LiveScoringScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Bowler row — tap ✎ (or long-press) to select / change */}
+      {/* Bowler row — tap the "✎ Edit" button (or long-press) to select / change */}
       <TouchableOpacity activeOpacity={1} onLongPress={() => isScorer && setChangeTarget('bowler')}>
         <BowlerRow
           player={bowlerPlayer}
@@ -2643,7 +2643,7 @@ export default function LiveScoringScreen() {
 
       {isScorer && !scoringReady && (
         <Text style={{ color: '#d97706', fontSize: 13, textAlign: 'center', paddingVertical: 10 }}>
-          Select both batsmen and the bowler (✎) to start scoring
+          Select both batsmen and the bowler (✎ Edit) to start scoring
         </Text>
       )}
 

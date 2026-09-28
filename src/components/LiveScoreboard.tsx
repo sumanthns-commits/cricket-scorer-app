@@ -153,11 +153,34 @@ export function BowlerRow({
         borderBottomWidth: 1, borderBottomColor: theme.border,
       }}
     >
-      <Text style={{ color: theme.textMuted, fontSize: 13, marginRight: 8 }}>🎯</Text>
-      <Text style={{ color: theme.textSecondary, fontSize: 14, flex: 1 }}>{player?.displayName ?? '–'}</Text>
+      {/* Labelled so it's clear whose row this is, with a real button (not a bare
+          ✎ glyph) for changing the bowler — scorers didn't notice the glyph. The
+          label sits above the name, not beside it, to leave the stats room on
+          narrow phones. */}
+      <View style={{ flex: 1, marginRight: 8 }}>
+        <Text style={{ color: theme.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 0.8 }}>BOWLER</Text>
+        <Text
+          numberOfLines={1}
+          style={{
+            color: player ? theme.textSecondary : theme.textMuted,
+            fontSize: 14,
+            fontStyle: player || !onEdit ? 'normal' : 'italic',
+          }}
+        >
+          {player?.displayName ?? (onEdit ? 'Select bowler' : '–')}
+        </Text>
+      </View>
       {onEdit && (
-        <TouchableOpacity onPress={onEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: 8, marginRight: 6 }}>
-          <Text style={{ color: theme.accent, fontSize: 15 }}>✎</Text>
+        <TouchableOpacity
+          onPress={onEdit}
+          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 4,
+            paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, marginRight: 10,
+            borderWidth: 1, borderColor: theme.accent,
+          }}
+        >
+          <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '700' }}>✎ Edit</Text>
         </TouchableOpacity>
       )}
       <Text style={{ color: theme.textSecondary, fontSize: 13 }}>
