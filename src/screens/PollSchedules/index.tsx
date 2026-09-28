@@ -101,7 +101,7 @@ export default function PollSchedulesScreen() {
   });
   const isAdmin = member?.role === 'admin';
 
-  const { data: schedules, isLoading, refetch } = useQuery({
+  const { data: schedules, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['pollSchedules', clubId],
     queryFn: () => getPollSchedules(clubId),
     enabled: !!clubId && isAdmin,
@@ -117,7 +117,13 @@ export default function PollSchedulesScreen() {
     queryClient.setQueryData<PollSchedule[]>(['pollSchedules', clubId], (prev) =>
       prev?.map((s) => (s.id === scheduleId ? { ...s, enabled } : s)),
     );
-    await setPollScheduleEnabled(clubId, scheduleId, enabled);
+    try {
+      await setPollScheduleEnabled(clubId, scheduleId, enabled);
+    } catch (err) {
+      console.error('[PollSchedules] toggle failed', err);
+      refetch(); // drop the optimistic value — it never reached Firestore
+      Alert.alert('Could not update schedule', err instanceof Error ? err.message : 'Please try again.');
+    }
   };
 
   const handleDelete = (scheduleId: string) => {
@@ -130,7 +136,13 @@ export default function PollSchedulesScreen() {
           queryClient.setQueryData<PollSchedule[]>(['pollSchedules', clubId], (prev) =>
             prev?.filter((s) => s.id !== scheduleId),
           );
-          await deletePollSchedule(clubId, scheduleId);
+          try {
+            await deletePollSchedule(clubId, scheduleId);
+          } catch (err) {
+            console.error('[PollSchedules] delete failed', err);
+            refetch(); // restore the row that was optimistically removed
+            Alert.alert('Could not delete schedule', err instanceof Error ? err.message : 'Please try again.');
+          }
         },
       },
     ]);
@@ -168,6 +180,21 @@ export default function PollSchedulesScreen() {
 
       {isLoading ? (
         <ActivityIndicator color={theme.accent} style={{ marginTop: 40 }} />
+      ) : isError ? (
+        <View style={{ alignItems: 'center', marginTop: 60, paddingHorizontal: 24 }}>
+          <Text style={{ color: '#dc2626', fontSize: 16, fontWeight: '700', textAlign: 'center' }}>
+            Couldn't load schedules
+          </Text>
+          <Text style={{ color: theme.textMuted, fontSize: 13, textAlign: 'center', marginTop: 6 }}>
+            {error instanceof Error ? error.message : 'Please try again.'}
+          </Text>
+          <TouchableOpacity
+            onPress={() => refetch()}
+            style={{ marginTop: 16, backgroundColor: theme.accent, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 20 }}
+          >
+            <Text style={{ color: '#ffffff', fontWeight: '700' }}>Retry</Text>
+          </TouchableOpacity>
+        </View>
       ) : schedules && schedules.length > 0 ? (
         <FlatList
           data={schedules}

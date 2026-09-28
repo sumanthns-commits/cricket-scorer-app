@@ -594,6 +594,23 @@ permanently deletes them a day after their last candidate date. Admin can also d
 manually any time (`deletePoll` — clears the `responses` subcollection first, Firestore
 doesn't cascade-delete).
 
+## Recurring poll schedules (IMPLEMENTED)
+Admins set up a weekly auto-posted poll instead of creating one by hand: Match Polls →
+`PollSchedules` (list, enable/disable toggle, delete) → `EditPollSchedule` (create/edit:
+Simple or Multiple-dates template, question, venue/note, `minResponses`, "create on" day + hour,
+event day(s) + time). Data: `clubs/{clubId}/pollSchedules/{id}` via `services/pollScheduleService.ts`
+(`createPollSchedule`/`updatePollSchedule`/`setPollScheduleEnabled`/`deletePollSchedule`); the
+`PollSchedule` type lives in `types/index.ts`. **The app only stores the schedule** — the
+`autoCreateMatchPolls` Cloud Function (functions repo) posts the poll, hourly on the hour, in the
+club's timezone; saving a schedule does not create a poll immediately. Admin-only end to end
+(`firestore.rules` `pollSchedules`, functions repo).
+
+Error handling matters here: `EditPollSchedule`'s save and `PollSchedules`' load/toggle/delete
+all surface failures (Alert / "Couldn't load schedules" + Retry; toggle and delete roll back
+their optimistic update). They used to have no `catch`, so when the `pollSchedules` Firestore
+rule hadn't been deployed to prod, a permission-denied looked like "Create Schedule does
+nothing" and the list fell through to a misleading "No recurring polls yet". Fixed 2026-09.
+
 ## Club location (IMPLEMENTED)
 `Club.timezone` (`types/index.ts`) — an IANA timezone string (e.g. `"Australia/Sydney"`),
 set from a curated list in `constants/timezones.ts` (`CLUB_TIMEZONES`,
@@ -650,7 +667,9 @@ Key functions:
 - `pollLandingPage` — HTTPS function behind the `crease-24487.web.app/poll/**` Hosting
   rewrite; branded static Open Graph card + redirect to the app for shared poll links
 
-Deploy: `firebase deploy --only functions` from `functions/` subdirectory. Also
+Deploy: `firebase deploy --only functions` from `functions/` subdirectory. **Firestore rules are a
+separate deploy** (`--only firestore:rules`) — a new client-written collection isn't usable in prod
+until they're released (see "Recurring poll schedules"). Also
 `firebase deploy --only hosting` if `firebase.json`/`public/` changed (this repo now has a
 Hosting site backing `pollLandingPage` and the Universal/App Links `.well-known` files — see
 functions repo CLAUDE.md).

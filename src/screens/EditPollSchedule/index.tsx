@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -103,6 +103,14 @@ export default function EditPollScheduleScreen() {
         });
       }
       navigation.goBack();
+    } catch (err) {
+      // Previously unhandled — a rejected write (e.g. Firestore
+      // permission-denied) left the button "doing nothing" with no feedback.
+      console.error('[EditPollSchedule] save failed', err);
+      Alert.alert(
+        isEditing ? 'Could not save schedule' : 'Could not create schedule',
+        err instanceof Error ? err.message : 'Please try again.',
+      );
     } finally {
       setSubmitting(false);
     }
