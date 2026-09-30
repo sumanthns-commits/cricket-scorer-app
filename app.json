@@ -3,7 +3,7 @@
     "name": "Crease",
     "slug": "cricket-scorer-app",
     "scheme": "cricket-scorer-app",
-    "version": "2.11.5",
+    "version": "2.11.6",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -18,7 +18,7 @@
     },
     "android": {
       "package": "com.crease.cricket",
-      "versionCode": 52,
+      "versionCode": 53,
       "adaptiveIcon": {
         "backgroundColor": "#16a34a",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -58,7 +58,7 @@
         "iosUrlScheme": "com.googleusercontent.apps.29441644794-5937grt2lqfvgg0r9i29mmpdcpgrog9n"
       }],
       ["expo-notifications", {
-        "icon": "./assets/android-icon-monochrome.png",
+        "icon": "./assets/android-notification-icon.png",
         "color": "#16a34a",
         "defaultChannel": "default-v2"
       }],

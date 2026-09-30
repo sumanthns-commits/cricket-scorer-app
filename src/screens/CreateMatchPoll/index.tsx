@@ -191,13 +191,22 @@ export default function CreateMatchPollScreen() {
               { id: 'yes', label: 'Yes', proposedDate: partsToDate(simpleDate), schedulable: true, minResponses: minResponsesValue },
               { id: 'no', label: 'No', schedulable: false },
             ]
-          : dateRows.map((row, i) => ({
-              id: row.id,
-              label: row.label.trim() || `Option ${i + 1}`,
-              proposedDate: partsToDate(row.parts),
-              schedulable: true,
-              minResponses: minResponsesValue,
-            }));
+          : [
+              ...dateRows.map((row, i) => ({
+                id: row.id,
+                label: row.label.trim() || `Option ${i + 1}`,
+                proposedDate: partsToDate(row.parts),
+                schedulable: true,
+                minResponses: minResponsesValue,
+              })),
+              // Explicit opt-out so a respondent with no availability can say
+              // so — records a response doc same as any date pick, which is
+              // what stops sendPollReminders from nudging them (it only skips
+              // members with a response doc at all, regardless of which
+              // option). Without this, not responding was the only way to
+              // decline, which meant reminders every 4h forever.
+              { id: 'none', label: "Can't make any of these", schedulable: false },
+            ];
 
       const pollId = await createMatchPoll({
         clubId,
@@ -331,8 +340,8 @@ export default function CreateMatchPollScreen() {
               <Text style={{ color: theme.accent, fontSize: 14, fontWeight: '700' }}>+ Add another date</Text>
             </TouchableOpacity>
             <Text style={{ color: theme.textMuted, fontSize: 12, marginBottom: 20 }}>
-              No need for a "Both"/"Neither" option — respondents can check any number of
-              these, including none.
+              Respondents can check any number of these. A "Can't make any of these" option
+              is added automatically, so no need for a "Both"/"Neither" option here.
             </Text>
           </>
         )}

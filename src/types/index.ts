@@ -47,7 +47,12 @@ export interface JoinRequest {
 // creation (see matchPollService.createMatchPoll) — it's what lets the results
 // screen show a "Schedule this match" button for e.g. "Yes"/"Sunday"/"Monday"
 // but never for "No". `proposedDate` is only present on options that map to
-// an actual candidate match date.
+// an actual candidate match date. A multiSelect (multi-date) poll's sole
+// non-schedulable option, when present, is the auto-appended "Can't make any
+// of these" opt-out (id `'none'`) — an explicit way to say no so those
+// respondents count as answered and stop getting reminders, same as "No"
+// already does for a simple poll. PollResponse's UI treats it as mutually
+// exclusive with every date option.
 export interface PollOption {
   id: string;
   label: string;
@@ -76,9 +81,11 @@ export interface MatchPoll {
   createdByName: string;
   question: string;
   // false: respondent picks exactly one option (simple yes/no interest poll).
-  // true: respondent may check any number of options (multi-date poll)
+  // true: respondent may check any number of date options (multi-date poll)
   // — deliberately no "Both"/"Neither" options exist for that case, since
-  // multi-select already covers checking two boxes or none.
+  // multi-select already covers checking two boxes or none — plus one
+  // auto-appended non-schedulable "Can't make any of these" opt-out option
+  // (see PollOption above).
   multiSelect: boolean;
   options: PollOption[];
   venue?: string;

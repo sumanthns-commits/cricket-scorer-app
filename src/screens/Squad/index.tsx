@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, FlatList, ActivityIndicator,
   Modal, TextInput, KeyboardAvoidingView, Platform, Pressable, Alert, ScrollView,
@@ -168,6 +168,7 @@ export default function SquadScreen() {
   const isAdmin = me?.role === 'admin';
 
   const { scrollRef, kbHeight, handleInputFocus, onScroll } = useKeyboardScrollIntoView();
+  const nameInputRef = useRef<TextInput>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [battingHand, setBattingHand] = useState<BattingHand | null>(null);
@@ -279,7 +280,18 @@ export default function SquadScreen() {
         </TouchableOpacity>
       )}
 
-      <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalVisible(false)}
+        // Focus (and so the keyboard) only once the sheet has actually finished
+        // sliding in — autoFocus used to fire mid-animation, which made
+        // useKeyboardScrollIntoView's measureInWindow read the field's
+        // still-transitioning position and scroll to the wrong offset,
+        // leaving PLAYER NAME hidden behind the keyboard. Fixed 2026-09.
+        onShow={() => nameInputRef.current?.focus()}
+      >
         <Pressable
           style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}
           onPress={() => setModalVisible(false)}
@@ -313,12 +325,12 @@ export default function SquadScreen() {
                     PLAYER NAME *
                   </Text>
                   <TextInput
+                    ref={nameInputRef}
                     value={displayName}
                     onChangeText={setDisplayName}
                     onFocus={handleInputFocus}
                     placeholder="Full name"
                     placeholderTextColor={theme.textMuted}
-                    autoFocus
                     style={inputStyle}
                   />
 

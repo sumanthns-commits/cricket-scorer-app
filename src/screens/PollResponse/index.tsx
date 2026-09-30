@@ -191,16 +191,30 @@ export default function PollResponseScreen() {
     });
   }
 
+  // The sole non-schedulable option on a multiSelect poll (if present) is the
+  // auto-appended "Can't make any of these" opt-out (see CreateMatchPoll /
+  // autoCreateMatchPolls) — mutually exclusive with picking any date below.
+  const optOutOption = poll?.multiSelect ? poll.options.find((o) => !o.schedulable) : undefined;
+
   // Tapping an option records the response immediately (poll-app style — no
   // separate submit step). Optimistically updates local selection first so
   // the tap feels instant, then writes; rolls back on failure.
   async function toggleOption(optionId: string) {
     if (!poll || !user || respondBusy) return;
-    const next = poll.multiSelect
-      ? selected.includes(optionId)
-        ? selected.filter((id) => id !== optionId)
-        : [...selected, optionId]
-      : [optionId];
+    let next: string[];
+    if (!poll.multiSelect) {
+      next = [optionId];
+    } else if (optOutOption?.id === optionId) {
+      // Selecting "Can't make any of these" replaces any date picks; tapping
+      // it again while selected just clears it (same toggle-off as any option).
+      next = selected.includes(optionId) ? [] : [optionId];
+    } else if (selected.includes(optionId)) {
+      next = selected.filter((id) => id !== optionId);
+    } else {
+      // Picking a date clears a previously-selected opt-out — the two are
+      // mutually exclusive, not a fifth checkbox.
+      next = [...selected.filter((id) => id !== optOutOption?.id), optionId];
+    }
     const previous = selected;
     setSelected(next);
     setRespondBusy(true);
@@ -385,8 +399,11 @@ export default function PollResponseScreen() {
 
       <View style={{ marginTop: 12, marginBottom: 20 }}>
         {(() => {
-          const maxCount = Math.max(1, ...poll.options.map((o) => respondentsFor(o.id).length));
-          return poll.options.map((option) => {
+          // The opt-out option (if any) isn't a candidate date, so it's kept
+          // out of the vote-share bar's scaling and rendered separately below.
+          const dateOptions = poll.options.filter((o) => o.id !== optOutOption?.id);
+          const maxCount = Math.max(1, ...dateOptions.map((o) => respondentsFor(o.id).length));
+          return dateOptions.map((option) => {
             const isSelected = selected.includes(option.id);
             const dateLabel = formatOptionDate(option.proposedDate);
             const respondents = respondentsFor(option.id);
@@ -470,6 +487,70 @@ export default function PollResponseScreen() {
               </View>
             );
           });
+        })()}
+
+        {optOutOption && (() => {
+          const option = optOutOption;
+          const isSelected = selected.includes(option.id);
+          const respondents = respondentsFor(option.id);
+          const expanded = expandedOptionIds.has(option.id);
+          return (
+            <View>
+              {/* Separates "pick a date" from "opt out" so the two read as
+                  different kinds of answer, not one more date row. */}
+              <View style={{ height: 1, backgroundColor: theme.border, marginVertical: 12 }} />
+              <View
+                style={{
+                  backgroundColor: isSelected ? '#fee2e2' : theme.surface,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: isSelected ? '#dc2626' : theme.border,
+                  overflow: 'hidden',
+                }}
+              >
+                <TouchableOpacity
+                  onPress={() => toggleOption(option.id)}
+                  disabled={respondBusy}
+                  style={{ flexDirection: 'row', alignItems: 'center', padding: 14, paddingBottom: 10, opacity: respondBusy ? 0.7 : 1 }}
+                >
+                  <Text style={{ fontSize: 16, fontWeight: '900', width: 20, marginRight: 12, textAlign: 'center', color: isSelected ? '#dc2626' : theme.textMuted }}>
+                    ✕
+                  </Text>
+                  <Text style={{ color: isSelected ? '#dc2626' : theme.text, fontSize: 15, fontWeight: '600', flex: 1 }}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* No vote-share bar here — it's not a candidate date, so there's
+                    nothing to compare it against. */}
+                <TouchableOpacity
+                  onPress={() => respondents.length > 0 && toggleExpanded(option.id)}
+                  style={{ flexDirection: 'row', alignItems: 'center', padding: 14, paddingTop: 8 }}
+                >
+                  <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>
+                    {respondents.length} {respondents.length === 1 ? 'vote' : 'votes'}
+                  </Text>
+                  {respondents.length > 0 && (
+                    <Text style={{ color: theme.textMuted, fontSize: 12, marginLeft: 6 }}>{expanded ? '▾' : '▸'}</Text>
+                  )}
+                </TouchableOpacity>
+
+                {expanded && (
+                  <View style={{ paddingHorizontal: 14, paddingBottom: 12, gap: 8 }}>
+                    {respondents.map((r) => {
+                      const name = resolveDisplayName(r);
+                      return (
+                        <View key={r.uid} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <PlayerAvatar name={name} seed={r.uid} size={26} />
+                          <Text style={{ color: theme.text, fontSize: 13 }}>{name}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            </View>
+          );
         })()}
       </View>
 

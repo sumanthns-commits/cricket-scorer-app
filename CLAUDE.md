@@ -501,8 +501,12 @@ admin converts respondents into a scheduled match's pre-filled squad.
 ```
 question: string
 multiSelect: boolean       — false: pick exactly one (simple yes/no poll). true: check any
-                              number (multi-date poll) — no "Both"/"Neither" options exist,
-                              multi-select already covers checking two boxes or none
+                              number of date options (multi-date poll) — no "Both"/"Neither"
+                              options exist, multi-select already covers checking two boxes
+                              or none — plus one auto-appended non-schedulable "Can't make
+                              any of these" opt-out option (id `'none'`), mutually exclusive
+                              with the date options in `PollResponse`'s UI. See "Opting out
+                              of a multi-date poll" below.
 options: PollOption[]      — { id, label, proposedDate?, schedulable, minResponses? }
                               schedulable drives the "Schedule this match" button (true for
                               "Yes"/every date row, false for "No"). minResponses is applied
@@ -533,6 +537,26 @@ schedulable option per admin-added candidate date), `PollResponse` (respond — 
 option saves immediately, no separate submit button; results — vote-share bar + expandable
 "who voted" list per option, WhatsApp-poll style; admin — per-option "Schedule this match"
 button once responses exist, "Delete Poll").
+
+**Opting out of a multi-date poll (IMPLEMENTED 2026-09)**: before this, a respondent with no
+availability on any candidate date had no way to say so — not responding was the only option,
+which meant `sendPollReminders` (functions repo, every 4h) kept nudging them forever, since it
+only skips members who have *any* response doc, regardless of which options they picked.
+`CreateMatchPoll` (multi-date template) and `autoCreateMatchPolls` (functions repo, recurring
+`multiDate` schedules) now both append a non-schedulable `{ id: 'none', label: "Can't make any
+of these", schedulable: false }` option to every multi-date poll's `options` — same pattern
+simple polls already use for "No". `PollResponse` resolves it (`poll.options.find((o) =>
+!o.schedulable)`, multiSelect polls only) and treats it as **mutually exclusive** with the date
+checkboxes in `toggleOption`: selecting it clears any date picks, and picking a date clears it
+if selected. Rendered as a visually separate row below a divider (✕ icon, not a checkbox; no
+vote-share bar — it's not a candidate date, so there's nothing to scale it against) rather than
+one more item in the date checklist. Because it still writes a normal `responses/{uid}` doc,
+`sendPollReminders`'s existing "has any response doc" check already stops nudging that member —
+no functions-repo reminder-logic changes needed. `buildPollShareContent` (`matchPollService.ts`)
+excludes it from the shared WhatsApp teaser line (`_Sunday / Monday?_`) via `schedulable !==
+false`, since it's a response choice, not a candidate date. `onPollResponseWritten`'s
+respondent-count/threshold logic already ignored non-schedulable options before this change
+(`if (!option?.schedulable...) return null`), so it needed no changes either.
 
 **Conversion**: "Schedule {option}'s match" first opens the shared `EditOversModal`
 (prefilled from `club.rules.oversPerInnings`, else 6) and then builds a `MatchDraft` (squad =
@@ -693,6 +717,28 @@ interest polls" above). Match- and poll-related sends respect the per-user opt-o
 (`users/{uid}.notificationPrefs.matchNotifications`, default on, toggled in Profile —
 poll sends go through `notifyRegisteredMembers`, which hardcodes this) — join-request/
 approval/made-admin notifications always send regardless.
+
+**Android status-bar icon (Fixed 2026-09)**: `app.json`'s `expo-notifications` plugin `icon`
+config used to point at `assets/android-icon-monochrome.png` — the same file used for
+`android.adaptiveIcon.monochromeImage`. That's wrong for this second use: an adaptive icon's
+monochrome layer is *supposed* to have a big margin (the OS masks/insets it), so the visible
+mark in that file only fills ~16% of its 1024×1024 canvas. `expo-notifications` does a flat
+resize with no smart crop down to the actual status-bar sizes (24–96px), so that already-small
+mark shrunk to a few pixels — the generated `drawable-*/notification_icon.png` was visibly
+blank at every density, meaning every push arrived with no icon in the status bar. Fixed by
+adding a **dedicated** `assets/android-notification-icon.png` — the same mark cropped out and
+rescaled to fill ~82% of the frame — and pointing the plugin's `icon` at that instead, leaving
+`adaptiveIcon.monochromeImage` on the original file (correct for its own purpose). `app.json`
+is strict JSON (no `//` comments), so this rationale lives here instead of inline. Requires a
+native rebuild to take effect — the small icon is baked in at build time, not something a push
+payload field can change (see `NOTIFICATION_ICON_URL` in the functions repo's
+`pushNotifications.ts`, which is a *different* asset — the large icon shown in the expanded
+notification, unaffected by this bug).
+
+**iOS** has no equivalent per-notification icon control — it always shows the app's own
+`AppIcon` automatically; nothing to configure here. If it's missing there, check instead
+whether `eas credentials` has actually been run (see above) or whether you're testing in the
+Simulator, which can't receive push at all.
 
 Client: `src/services/pushTokenService.ts` registers the device's Expo push token onto
 `users/{uid}.expoPushTokens` on sign-in (`useAuthListener.ts`, fire-and-forget) and removes

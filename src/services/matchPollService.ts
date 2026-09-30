@@ -36,13 +36,18 @@ type SharablePoll = {
   id: string;
   question: string;
   multiSelect: boolean;
-  options: { label: string }[];
+  options: { label: string; schedulable?: boolean }[];
 };
 
 // `*text*`/`_line_` use WhatsApp's own lightweight markdown so the question renders bold.
 function buildPollShareContent(poll: SharablePoll): { message: string; url: string } {
   const url = `https://${POLL_HOSTING_DOMAIN}/poll/${poll.clubId}/${poll.id}`;
-  const optionsLine = poll.multiSelect ? `_${poll.options.map((o) => o.label).join(' / ')}?_\n` : '';
+  // Excludes the non-schedulable "Can't make any of these" opt-out option
+  // (multi-date polls only) — that's a response choice, not a candidate date,
+  // so it has no place in the "Sunday / Monday?" teaser line.
+  const optionsLine = poll.multiSelect
+    ? `_${poll.options.filter((o) => o.schedulable !== false).map((o) => o.label).join(' / ')}?_\n`
+    : '';
   const message = `🏏 *${poll.question}*\n${optionsLine}Tap to say if you're in 👇`;
   return { message, url };
 }
